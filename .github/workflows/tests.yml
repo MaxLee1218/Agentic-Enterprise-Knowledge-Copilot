@@ -1,0 +1,62 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Python 3.11
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate GitHub Actions workflows
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check "pytest==8.4.1"
+
+      - name: Check Python syntax
+        run: python -m compileall -q src scripts evaluation
+
+      - name: Run tests when implementation exists
+        shell: bash
+        run: |
+          first_test=""
+          if [[ -d tests ]]; then
+            first_test="$(find tests -type f -name 'test_*.py' -print -quit)"
+          fi
+
+          if [[ -n "$first_test" ]]; then
+            python -m pytest
+            exit 0
+          fi
+
+          first_source="$(find src -type f -name '*.py' -size +0 -print -quit)"
+          if [[ -n "$first_source" ]]; then
+            echo "::error::Python implementation exists, but no pytest tests were found."
+            exit 1
+          fi
+
+          echo "::notice::No implemented Python modules or tests exist yet; scaffold validation passed."
