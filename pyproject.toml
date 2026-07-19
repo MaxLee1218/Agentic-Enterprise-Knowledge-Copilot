@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-enterprise-knowledge-copilot"
+version = "0.1.0"
+description = "Governed, evidence-backed enterprise task completion foundation."
+requires-python = ">=3.11"
+authors = [
+    { name = "Agentic Enterprise Knowledge Copilot Contributors" },
+]
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "pydantic>=2.10,<3.0",
+    "pydantic-settings>=2.7,<3.0",
+    "python-dotenv>=1.0,<2.0",
+    "typer>=0.15,<1.0",
+    "uvicorn>=0.34,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.28,<1.0",
+    "mypy>=1.14,<2.0",
+    "pytest>=8.3,<9.0",
+    "pytest-cov>=6.0,<7.0",
+    "ruff>=0.9,<1.0",
+]
+
+[project.scripts]
+enterprise-copilot = "enterprise_copilot.cli.main:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["enterprise_copilot*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--strict-config --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src", "scripts", "tests"]
+

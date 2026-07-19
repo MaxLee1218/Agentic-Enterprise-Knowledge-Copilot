@@ -38,6 +38,22 @@ Interoperable MCP Client/Server Ecosystem
 
 The repository currently contains an initial project scaffold. Empty modules represent planned boundaries, not completed functionality. MCP is a future Phase 5 extension, not a currently implemented feature. Do not describe an empty module or planned MCP capability as implemented.
 
+### 1.1 Frozen Design Authority for v1.0
+
+The Supplier Quality Analysis v1.0 design is frozen under `docs/design/`. Before changing contracts, task lifecycle behavior, agent nodes, policies, approvals, tools, evidence, persistence, verification, artifacts, tests, or evaluations for this scenario, contributors and coding agents must read and comply with all of the following documents:
+
+- `docs/design/business_scope.md`
+- `docs/design/domain_model.md`
+- `docs/design/state_machine.md`
+- `docs/design/tool_contract.md`
+- `docs/design/walkthrough.md`
+- `docs/design/design_review.md`
+- `docs/design/design_baseline.md`
+
+These documents are the sole implementation authority for the Supplier Quality Analysis v1.0 scenario. Do not implement behavior that contradicts them, infer unstated behavior from prompts, silently broaden scope, or bypass their policy, approval, evidence, audit, recovery, and verification requirements.
+
+If an implementation request conflicts with the frozen design, stop before implementing the conflicting behavior and report the conflict. A change to the frozen baseline requires an explicit design change: update every affected design document, resolve cross-document conflicts, version the baseline, obtain approval, and only then modify production code. Do not treat the existence of scaffold files as authorization to begin or expand implementation.
+
 ## 2. Product Vision
 
 The product must behave as an enterprise knowledge worker, not as a generic chatbot.
@@ -51,8 +67,8 @@ For a request such as “Analyze supplier quality issues in Q2 and generate a re
 5. Query approved operational data.
 6. Calculate trends with explicit methods.
 7. Analyze likely causes and distinguish facts from hypotheses.
-8. Verify important claims and numeric results.
-9. Generate a management-ready report.
+8. Generate a management-ready report with evidence references.
+9. Verify important claims, numeric results, citations, and artifact integrity.
 10. Attach citations, query lineage, and calculation evidence.
 
 The core product objective is:
@@ -138,8 +154,8 @@ Input
   -> Approval, when required
   -> Tool Execution
   -> Observation and Evidence Aggregation
-  -> Verification
   -> Report Composition
+  -> Verification
   -> Final Response and Artifacts
 ```
 
@@ -271,7 +287,7 @@ The MCP paths above are approved future boundaries. Empty MCP files and director
 
 ## 6. Development Rules
 
-1. Inspect existing contracts, architecture documents, tests, and call sites before modifying behavior.
+1. For Supplier Quality Analysis v1.0, read and follow the frozen `docs/design/` baseline defined in Section 1.1 before modifying behavior; for all other work, inspect existing contracts, architecture documents, tests, and call sites first.
 2. Prefer small, incremental changes over broad rewrites.
 3. Do not create abstractions without at least one concrete use case.
 4. Keep every module focused on one responsibility with explicit inputs and outputs.
