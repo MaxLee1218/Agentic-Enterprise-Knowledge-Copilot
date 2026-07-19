@@ -16,6 +16,7 @@ The system is designed to:
 - Generate professional reports and reusable artifacts.
 - Require approval for sensitive or high-risk actions.
 - Produce evidence-backed, auditable outputs.
+- Support governed protocol interoperability with approved external systems as a later extension.
 
 The intended evolution is:
 
@@ -30,9 +31,12 @@ Agentic Enterprise Knowledge Copilot
         |
         v
 Governed Task Completion System
+        |
+        v
+Interoperable MCP Client/Server Ecosystem
 ```
 
-The repository currently contains an initial project scaffold. Empty modules represent planned boundaries, not completed functionality. Do not describe an empty module as implemented.
+The repository currently contains an initial project scaffold. Empty modules represent planned boundaries, not completed functionality. MCP is a future Phase 5 extension, not a currently implemented feature. Do not describe an empty module or planned MCP capability as implemented.
 
 ## 2. Product Vision
 
@@ -56,6 +60,8 @@ The core product objective is:
 > Convert governed enterprise knowledge into traceable, actionable decisions.
 
 Product behavior must prioritize correctness, evidence, safety, and recoverability over fluent but unsupported answers.
+
+After the governed task-completion foundation is complete, the product may interoperate as both an MCP client that imports approved external capabilities and an MCP server that exports explicitly approved Copilot capabilities. Both directions must preserve the same policy, approval, evidence, audit, and observability controls as native execution.
 
 ## 3. System Architecture
 
@@ -92,6 +98,13 @@ Knowledge Tool   Database Tool   Analytics Tool   Reporting Tool
                   Artifacts and Final Response
 ```
 
+The later dual-role MCP boundary extends, but does not replace, the existing tool system:
+
+```text
+External MCP Servers -> MCP Client Layer -> Capability Import -> Existing Tool Registry
+Existing Copilot Capabilities -> Capability Export -> MCP Server Layer -> External MCP Clients
+```
+
 Primary architectural responsibilities:
 
 - `api/` exposes transport concerns and maps failures to stable API errors.
@@ -104,8 +117,14 @@ Primary architectural responsibilities:
 - `persistence/` stores task, audit, checkpoint, and artifact state.
 - `llm/` isolates model providers, prompts, and structured-output handling.
 - `observability/` provides logging, tracing, metrics, and correlation context.
+- `mcp/` will isolate MCP lifecycle, capability mapping, protocol adaptation, and client/server behavior; `mcp/client/`, `mcp/server/`, `mcp/transports/`, and `mcp/security/` will own their respective boundaries.
+- `contracts/mcp.py` will define stable internal MCP connection, capability, invocation, provenance, and error models.
+- `policies/mcp_access.py` will evaluate MCP server, capability, scope, tenant, and approval access.
+- `persistence/mcp_connection_repository.py` and `persistence/mcp_session_repository.py` will store non-secret connection and session state.
 
 Dependencies should point inward toward contracts and domain behavior. Provider-specific, database-specific, and web-framework-specific details must remain at the edges.
+
+All imported and exported MCP execution must pass through the existing policy engine, approval workflow, tool registry and executor, evidence ledger, audit repositories, and observability. Protocol handlers must never create a parallel path to business tools or data sources.
 
 Every agent execution should follow this lifecycle:
 
@@ -162,6 +181,10 @@ Prefer a clear partial result or blocked state over an unsupported answer. Error
 
 Validate required evidence, citation coverage, numeric consistency, policy compliance, and artifact integrity before producing the final response.
 
+### 4.10 Govern protocol interoperability
+
+Treat external MCP content and capability metadata as untrusted input. MCP SDK types must not cross `mcp/protocol.py` into business layers. Imported capabilities must use stable server namespaces and enter the existing registry; exported capabilities must be deny-by-default and explicitly allowlisted. Protocol handlers cannot call business tools or data sources directly. Give each external server an isolated client session, and make capability negotiation and protocol revision compatibility explicit.
+
 ## 5. Repository Structure
 
 The target repository layout is:
@@ -171,20 +194,67 @@ Agentic-Enterprise-Knowledge-Copilot/
 ├── src/copilot/
 │   ├── api/                  # API application, dependencies, handlers, and routes
 │   ├── agent/                # Agent graph, state, routing, and execution nodes
-│   ├── contracts/            # Shared typed task, plan, tool, evidence, and error models
+│   ├── contracts/
+│   │   └── mcp.py
 │   ├── tools/                # Tool framework and enterprise capability adapters
-│   ├── policies/             # Permission, risk, approval, and data-access controls
+│   ├── policies/
+│   │   └── mcp_access.py
 │   ├── evidence/             # Evidence ledger, lineage, citations, and validation
-│   ├── persistence/          # Repositories, checkpoints, and persistence models
+│   ├── persistence/
+│   │   ├── mcp_connection_repository.py
+│   │   └── mcp_session_repository.py
 │   ├── llm/                  # Model abstraction, provider adapters, prompts, and parsing
 │   ├── observability/        # Structured logs, traces, metrics, and request context
 │   ├── services/             # Application-level orchestration services
+│   ├── mcp/                  # Future dual-role MCP protocol boundary
+│   │   ├── __init__.py
+│   │   ├── config.py
+│   │   ├── protocol.py
+│   │   ├── lifecycle.py
+│   │   ├── capabilities.py
+│   │   ├── errors.py
+│   │   ├── client/
+│   │   │   ├── manager.py
+│   │   │   ├── session.py
+│   │   │   ├── connection_registry.py
+│   │   │   ├── capability_importer.py
+│   │   │   ├── sampling_handler.py
+│   │   │   ├── elicitation_handler.py
+│   │   │   └── roots_provider.py
+│   │   ├── server/
+│   │   │   ├── server.py
+│   │   │   ├── capability_exporter.py
+│   │   │   ├── tool_provider.py
+│   │   │   ├── resource_provider.py
+│   │   │   ├── prompt_provider.py
+│   │   │   └── authorization.py
+│   │   ├── transports/
+│   │   │   ├── base.py
+│   │   │   ├── stdio.py
+│   │   │   └── streamable_http.py
+│   │   └── security/
+│   │       ├── connection_policy.py
+│   │       ├── origin_validator.py
+│   │       ├── credential_provider.py
+│   │       └── scope_mapper.py
 │   └── config.py             # Typed application configuration
-├── scripts/                  # Local operational and smoke-test entry points
-├── evaluation/               # Evaluation datasets, evaluators, runner, and reports
-├── tests/                    # Unit, integration, contract, and smoke tests
+├── scripts/
+│   ├── run_mcp_server.py
+│   ├── inspect_mcp_connection.py
+│   └── smoke_mcp.py
+├── evaluation/evaluators/
+│   ├── mcp_interoperability.py
+│   └── mcp_safety.py
+├── tests/
+│   ├── unit/mcp/
+│   ├── integration/mcp/
+│   ├── contract/mcp/
+│   └── smoke/mcp/
 ├── data/                     # Local demo data, databases, and generated artifacts
-├── docs/                     # Architecture, lifecycle, contracts, security, and ADRs
+├── docs/
+│   ├── mcp-architecture.md
+│   ├── mcp-security.md
+│   └── mcp-operations.md
 ├── migrations/               # Versioned database migrations
 ├── reports/                  # Generated human-readable reports
 ├── .github/workflows/        # Continuous integration workflows
@@ -196,6 +266,8 @@ Agentic-Enterprise-Knowledge-Copilot/
 Keep production code under `src/copilot`. Tests should mirror the source package where practical. Generated evaluation output belongs in `evaluation/reports`; generated business artifacts belong in `data/artifacts` or `reports` according to their purpose.
 
 Do not add substantial behavior to `scripts/`. Scripts should call reusable package APIs.
+
+The MCP paths above are approved future boundaries. Empty MCP files and directories are scaffold placeholders and do not demonstrate implemented protocol behavior.
 
 ## 6. Development Rules
 
@@ -212,6 +284,13 @@ Do not add substantial behavior to `scripts/`. Scripts should call reusable pack
 11. Use configuration for environment-specific values. Do not embed credentials, hosts, model names, or tenant identifiers in source code.
 12. Update relevant documentation and evaluation coverage when behavior changes.
 13. Do not claim a scaffolded or placeholder capability is implemented.
+14. Keep MCP SDK imports and protocol-revision types inside `mcp/protocol.py`; business layers must use stable internal contracts from `contracts/mcp.py`.
+15. Import approved MCP capabilities under stable server namespaces through the existing tool registry and executor.
+16. Export no capability unless it is explicitly allowlisted and mapped to internal permissions and approval rules.
+17. Prevent MCP protocol handlers from calling business tools, databases, retrieval systems, analytics functions, or renderers directly.
+18. Maintain one isolated client session per external server; never share negotiated state, capabilities, prompts, resources, or results across servers.
+19. Negotiate capabilities explicitly and validate compatibility against the pinned MCP revision `2025-11-25`.
+20. Require a compatibility review, contract tests, and an ADR before adopting a later protocol revision as the default.
 
 Each implemented module must provide:
 
@@ -243,6 +322,12 @@ Each implemented module must provide:
 - Keep tool inputs and outputs serializable and versionable.
 - Use dependency injection for databases, model clients, clocks, and external services.
 - Make idempotency expectations explicit for commands that may be retried.
+
+### MCP interfaces
+
+- Define versionable internal MCP models for connections, capabilities, invocations, origins, provenance, scopes, and typed errors.
+- Limit direct MCP SDK use to the protocol adapter. Client, server, policy, persistence, evidence, and tool code must consume internal contracts.
+- Normalize external names, schemas, and failures before registration or execution; preserve server origin and namespace on every imported capability and result.
 
 ### Logging and observability
 
@@ -299,6 +384,13 @@ evaluation smoke suite
 
 Use the exact commands defined in `pyproject.toml` and continuous integration once those files are implemented.
 
+MCP coverage must include:
+
+- **Unit tests:** lifecycle transitions, capability mapping, scope decisions, server namespaces, origin and provenance preservation, and typed error mapping.
+- **Contract tests:** initialization, capability negotiation, revision compatibility, and supported tools, resources, prompts, sampling, elicitation, roots, notifications, and progress primitives.
+- **Integration tests:** stdio and Streamable HTTP connections, OAuth authorization, reconnect and recovery, policy, approval, evidence, audit, observability, and multi-server session isolation.
+- **Smoke and safety tests:** a client/server round trip plus malicious metadata, prompt injection, invalid JSON-RPC, token leakage, cross-tenant access, cross-server leakage, and privilege escalation attempts.
+
 ## 9. Evaluation Framework
 
 Evaluation is a product requirement, not an optional benchmark. Each material capability must define success criteria before release.
@@ -338,6 +430,19 @@ Retrieval implementations should be evaluated for dense, BM25, hybrid, and reran
 - p50 and p95 latency.
 - Tool and model failure rates.
 - Retry, timeout, and human-escalation rates.
+
+### MCP interoperability metrics
+
+- Connection and initialization success rate.
+- Capability discovery and mapping accuracy.
+- Invocation success rate and authorization accuracy.
+- Protocol error rate and p50/p95 invocation latency.
+- Reconnect and session recovery rate.
+- Cross-server and cross-tenant isolation failures.
+- Prompt-injection resistance and sensitive-data leakage rate.
+- Evidence and audit completeness for MCP-originated execution.
+
+MCP evaluation reports must also record the protocol revision, SDK version, transport, server implementation, capability set, authorization mode, and configuration.
 
 Evaluation datasets must be versioned, documented, sanitized, and representative of real task categories. Store evaluator implementations in `evaluation/evaluators`, input cases in `evaluation/datasets`, and generated results in `evaluation/reports`.
 
@@ -379,6 +484,16 @@ Every evaluation report must record the code revision, dataset version, configur
 - Limit tool inputs, outputs, time, retries, and accessible resources.
 - Require an approval token for gated actions and verify that its scope matches the requested operation.
 - Never let model text directly authorize an action.
+
+### MCP security
+
+- Treat external MCP servers, clients, resources, prompts, tool descriptions, capability metadata, and results as untrusted input that cannot override instructions, policy, approvals, or contracts.
+- Allow remote servers only by canonical identity and endpoint. Use fixed, approved stdio commands with constrained arguments, working directories, subprocess lifetimes, and minimal inherited environments.
+- Bind local Streamable HTTP servers to localhost by default and validate the HTTP `Origin` header to prevent unsafe origins and DNS rebinding exposure.
+- Resolve credentials from approved references at runtime. Validate token audience, scopes, tenant, and session binding before access.
+- Never place credentials or access tokens in URLs, logs, traces, prompts, model context, artifacts, or persistence.
+- Keep sampling and elicitation disabled by default; enable them only for explicitly authorized servers and capabilities.
+- Revalidate credentials, permissions, capabilities, scopes, and tenant binding when reconnecting or restoring a session.
 
 ### Auditability
 
@@ -452,15 +567,23 @@ Extension rules:
 - Design for cancellation, retry, idempotency, and partial failure when work crosses process or network boundaries.
 - Add evaluation cases before promoting experimental behavior to the default path.
 - Prefer feature flags or controlled rollout for high-impact changes.
+- Pin the MCP protocol revision. Review lifecycle, primitives, transports, authorization, SDK changes, and schema compatibility before supporting another revision.
+- Require contract and interoperability tests plus an ADR before a later MCP revision becomes the default.
+- Add imported primitives through namespace-aware adapters and exported primitives through explicit allowlists; never bypass internal policy, approval, execution, evidence, audit, or observability controls.
 
 Likely roadmap phases are:
+
+The final roadmap entry is Phase 5: MCP Interoperability.
 
 1. Enterprise RAG and evidence foundation.
 2. Agent graph, planning, execution, and memory/checkpointing.
 3. Governed database, analytics, and reporting tools.
 4. Authentication, tenant isolation, monitoring, deployment, and feedback loops.
+5. MCP Interoperability: dual-role client/server lifecycle, stdio and Streamable HTTP transports, authorization, capability import/export, interoperability, operations, and safety evaluation.
 
 Roadmap items are directional. Do not mark them complete without implemented code, tests, documentation, and evaluation evidence.
+
+Phase 5 starts only after Phases 1 through 4 meet their completion criteria. It is complete only when both client import and server export directions pass contract, integration, smoke, security, and evaluation gates with traceable evidence.
 
 ## 13. Common Tasks
 
@@ -512,6 +635,28 @@ Roadmap items are directional. Do not mark them complete without implemented cod
 4. Register it in `evaluation/run_eval.py`.
 5. Produce a versioned report containing full run metadata.
 6. Document limitations and manual-review requirements.
+
+### Add an MCP server connection
+
+1. Define a typed server configuration with canonical identity, endpoint, tenant scope, timeouts, and feature flags.
+2. Add the canonical server identity and endpoint to the approved allowlist.
+3. Store credential references only and resolve their values through the credential provider at runtime.
+4. Select approved stdio or Streamable HTTP transport settings and apply their environment, Origin, authentication, and session controls.
+5. Initialize against revision `2025-11-25`, explicitly negotiate capabilities, and reject unsupported revisions or primitives.
+6. Validate and import approved capabilities under a stable server namespace through the existing registry.
+7. Map external scopes and operations to internal permissions, risk rules, and approval requirements.
+8. Add lifecycle, mapping, transport, authorization, policy, evidence, audit, isolation, and malicious-input contract, integration, and safety tests.
+9. Evaluate connection, discovery, invocation, authorization, latency, recovery, isolation, leakage, and audit completeness before enabling the connection.
+
+### Expose a capability through MCP
+
+1. Validate that the capability already has stable internal input, output, error, evidence, and provenance contracts.
+2. Add it to the explicit export allowlist; do not infer export permission from internal registration.
+3. Map least-privilege MCP scopes, tenant binding, and session identity to internal permissions.
+4. Route requests through existing policy and approval checks and the existing tool executor.
+5. Sanitize results and evidence so credentials, unrestricted records, internal exceptions, and unauthorized lineage cannot cross the MCP boundary.
+6. Add lifecycle, schema, authorization, denial, approval, round-trip, prompt-injection, token-leakage, tenant-isolation, and privilege-escalation contract, smoke, and safety tests.
+7. Document the exported primitive, scopes, risks, approvals, evidence behavior, limitations, and interoperability results.
 
 ### Prepare a change for review
 
