@@ -1,8 +1,12 @@
 # Agentic Enterprise Knowledge Copilot
 
 Production-oriented Python foundation for a governed, evidence-backed enterprise task completion
-system. This initial milestone provides configuration, CLI, API health checks, tests, and development
-tooling only; agent, retrieval, database, and tool execution behavior remain future work.
+system. This milestone provides configuration, CLI, API health checks, frozen v1.0 domain
+contracts, tests, and development tooling. Agent execution, retrieval, database access, tool runtime,
+and persistence behavior remain future work.
+
+The typed Supplier Quality Analysis contracts and lifecycle are documented in
+[Domain Contracts](docs/domain-contracts.md).
 
 ## Requirements
 

@@ -33,7 +33,7 @@ enterprise-copilot = "enterprise_copilot.cli.main:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["enterprise_copilot*"]
+include = ["enterprise_copilot*", "copilot*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -51,4 +51,3 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.11"
 strict = true
 files = ["src", "scripts", "tests"]
-
