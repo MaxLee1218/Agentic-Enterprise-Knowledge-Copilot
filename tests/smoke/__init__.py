@@ -1,2 +1,1 @@
 """Smoke tests."""
-

@@ -24,4 +24,3 @@ def test_run_task_help() -> None:
     assert result.returncode == 0
     assert "--task" in result.stdout
     assert "--dry-run" in result.stdout
-

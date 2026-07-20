@@ -20,4 +20,3 @@ def main(
 
     if dry_run:
         typer.echo("Dry run enabled.\nNo execution performed.")
-

@@ -19,4 +19,3 @@ app = FastAPI(title="Agentic Enterprise Knowledge Copilot", version="0.1.0")
 def health() -> HealthResponse:
     """Report that the API process is available."""
     return HealthResponse(status="ok")
-

@@ -11,4 +11,3 @@ def test_health_response_contract() -> None:
         response = client.get("/health")
 
     assert response.json() == {"status": "ok"}
-
