@@ -4,7 +4,12 @@ from typing import Annotated
 
 import typer
 
-app = typer.Typer(add_completion=False, no_args_is_help=True)
+app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    context_settings={"color": False},
+    rich_markup_mode=None,
+)
 
 
 @app.command()
