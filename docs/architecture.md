@@ -5,6 +5,8 @@ the system as it exists and the boundaries that new implementation must preserve
 for choosing these boundaries is recorded in
 [ADR-001](adr/ADR-001-package-and-layer-boundary.md). The frozen Supplier Quality Analysis v1.0
 documents under [`design/`](design/) remain the sole authority for that scenario's behavior.
+Machine-checked governance covers the dependency matrix and calling direction. It also covers each
+layer boundary, composition root, and transaction boundary where static analysis can enforce it.
 
 Most packages are currently scaffolds. Today, the stable domain contracts and governed tool
 runtime are implemented; the agent graph, application services, concrete enterprise adapters,

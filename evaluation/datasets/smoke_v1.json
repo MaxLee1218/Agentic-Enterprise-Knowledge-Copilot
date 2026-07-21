@@ -1,0 +1,15 @@
+{
+  "dataset_version": "evaluation-smoke.v1",
+  "cases": [
+    {
+      "case_id": "empty-result-semantics",
+      "expected": "empty_result_is_success",
+      "observed": "empty_result_is_success"
+    },
+    {
+      "case_id": "approval-semantics",
+      "expected": "rejected_approval_is_cancelled",
+      "observed": "rejected_approval_is_cancelled"
+    }
+  ]
+}

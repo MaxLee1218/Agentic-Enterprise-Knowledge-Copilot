@@ -70,10 +70,29 @@ retrieval, database access, analytics, or report generation.
 
 ## Verify
 
+### Quality Gates
+
+Every push and pull request must pass the consolidated GitHub Actions CI pipeline:
+
+- ✓ Ruff lint and format checks
+- ✓ Mypy strict type checking
+- ✓ Pytest unit, integration, contract, and smoke tests
+- ✓ Offline evaluation smoke test
+- ✓ Documentation governance check
+- ✓ AST-based architecture dependency check
+- ✓ Editable install and distribution build verification
+
+The same gates can be run locally without LLM or enterprise data services:
+
 ```bash
-pytest
 ruff check .
-mypy src
+ruff format --check .
+mypy
+pytest
+python evaluation/run_eval.py --smoke
+python scripts/check_docs.py
+python scripts/check_architecture.py
+python -m build
 ```
 
 All current tests run offline and do not require an LLM, database connection, or network service.
