@@ -4,7 +4,7 @@ from collections.abc import Generator
 
 import pytest
 
-from enterprise_copilot.config import PROJECT_ROOT, ConfigurationError, get_settings
+from copilot.config import PROJECT_ROOT, ConfigurationError, get_settings
 
 
 @pytest.fixture(autouse=True)

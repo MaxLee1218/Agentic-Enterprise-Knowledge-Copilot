@@ -21,7 +21,7 @@ cp .env.example .env
 ```
 
 Application code reads configuration only through
-`enterprise_copilot.config.get_settings`. The committed `.env.example` contains safe local defaults;
+`copilot.config.get_settings`. The committed `.env.example` contains safe local defaults;
 `.env` is intended for local configuration and must not contain committed secrets.
 
 ## Run
@@ -29,7 +29,7 @@ Application code reads configuration only through
 ```bash
 enterprise-copilot --help
 python scripts/run_task.py --task "Analyze supplier quality issue" --dry-run
-uvicorn enterprise_copilot.api.app:app
+uvicorn copilot.api.app:app
 ```
 
 The service health endpoint is available at `GET /health`.

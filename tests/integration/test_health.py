@@ -2,7 +2,7 @@
 
 from fastapi.testclient import TestClient
 
-from enterprise_copilot.api.app import app
+from copilot.api.app import app
 
 
 def test_health_endpoint() -> None:

@@ -31,11 +31,11 @@ dev = [
 ]
 
 [project.scripts]
-enterprise-copilot = "enterprise_copilot.cli.main:app"
+enterprise-copilot = "copilot.cli.main:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["enterprise_copilot*", "copilot*"]
+include = ["copilot*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
