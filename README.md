@@ -9,6 +9,10 @@ work.
 The typed Supplier Quality Analysis contracts and lifecycle are documented in
 [Domain Contracts](docs/domain-contracts.md).
 
+Architecture boundaries and their decision history are documented in
+[Architecture Overview](docs/architecture.md) and the
+[Architecture Decision Record index](docs/adr/README.md).
+
 ## Requirements
 
 - Python 3.11 or later
