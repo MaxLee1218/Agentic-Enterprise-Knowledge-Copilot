@@ -2,9 +2,10 @@
 
 Production-oriented Python foundation for a governed, evidence-backed enterprise task completion
 system. This milestone provides configuration, CLI, API health checks, frozen v1.0 domain
-contracts, a governed tool-runtime foundation, tests, and development tooling. Agent graph
-execution, real retrieval/database/analytics/report adapters, and durable persistence remain future
-work.
+contracts, a governed tool-runtime foundation, and one deterministic offline Supplier Quality
+workflow with evidence, audit, retries, verification, and JSON Artifact generation. Agent graph
+execution, dynamic planning, real retrieval/database/analytics/report adapters, and durable
+persistence remain future work.
 
 The typed Supplier Quality Analysis contracts and lifecycle are documented in
 [Domain Contracts](docs/domain-contracts.md).
@@ -33,10 +34,22 @@ Application code reads configuration only through
 ```bash
 enterprise-copilot --help
 python scripts/run_task.py --task "Analyze supplier quality issue" --dry-run
+python scripts/run_task.py \
+  --task supplier-quality-analysis \
+  --supplier-id SUP-001 \
+  --material-id MAT-001 \
+  --time-range 2026-Q1
 uvicorn copilot.api.app:app
 ```
 
 The service health endpoint is available at `GET /health`.
+
+The fixed workflow runs without an LLM, database, network, or other external service. It writes a
+verified `QUALITY_ANALYSIS_REPORT_JSON` file beneath `ARTIFACT_DIR` (default `data/artifacts`) and
+prints its path. Markdown is intentionally not emitted because the frozen Supplier Quality v1.0
+Artifact contract supports only PDF and JSON. See the
+[Deterministic Workflow](docs/deterministic-workflow.md) for execution, retry, Evidence, failure,
+and compatibility details.
 
 ## Tool Runtime
 
@@ -65,8 +78,9 @@ To add a real v1 adapter:
 5. Add unit, boundary, contract, and smoke coverage for success, denial, validation, timeout,
    dependency failure, empty-result, and lineage behavior.
 
-The four adapters in `tests/mocks` are offline test doubles only. They do not implement enterprise
-retrieval, database access, analytics, or report generation.
+The four adapters in `tests/mocks` remain narrow Tool Runtime test doubles. The composed fixed
+workflow uses deterministic offline adapters in `copilot.tools.mock_supplier_quality`; these do
+not implement enterprise retrieval, database access, or external report generation.
 
 ## Verify
 

@@ -7,6 +7,7 @@ from datetime import datetime
 
 from copilot.contracts import (
     ErrorType,
+    JsonObject,
     TaskError,
     ToolCall,
     ToolDefinition,
@@ -25,7 +26,7 @@ from copilot.tools.base import (
 from copilot.tools.exceptions import (
     ToolAuditError,
     ToolAuthorizationError,
-    ToolExecutionError,
+    ToolRuntimeError,
     ToolTimeoutError,
     ToolValidationError,
 )
@@ -59,11 +60,13 @@ class ToolExecutor:
             self._runner = runner
         self._clock = clock
 
-    def execute(self, call: ToolCall) -> ToolResult:
-        """Run the complete validation, authorization, execution, evidence, and audit lifecycle."""
+    def execute(self, call: ToolCall, *, attempt: int = 1) -> ToolResult:
+        """Run one governed attempt through validation, policy, evidence, and audit."""
+        if not 1 <= attempt <= 3:
+            raise ValueError("attempt must be between 1 and 3")
         tool = self._registry.get(call.tool_name)
         started_at = self._clock()
-        self._validate_call(call, tool.definition, started_at)
+        self._validate_call(call, tool.definition, started_at, attempt)
 
         try:
             self._authorizer.authorize(call, tool.definition)
@@ -73,6 +76,7 @@ class ToolExecutor:
                 started_at=started_at,
                 status=ToolResultStatus.PERMISSION_DENIED,
                 error=self._bind_error(exc.error, call),
+                attempt=attempt,
             )
         except Exception:
             return self._failure_result(
@@ -85,6 +89,7 @@ class ToolExecutor:
                     error_type=ErrorType.PERMISSION,
                     message="Tool invocation could not be authorized",
                 ),
+                attempt=attempt,
             )
 
         timeout_seconds = min(
@@ -92,23 +97,30 @@ class ToolExecutor:
             (call.deadline_at - started_at).total_seconds(),
         )
         if timeout_seconds <= 0:
-            return self._timeout_result(call, started_at)
+            return self._timeout_result(call, started_at, attempt)
 
         try:
             payload = self._runner.run(
                 tool,
                 call.input,
-                ToolExecutionContext(call=call),
+                ToolExecutionContext(call=call, metadata=JsonObject({"attempt": attempt})),
                 timeout_seconds,
             )
-        except ToolTimeoutError:
-            return self._timeout_result(call, started_at)
-        except ToolExecutionError as exc:
+        except ToolTimeoutError as exc:
             return self._failure_result(
                 call=call,
                 started_at=started_at,
-                status=ToolResultStatus.TECHNICAL_FAILURE,
+                status=ToolResultStatus.TIMEOUT,
                 error=self._bind_error(exc.error, call),
+                attempt=attempt,
+            )
+        except ToolRuntimeError as exc:
+            return self._failure_result(
+                call=call,
+                started_at=started_at,
+                status=_status_for_error(exc.error),
+                error=self._bind_error(exc.error, call),
+                attempt=attempt,
             )
 
         try:
@@ -124,6 +136,7 @@ class ToolExecutor:
                     error_type=ErrorType.VALIDATION,
                     message="Tool output failed its registered schema",
                 ),
+                attempt=attempt,
             )
 
         try:
@@ -139,6 +152,7 @@ class ToolExecutor:
                     error_type=ErrorType.TECHNICAL,
                     message="Tool evidence could not be recorded",
                 ),
+                attempt=attempt,
             )
 
         completed_at = self._clock()
@@ -153,7 +167,7 @@ class ToolExecutor:
             error=None,
             started_at=started_at,
             completed_at=completed_at,
-            attempt=call_attempt(call),
+            attempt=attempt,
             evidence_ids=tuple(item.evidence_id for item in evidence),
         )
         self._audit(result)
@@ -171,7 +185,11 @@ class ToolExecutor:
         self.close()
 
     def _validate_call(
-        self, call: ToolCall, definition: ToolDefinition, started_at: datetime
+        self,
+        call: ToolCall,
+        definition: ToolDefinition,
+        started_at: datetime,
+        attempt: int,
     ) -> None:
         try:
             if (
@@ -192,12 +210,13 @@ class ToolExecutor:
                     status=ToolResultStatus.BUSINESS_FAILURE,
                     latency_ms=_latency_ms(started_at, completed_at),
                     timestamp=completed_at,
+                    attempt=attempt,
                     error_code=exc.error.error_code,
                 )
             )
             raise
 
-    def _timeout_result(self, call: ToolCall, started_at: datetime) -> ToolResult:
+    def _timeout_result(self, call: ToolCall, started_at: datetime, attempt: int) -> ToolResult:
         return self._failure_result(
             call=call,
             started_at=started_at,
@@ -209,6 +228,7 @@ class ToolExecutor:
                 message="Tool execution timed out",
                 recoverable=True,
             ),
+            attempt=attempt,
         )
 
     def _failure_result(
@@ -218,6 +238,7 @@ class ToolExecutor:
         started_at: datetime,
         status: ToolResultStatus,
         error: TaskError,
+        attempt: int,
     ) -> ToolResult:
         completed_at = self._clock()
         result = ToolResult(
@@ -231,7 +252,7 @@ class ToolExecutor:
             error=error,
             started_at=started_at,
             completed_at=completed_at,
-            attempt=call_attempt(call),
+            attempt=attempt,
         )
         self._audit(result)
         return result
@@ -247,6 +268,7 @@ class ToolExecutor:
                 status=result.status,
                 latency_ms=result.latency_ms or 0,
                 timestamp=result.completed_at,
+                attempt=result.attempt,
                 error_code=result.error.error_code if result.error is not None else None,
             )
         )
@@ -287,14 +309,14 @@ class ToolExecutor:
         )
 
 
-def call_attempt(call: ToolCall) -> int:
-    """Return the attempt carried by the call metadata, defaulting to the first attempt.
-
-    ToolCall v1 fixes attempt history in its persistence envelope rather than its business fields.
-    Until that envelope is implemented, every independently supplied ToolCall represents attempt 1.
-    """
-    del call
-    return 1
+def _status_for_error(error: TaskError) -> ToolResultStatus:
+    if error.error_type is ErrorType.BUSINESS:
+        return ToolResultStatus.BUSINESS_FAILURE
+    if error.error_type is ErrorType.PERMISSION:
+        return ToolResultStatus.PERMISSION_DENIED
+    if error.error_type is ErrorType.TIMEOUT:
+        return ToolResultStatus.TIMEOUT
+    return ToolResultStatus.TECHNICAL_FAILURE
 
 
 def _latency_ms(started_at: datetime, completed_at: datetime) -> int:

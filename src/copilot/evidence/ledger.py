@@ -67,6 +67,11 @@ class InMemoryEvidenceLedger:
         with self._lock:
             return tuple(item for item in self._items.values() if item.tool_call_id == tool_call_id)
 
+    def list_for_task(self, task_id: str) -> tuple[EvidenceItem, ...]:
+        """Return immutable task evidence in insertion order."""
+        with self._lock:
+            return tuple(item for item in self._items.values() if item.task_id == task_id)
+
     def _validate_lineage(self, call: ToolCall, drafts: tuple[EvidenceDraft, ...]) -> None:
         for draft in drafts:
             if draft.source_type is not EvidenceType.CALCULATION:

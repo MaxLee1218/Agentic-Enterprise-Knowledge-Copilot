@@ -5,7 +5,7 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 
 from copilot.contracts import JsonObject
 from copilot.tools.base import Tool, ToolExecutionContext, ToolExecutionOutput
-from copilot.tools.exceptions import ToolExecutionError, ToolTimeoutError
+from copilot.tools.exceptions import ToolExecutionError, ToolRuntimeError, ToolTimeoutError
 
 
 class ThreadPoolToolRunner:
@@ -33,6 +33,8 @@ class ThreadPoolToolRunner:
         except FutureTimeoutError as exc:
             future.cancel()
             raise ToolTimeoutError() from exc
+        except ToolRuntimeError:
+            raise
         except Exception as exc:
             raise ToolExecutionError() from exc
         if not isinstance(output, ToolExecutionOutput):

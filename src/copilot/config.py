@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     database_url: str
     artifact_dir: Path = Path("data/artifacts")
     max_task_steps: int = Field(default=10, gt=0)
+    workflow_max_retries: int = Field(default=2, ge=0, le=2)
+    workflow_retry_delay_seconds: float = Field(default=0, ge=0)
 
     @field_validator("artifact_dir", mode="after")
     @classmethod

@@ -32,7 +32,7 @@ dev = [
 ]
 
 [project.scripts]
-enterprise-copilot = "copilot.cli.main:app"
+enterprise-copilot = "copilot.bootstrap.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]

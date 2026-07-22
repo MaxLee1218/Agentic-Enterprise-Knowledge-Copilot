@@ -8,10 +8,10 @@ documents under [`design/`](design/) remain the sole authority for that scenario
 Machine-checked governance covers the dependency matrix and calling direction. It also covers each
 layer boundary, composition root, and transaction boundary where static analysis can enforce it.
 
-Most packages are currently scaffolds. Today, the stable domain contracts and governed tool
-runtime are implemented; the agent graph, application services, concrete enterprise adapters,
-durable persistence, and MCP interoperability are not. A path in this document identifies an
-approved boundary, not proof that the capability is implemented.
+Most packages remain scaffolds. Today, the stable domain contracts, governed tool runtime, and one
+serial deterministic offline Supplier Quality workflow are implemented. The agent graph, dynamic
+planner, real enterprise adapters, durable persistence, and MCP interoperability are not. A path
+in this document identifies an approved boundary, not proof that every capability is implemented.
 
 ## 1. System Architecture
 
@@ -50,13 +50,13 @@ renderer implementation directly.
 | Conceptual responsibility | Repository packages | Status and boundary |
 |---|---|---|
 | Domain | `copilot.contracts` | Implemented v1.0 typed contracts; provider- and framework-independent |
-| Application | `copilot.services`, `copilot.agent`, `copilot.policies` | Approved boundaries; currently scaffolds except the initial policy adapter |
+| Application | `copilot.services`, `copilot.agent`, `copilot.policies` | Deterministic workflow services and narrow offline policy implemented; agent graph remains scaffold |
 | Governed capability runtime | `copilot.tools.base`, `registry`, `executor`, `runner`, `schema` | Implemented application-facing port, registration, authorization, execution, evidence, and audit sequence |
-| Capability adapters | `copilot.tools.knowledge`, `database`, `analytics`, `reporting` | Infrastructure edge; currently scaffolds, not working enterprise tools |
-| Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | Mostly planned adapters; the in-memory evidence ledger and tool audit repository support the current runtime |
-| Interfaces | `copilot.api`, `copilot.cli` | Minimal health API and dry-run CLI are implemented |
+| Capability adapters | `copilot.tools.knowledge`, `database`, `analytics`, `reporting`, offline mock module | Enterprise adapters remain scaffolds; four deterministic offline mock adapters implement the frozen schemas for local execution |
+| Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | In-memory workflow/evidence/audit stores and local atomic Artifact storage support this stage; durable adapters remain planned |
+| Interfaces | `copilot.api`, `copilot.cli` | Health API, dry-run, and fixed-workflow CLI are implemented |
 | Protocol boundary | `copilot.mcp` | Future Phase 5 boundary; scaffold only |
-| Bootstrap | `copilot.bootstrap` | Designated future composition root; it does not exist yet |
+| Bootstrap | `copilot.bootstrap` | Composition root implemented for the offline deterministic workflow only |
 | Configuration | `copilot.config` | Typed environment configuration consumed at startup and infrastructure edges |
 
 `tools` is a governed capability boundary rather than permission to bypass the layers. Its generic
@@ -259,4 +259,5 @@ before implementation.
 - [ADR-001: Package Naming and Layer Boundary](adr/ADR-001-package-and-layer-boundary.md)
 - [Frozen design baseline](design/design_baseline.md)
 - [Domain contracts](domain-contracts.md)
+- [Deterministic Supplier Quality workflow](deterministic-workflow.md)
 - [Repository-wide contributor rules](../AGENTS.md)

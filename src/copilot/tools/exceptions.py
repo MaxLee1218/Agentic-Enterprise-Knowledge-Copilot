@@ -82,24 +82,57 @@ class ToolAuthorizationError(ToolRuntimeError):
 class ToolTimeoutError(ToolRuntimeError):
     """Internal signal that a tool exceeded its invocation deadline."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        error_code: str = "TOOL_TIMEOUT",
+        message: str = "Tool execution timed out",
+    ) -> None:
         super().__init__(
-            error_code="TOOL_TIMEOUT",
+            error_code=error_code,
             error_type=ErrorType.TIMEOUT,
-            message="Tool execution timed out",
+            message=message,
             recoverable=True,
         )
 
 
 class ToolExecutionError(ToolRuntimeError):
-    """Internal signal that a tool failed without exposing its exception."""
+    """Safe technical failure raised by a tool adapter or runner."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        error_code: str = "TOOL_EXECUTION_FAILED",
+        message: str = "Tool execution failed",
+        recoverable: bool = True,
+    ) -> None:
         super().__init__(
-            error_code="TOOL_EXECUTION_FAILED",
+            error_code=error_code,
             error_type=ErrorType.TECHNICAL,
-            message="Tool execution failed",
-            recoverable=True,
+            message=message,
+            recoverable=recoverable,
+        )
+
+
+class ToolBusinessError(ToolRuntimeError):
+    """Safe non-retryable business outcome raised by an adapter."""
+
+    def __init__(self, *, error_code: str, message: str) -> None:
+        super().__init__(
+            error_code=error_code,
+            error_type=ErrorType.BUSINESS,
+            message=message,
+        )
+
+
+class ToolPermissionError(ToolRuntimeError):
+    """Safe non-retryable permission outcome raised by an adapter."""
+
+    def __init__(self, *, error_code: str, message: str) -> None:
+        super().__init__(
+            error_code=error_code,
+            error_type=ErrorType.PERMISSION,
+            message=message,
         )
 
 

@@ -60,6 +60,7 @@ class ToolAuditRecord:
     status: ToolResultStatus
     latency_ms: int
     timestamp: datetime
+    attempt: int = 1
     error_code: str | None = None
 
 

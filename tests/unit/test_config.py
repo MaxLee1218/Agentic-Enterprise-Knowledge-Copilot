@@ -28,6 +28,8 @@ def test_settings_load_defaults_and_normalize_paths(
     assert settings.log_level == "INFO"
     assert settings.max_task_steps == 10
     assert settings.rag_timeout_seconds == 45
+    assert settings.workflow_max_retries == 2
+    assert settings.workflow_retry_delay_seconds == 0
     assert settings.artifact_path == (PROJECT_ROOT / "build/test-artifacts").resolve()
     assert settings.artifact_path.is_absolute()
 
@@ -53,4 +55,15 @@ def test_invalid_integer_has_clear_error(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setenv("RAG_TIMEOUT_SECONDS", "test")
 
     with pytest.raises(ConfigurationError, match="Invalid configuration: RAG_TIMEOUT_SECONDS"):
+        get_settings()
+
+
+def test_negative_workflow_retry_configuration_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retry count and delay must remain non-negative startup configuration."""
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///test.db")
+    monkeypatch.setenv("WORKFLOW_MAX_RETRIES", "-1")
+
+    with pytest.raises(ConfigurationError, match="WORKFLOW_MAX_RETRIES"):
         get_settings()

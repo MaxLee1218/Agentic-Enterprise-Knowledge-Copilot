@@ -16,6 +16,6 @@ app = FastAPI(title="Agentic Enterprise Knowledge Copilot", version="0.1.0")
 
 
 @app.get("/health", response_model=HealthResponse, status_code=200)
-def health() -> HealthResponse:
+async def health() -> HealthResponse:
     """Report that the API process is available."""
     return HealthResponse(status="ok")
