@@ -28,6 +28,9 @@ def test_settings_load_defaults_and_normalize_paths(
     assert settings.log_level == "INFO"
     assert settings.max_task_steps == 10
     assert settings.rag_timeout_seconds == 45
+    assert settings.rag_max_attempts == 3
+    assert settings.rag_retry_base_delay_seconds == 0.2
+    assert str(settings.rag_base_url) == "http://127.0.0.1:8000/"
     assert settings.workflow_max_retries == 2
     assert settings.workflow_retry_delay_seconds == 0
     assert settings.artifact_path == (PROJECT_ROOT / "build/test-artifacts").resolve()
@@ -66,4 +69,24 @@ def test_negative_workflow_retry_configuration_is_rejected(
     monkeypatch.setenv("WORKFLOW_MAX_RETRIES", "-1")
 
     with pytest.raises(ConfigurationError, match="WORKFLOW_MAX_RETRIES"):
+        get_settings()
+
+
+def test_invalid_rag_attempt_configuration_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HTTP attempt count must stay within the frozen three-attempt budget."""
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///test.db")
+    monkeypatch.setenv("RAG_MAX_ATTEMPTS", "0")
+
+    with pytest.raises(ConfigurationError, match="RAG_MAX_ATTEMPTS"):
+        get_settings()
+
+
+def test_invalid_rag_trace_header_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Malformed configured header names must fail before an HTTP request."""
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///test.db")
+    monkeypatch.setenv("RAG_TRACE_HEADER", "bad header")
+
+    with pytest.raises(ConfigurationError, match="RAG_TRACE_HEADER"):
         get_settings()

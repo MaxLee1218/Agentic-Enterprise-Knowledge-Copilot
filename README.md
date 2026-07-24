@@ -2,10 +2,10 @@
 
 Production-oriented Python foundation for a governed, evidence-backed enterprise task completion
 system. This milestone provides configuration, CLI, API health checks, frozen v1.0 domain
-contracts, a governed tool-runtime foundation, and one deterministic offline Supplier Quality
-workflow with evidence, audit, retries, verification, and JSON Artifact generation. Agent graph
-execution, dynamic planning, real retrieval/database/analytics/report adapters, and durable
-persistence remain future work.
+contracts, a governed tool-runtime foundation, an HTTP Enterprise RAG adapter, and one
+deterministic offline Supplier Quality workflow with evidence, audit, retries, verification, and
+JSON Artifact generation. Agent graph execution, dynamic planning, real database/analytics/report
+adapters, and durable persistence remain future work.
 
 The typed Supplier Quality Analysis contracts and lifecycle are documented in
 [Domain Contracts](docs/domain-contracts.md).
@@ -43,6 +43,22 @@ uvicorn copilot.api.app:app
 ```
 
 The service health endpoint is available at `GET /health`.
+
+The standalone Enterprise RAG checks use the real HTTP adapter without starting the complete
+workflow:
+
+```bash
+python scripts/check_rag_health.py
+python scripts/ask_knowledge.py \
+  --question "What is the supplier quality deviation procedure?" \
+  --show-evidence
+```
+
+See the Chinese
+[Knowledge Tool Verification Guide](docs/knowledge_tool_verification_guide.md) for macOS,
+Windows PowerShell, live integration tests, exit codes, and troubleshooting. The composed
+workflow keeps its deterministic mock in development and test environments; `APP_ENV=production`
+registers the HTTP Knowledge Tool while preserving the frozen v1.0 input/output contract.
 
 The fixed workflow runs without an LLM, database, network, or other external service. It writes a
 verified `QUALITY_ANALYSIS_REPORT_JSON` file beneath `ARTIFACT_DIR` (default `data/artifacts`) and

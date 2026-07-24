@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from time import sleep
 
+from copilot.bootstrap.knowledge import build_http_knowledge_client
 from copilot.config import Settings
 from copilot.contracts.validators import utc_now
 from copilot.evidence.ledger import InMemoryEvidenceLedger
@@ -29,6 +30,7 @@ from copilot.services.workflows.state_machine import TaskStateMachine
 from copilot.services.workflows.validation import PlanValidator
 from copilot.services.workflows.verification import WorkflowVerifier
 from copilot.tools.executor import ToolExecutor
+from copilot.tools.knowledge import HttpKnowledgeClient, KnowledgeTool
 from copilot.tools.mock_supplier_quality import (
     MockAnalyticsTool,
     MockBehavior,
@@ -51,7 +53,8 @@ class WorkflowContainer:
     repository: InMemoryWorkflowRepository
     tool_audit: InMemoryToolAuditRepository
     workflow_audit: InMemoryWorkflowAuditRepository
-    knowledge_tool: MockKnowledgeTool
+    knowledge_tool: MockKnowledgeTool | KnowledgeTool
+    knowledge_client: HttpKnowledgeClient | None
     database_tool: MockDatabaseTool
     analytics_tool: MockAnalyticsTool
     report_tool: MockReportTool
@@ -59,6 +62,8 @@ class WorkflowContainer:
     def close(self) -> None:
         """Release the executor's owned worker pool."""
         self.executor.close()
+        if self.knowledge_client is not None:
+            self.knowledge_client.close()
 
     def __enter__(self) -> WorkflowContainer:
         return self
@@ -88,7 +93,15 @@ def build_workflow_container(
     repository = InMemoryWorkflowRepository()
     tool_audit = InMemoryToolAuditRepository()
     workflow_audit = InMemoryWorkflowAuditRepository()
-    knowledge_tool = MockKnowledgeTool(knowledge_behavior)
+    knowledge_client: HttpKnowledgeClient | None = None
+    if settings.app_env == "production":
+        knowledge_client = build_http_knowledge_client(
+            settings,
+            timeout_seconds=min(settings.rag_timeout_seconds, 10.0),
+        )
+        knowledge_tool: MockKnowledgeTool | KnowledgeTool = KnowledgeTool(knowledge_client)
+    else:
+        knowledge_tool = MockKnowledgeTool(knowledge_behavior)
     database_tool = MockDatabaseTool(database_behavior)
     analytics_tool = MockAnalyticsTool(analytics_behavior)
     report_tool = MockReportTool(
@@ -149,6 +162,7 @@ def build_workflow_container(
         tool_audit=tool_audit,
         workflow_audit=workflow_audit,
         knowledge_tool=knowledge_tool,
+        knowledge_client=knowledge_client,
         database_tool=database_tool,
         analytics_tool=analytics_tool,
         report_tool=report_tool,

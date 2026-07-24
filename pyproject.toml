@@ -12,6 +12,7 @@ authors = [
 ]
 dependencies = [
     "fastapi>=0.115,<1.0",
+    "httpx>=0.28,<1.0",
     "jsonschema>=4.23,<5.0",
     "pydantic>=2.10,<3.0",
     "pydantic-settings>=2.7,<3.0",
@@ -23,7 +24,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "build>=1.2,<2.0",
-    "httpx>=0.28,<1.0",
     "mypy>=1.14,<2.0",
     "pytest>=8.3,<9.0",
     "pytest-cov>=6.0,<7.0",
@@ -42,6 +42,10 @@ include = ["copilot*"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "--strict-config --strict-markers"
+markers = [
+    "integration: exercises boundaries between composed local components",
+    "live_rag: calls an explicitly enabled live Enterprise RAG Engine",
+]
 
 [tool.ruff]
 line-length = 100
