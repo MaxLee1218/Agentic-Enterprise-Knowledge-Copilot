@@ -8,7 +8,7 @@ from datetime import datetime
 from time import sleep
 
 from copilot.bootstrap.knowledge import build_http_knowledge_client
-from copilot.config import Settings
+from copilot.config import PROJECT_ROOT, Settings
 from copilot.contracts.validators import utc_now
 from copilot.evidence.ledger import InMemoryEvidenceLedger
 from copilot.persistence.artifact_repository import LocalArtifactRepository
@@ -29,6 +29,7 @@ from copilot.services.workflows.service import SupplierQualityWorkflowService
 from copilot.services.workflows.state_machine import TaskStateMachine
 from copilot.services.workflows.validation import PlanValidator
 from copilot.services.workflows.verification import WorkflowVerifier
+from copilot.tools.database import DatabaseConnection, DatabaseTool
 from copilot.tools.executor import ToolExecutor
 from copilot.tools.knowledge import HttpKnowledgeClient, KnowledgeTool
 from copilot.tools.mock_supplier_quality import (
@@ -55,7 +56,7 @@ class WorkflowContainer:
     workflow_audit: InMemoryWorkflowAuditRepository
     knowledge_tool: MockKnowledgeTool | KnowledgeTool
     knowledge_client: HttpKnowledgeClient | None
-    database_tool: MockDatabaseTool
+    database_tool: MockDatabaseTool | DatabaseTool
     analytics_tool: MockAnalyticsTool
     report_tool: MockReportTool
 
@@ -64,6 +65,8 @@ class WorkflowContainer:
         self.executor.close()
         if self.knowledge_client is not None:
             self.knowledge_client.close()
+        if isinstance(self.database_tool, DatabaseTool):
+            self.database_tool.close()
 
     def __enter__(self) -> WorkflowContainer:
         return self
@@ -82,6 +85,7 @@ def build_workflow_container(
     database_behavior: MockBehavior | None = None,
     analytics_behavior: MockBehavior | None = None,
     report_behavior: MockBehavior | None = None,
+    use_real_database: bool | None = None,
 ) -> WorkflowContainer:
     """Construct all application ports and offline adapters without global mutable state."""
     identifier_factory = ids or UuidIdentifierFactory()
@@ -102,7 +106,22 @@ def build_workflow_container(
         knowledge_tool: MockKnowledgeTool | KnowledgeTool = KnowledgeTool(knowledge_client)
     else:
         knowledge_tool = MockKnowledgeTool(knowledge_behavior)
-    database_tool = MockDatabaseTool(database_behavior)
+    real_database_enabled = (
+        settings.app_env == "production" if use_real_database is None else use_real_database
+    )
+    if real_database_enabled:
+        if database_behavior is not None:
+            raise ValueError("database_behavior cannot be used with the real Database Tool")
+        database_tool: MockDatabaseTool | DatabaseTool = DatabaseTool(
+            DatabaseConnection(
+                settings.database_url,
+                read_only=True,
+                base_directory=PROJECT_ROOT,
+            ),
+            statement_timeout_seconds=settings.database_statement_timeout_seconds,
+        )
+    else:
+        database_tool = MockDatabaseTool(database_behavior)
     analytics_tool = MockAnalyticsTool(analytics_behavior)
     report_tool = MockReportTool(
         evidence_reader=evidence,

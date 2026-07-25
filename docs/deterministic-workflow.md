@@ -2,10 +2,12 @@
 
 ## Scope
 
-This stage implements one offline, serial, deterministic execution path for the frozen
-`supplier_quality_analysis.v1` scenario. It does not use an LLM planner, LangGraph, a real
-knowledge service, a real database, or a real report service. The implementation exercises the
-frozen contracts and governed runtime before autonomous planning is introduced.
+This stage implements one serial, deterministic execution path for the frozen
+`supplier_quality_analysis.v1` scenario. Development and test composition is offline by default;
+an explicit composition option, and production composition, can replace the database mock with
+the governed SQLAlchemy SQLite Database Tool. It does not use an LLM planner, LangGraph, or a real
+report service. The implementation exercises the frozen contracts and governed runtime before
+autonomous planning is introduced.
 
 The frozen v1.0 design remains authoritative. Consequently:
 
@@ -31,7 +33,7 @@ flowchart LR
     C --> D[Dependency Checker]
     C --> E[Tool Executor]
     E --> F[Tool Registry]
-    F --> G[Offline Mock Tools]
+    F --> G[Injected Tool Adapters]
     G --> H[ToolResult]
     H --> I[StepResult]
     H --> J[Evidence Ledger]
@@ -47,9 +49,10 @@ follows `WorkflowRunner -> ToolExecutor -> ToolRegistry -> Tool`. The executor r
 schema validation, policy authorization, timeout handling, typed failure normalization, Evidence
 registration, latency measurement, and append-only tool audit.
 
-The composition root in `copilot.bootstrap` creates the instance-scoped Registry, offline tools,
+The composition root in `copilot.bootstrap` creates the instance-scoped Registry, injected tools,
 Executor, policy adapter, repositories, Evidence Ledger, Artifact Store, verifier, runner, and
-service. Runner dependencies are constructor-injected.
+service. Development/test defaults remain offline; production uses the HTTP Knowledge Tool and
+SQLAlchemy Database Tool. Runner dependencies are constructor-injected.
 
 ## Fixed Plan
 

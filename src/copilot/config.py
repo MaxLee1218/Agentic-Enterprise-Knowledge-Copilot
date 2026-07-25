@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     )
     rag_trace_header: str = Field(default="X-Trace-ID", min_length=1, max_length=128)
     database_url: str
+    database_statement_timeout_seconds: float = Field(default=8, gt=0, le=8)
     artifact_dir: Path = Path("data/artifacts")
     max_task_steps: int = Field(default=10, gt=0)
     workflow_max_retries: int = Field(default=2, ge=0, le=2)

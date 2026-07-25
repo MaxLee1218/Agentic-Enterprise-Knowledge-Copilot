@@ -31,6 +31,7 @@ def test_settings_load_defaults_and_normalize_paths(
     assert settings.rag_max_attempts == 3
     assert settings.rag_retry_base_delay_seconds == 0.2
     assert str(settings.rag_base_url) == "http://127.0.0.1:8000/"
+    assert settings.database_statement_timeout_seconds == 8
     assert settings.workflow_max_retries == 2
     assert settings.workflow_retry_delay_seconds == 0
     assert settings.artifact_path == (PROJECT_ROOT / "build/test-artifacts").resolve()
@@ -89,4 +90,14 @@ def test_invalid_rag_trace_header_is_rejected(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("RAG_TRACE_HEADER", "bad header")
 
     with pytest.raises(ConfigurationError, match="RAG_TRACE_HEADER"):
+        get_settings()
+
+
+def test_database_statement_timeout_cannot_exceed_frozen_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///test.db")
+    monkeypatch.setenv("DATABASE_STATEMENT_TIMEOUT_SECONDS", "9")
+
+    with pytest.raises(ConfigurationError, match="DATABASE_STATEMENT_TIMEOUT_SECONDS"):
         get_settings()

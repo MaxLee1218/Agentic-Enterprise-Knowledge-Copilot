@@ -9,6 +9,7 @@ from pydantic import AnyHttpUrl
 
 from copilot.bootstrap.container import build_workflow_container
 from copilot.config import Settings
+from copilot.tools.database import DatabaseTool
 from copilot.tools.knowledge import HttpKnowledgeClient, KnowledgeTool
 
 pytestmark = pytest.mark.integration
@@ -29,6 +30,8 @@ def test_production_composition_registers_http_knowledge_without_network(
 
         assert isinstance(container.knowledge_client, HttpKnowledgeClient)
         assert isinstance(container.knowledge_tool, KnowledgeTool)
+        assert isinstance(container.database_tool, DatabaseTool)
         assert registered is container.knowledge_tool
+        assert container.registry.get("database_query") is container.database_tool
         assert container.knowledge_client.base_url == "http://rag.example"
         assert container.knowledge_client.timeout_seconds == 10

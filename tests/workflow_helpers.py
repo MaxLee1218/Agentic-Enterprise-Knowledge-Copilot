@@ -21,6 +21,8 @@ def fixed_clock() -> datetime:
 def build_test_container(
     artifact_dir: Path,
     *,
+    database_url: str = "sqlite:///unused-test.db",
+    use_real_database: bool | None = None,
     knowledge_behavior: MockBehavior | None = None,
     database_behavior: MockBehavior | None = None,
     analytics_behavior: MockBehavior | None = None,
@@ -28,7 +30,7 @@ def build_test_container(
 ) -> WorkflowContainer:
     """Compose the real runner/runtime with offline adapters and no real waiting."""
     settings = Settings(
-        database_url="sqlite:///unused-test.db",
+        database_url=database_url,
         artifact_dir=artifact_dir,
         workflow_max_retries=2,
         workflow_retry_delay_seconds=0,
@@ -42,4 +44,5 @@ def build_test_container(
         database_behavior=database_behavior,
         analytics_behavior=analytics_behavior,
         report_behavior=report_behavior,
+        use_real_database=use_real_database,
     )

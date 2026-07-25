@@ -2,9 +2,10 @@
 
 Production-oriented Python foundation for a governed, evidence-backed enterprise task completion
 system. This milestone provides configuration, CLI, API health checks, frozen v1.0 domain
-contracts, a governed tool-runtime foundation, an HTTP Enterprise RAG adapter, and one
+contracts, a governed tool-runtime foundation, HTTP Enterprise RAG and read-only SQLite database
+adapters, and one
 deterministic offline Supplier Quality workflow with evidence, audit, retries, verification, and
-JSON Artifact generation. Agent graph execution, dynamic planning, real database/analytics/report
+JSON Artifact generation. Agent graph execution, dynamic planning, real analytics/report
 adapters, and durable persistence remain future work.
 
 The typed Supplier Quality Analysis contracts and lifecycle are documented in
@@ -58,9 +59,21 @@ See the Chinese
 [Knowledge Tool Verification Guide](docs/knowledge_tool_verification_guide.md) for macOS,
 Windows PowerShell, live integration tests, exit codes, and troubleshooting. The composed
 workflow keeps its deterministic mock in development and test environments; `APP_ENV=production`
-registers the HTTP Knowledge Tool while preserving the frozen v1.0 input/output contract.
+registers the HTTP Knowledge Tool and SQLAlchemy Database Tool while preserving the frozen v1.0
+input/output contracts.
 
-The fixed workflow runs without an LLM, database, network, or other external service. It writes a
+Create or reset the deterministic SQLite demo database before running a real database workflow:
+
+```bash
+python scripts/seed_demo_database.py
+```
+
+The Database Tool accepts only the frozen query-template contract, never caller-provided raw SQL.
+See [Database Tool](docs/database-tool.md) for the schema, read-only boundary, Evidence model, and
+PostgreSQL migration notes.
+
+The default development/test fixed workflow runs without an LLM, database, network, or other
+external service. It writes a
 verified `QUALITY_ANALYSIS_REPORT_JSON` file beneath `ARTIFACT_DIR` (default `data/artifacts`) and
 prints its path. Markdown is intentionally not emitted because the frozen Supplier Quality v1.0
 Artifact contract supports only PDF and JSON. See the
@@ -95,8 +108,10 @@ To add a real v1 adapter:
    dependency failure, empty-result, and lineage behavior.
 
 The four adapters in `tests/mocks` remain narrow Tool Runtime test doubles. The composed fixed
-workflow uses deterministic offline adapters in `copilot.tools.mock_supplier_quality`; these do
-not implement enterprise retrieval, database access, or external report generation.
+workflow uses deterministic offline adapters in `copilot.tools.mock_supplier_quality` for
+development/test by default. Production composition replaces the knowledge and database mocks
+with the HTTP Knowledge Tool and SQLAlchemy Database Tool; analytics and report generation remain
+offline implementations.
 
 ## Verify
 
@@ -125,4 +140,5 @@ python scripts/check_architecture.py
 python -m build
 ```
 
-All current tests run offline and do not require an LLM, database connection, or network service.
+All current tests run offline. Database integration tests use isolated disposable SQLite files;
+no live enterprise database, LLM, or network service is required.

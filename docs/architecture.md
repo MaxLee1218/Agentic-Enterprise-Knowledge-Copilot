@@ -52,11 +52,11 @@ renderer implementation directly.
 | Domain | `copilot.contracts` | Implemented v1.0 typed contracts; provider- and framework-independent |
 | Application | `copilot.services`, `copilot.agent`, `copilot.policies` | Deterministic workflow services and narrow offline policy implemented; agent graph remains scaffold |
 | Governed capability runtime | `copilot.tools.base`, `registry`, `executor`, `runner`, `schema` | Implemented application-facing port, registration, authorization, execution, evidence, and audit sequence |
-| Capability adapters | `copilot.tools.knowledge`, `database`, `analytics`, `reporting`, offline mock module | Enterprise adapters remain scaffolds; four deterministic offline mock adapters implement the frozen schemas for local execution |
+| Capability adapters | `copilot.tools.knowledge`, `database`, `analytics`, `reporting`, offline mock module | HTTP knowledge and SQLAlchemy SQLite database adapters are implemented; analytics/reporting remain deterministic offline adapters |
 | Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | In-memory workflow/evidence/audit stores and local atomic Artifact storage support this stage; durable adapters remain planned |
 | Interfaces | `copilot.api`, `copilot.cli` | Health API, dry-run, and fixed-workflow CLI are implemented |
 | Protocol boundary | `copilot.mcp` | Future Phase 5 boundary; scaffold only |
-| Bootstrap | `copilot.bootstrap` | Composition root implemented for the offline deterministic workflow only |
+| Bootstrap | `copilot.bootstrap` | Composition root uses offline adapters by default and registers the real read-only Database Tool in production or when explicitly enabled |
 | Configuration | `copilot.config` | Typed environment configuration consumed at startup and infrastructure edges |
 
 `tools` is a governed capability boundary rather than permission to bypass the layers. Its generic
