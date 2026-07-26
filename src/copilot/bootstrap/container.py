@@ -29,6 +29,7 @@ from copilot.services.workflows.service import SupplierQualityWorkflowService
 from copilot.services.workflows.state_machine import TaskStateMachine
 from copilot.services.workflows.validation import PlanValidator
 from copilot.services.workflows.verification import WorkflowVerifier
+from copilot.tools.analytics import AnalyticsTool
 from copilot.tools.database import DatabaseConnection, DatabaseTool
 from copilot.tools.executor import ToolExecutor
 from copilot.tools.knowledge import HttpKnowledgeClient, KnowledgeTool
@@ -57,7 +58,7 @@ class WorkflowContainer:
     knowledge_tool: MockKnowledgeTool | KnowledgeTool
     knowledge_client: HttpKnowledgeClient | None
     database_tool: MockDatabaseTool | DatabaseTool
-    analytics_tool: MockAnalyticsTool
+    analytics_tool: MockAnalyticsTool | AnalyticsTool
     report_tool: MockReportTool
 
     def close(self) -> None:
@@ -122,7 +123,11 @@ def build_workflow_container(
         )
     else:
         database_tool = MockDatabaseTool(database_behavior)
-    analytics_tool = MockAnalyticsTool(analytics_behavior)
+    analytics_tool: MockAnalyticsTool | AnalyticsTool
+    if analytics_behavior is None:
+        analytics_tool = AnalyticsTool(evidence)
+    else:
+        analytics_tool = MockAnalyticsTool(analytics_behavior)
     report_tool = MockReportTool(
         evidence_reader=evidence,
         artifact_store=artifacts,

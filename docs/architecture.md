@@ -52,7 +52,7 @@ renderer implementation directly.
 | Domain | `copilot.contracts` | Implemented v1.0 typed contracts; provider- and framework-independent |
 | Application | `copilot.services`, `copilot.agent`, `copilot.policies` | Deterministic workflow services and narrow offline policy implemented; agent graph remains scaffold |
 | Governed capability runtime | `copilot.tools.base`, `registry`, `executor`, `runner`, `schema` | Implemented application-facing port, registration, authorization, execution, evidence, and audit sequence |
-| Capability adapters | `copilot.tools.knowledge`, `database`, `analytics`, `reporting`, offline mock module | HTTP knowledge and SQLAlchemy SQLite database adapters are implemented; analytics/reporting remain deterministic offline adapters |
+| Capability adapters | `copilot.tools.knowledge`, `database`, `analytics`, `reporting`, offline mock module | HTTP knowledge, SQLAlchemy SQLite database, and deterministic analytics adapters are implemented; reporting remains a deterministic offline adapter |
 | Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | In-memory workflow/evidence/audit stores and local atomic Artifact storage support this stage; durable adapters remain planned |
 | Interfaces | `copilot.api`, `copilot.cli` | Health API, dry-run, and fixed-workflow CLI are implemented |
 | Protocol boundary | `copilot.mcp` | Future Phase 5 boundary; scaffold only |
@@ -130,6 +130,25 @@ User or approved protocol client
   -> Final task result and artifact references
 ```
 
+The implemented Supplier Quality data path is:
+
+```text
+Database Tool
+  -> DATABASE EvidenceItem
+  -> ToolExecutor
+  -> Analytics Tool (quality_metrics.v1)
+  -> CALCULATION EvidenceItem
+  -> Report Tool
+  -> Verifier
+```
+
+`analysis_engine` receives the exact database rows, the database Evidence ID, and its dataset
+checksum. It recalculates the checksum before processing, uses integer and decimal arithmetic
+only, and returns an Evidence draft containing formulas and the input Evidence ID. The Executor
+then binds the draft to the Task/Step/ToolCall envelope and commits it through the Evidence Ledger.
+The adapter does not create authoritative Evidence IDs, call another tool, or mutate workflow
+state.
+
 Control flows from an external interface toward application orchestration and then to an injected
 adapter. Results flow back through the same governed boundaries. Static source dependencies do not
 reverse merely because a callback or port is invoked at runtime: the application owns the port,
@@ -149,6 +168,10 @@ implemented, this package may contain small modules such as `container.py` and `
 - construct policy, approval, executor, planner, verifier, and application services;
 - inject those services into API, CLI, worker, and approved protocol entry points;
 - own startup, shutdown, and resource cleanup.
+
+The current composition root registers the real deterministic `AnalyticsTool` by default.
+Explicit test-only failure injection may substitute `MockAnalyticsTool`; this does not change the
+registered `analysis_engine` contract.
 
 The composition root is not a business service and contains no task decisions. Until it exists,
 the API and CLI remain minimal entry points and must not be described as a composed task runtime.
