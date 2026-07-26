@@ -395,6 +395,18 @@ class MockDatabaseTool(_MockToolBase):
                         "query_fingerprint": fingerprint,
                         "schema_version": arguments.root["schema_version"],
                         "snapshot_at": snapshot_at,
+                        "table_names": ["incoming_inspections", "suppliers"],
+                        "column_names": [
+                            "incoming_inspections.inspection_date",
+                            "incoming_inspections.rejected_quantity",
+                            "incoming_inspections.supplier_id",
+                            "incoming_inspections.total_quantity",
+                            "suppliers.id",
+                            "suppliers.supplier_code",
+                            "suppliers.tenant_id",
+                        ],
+                        "statement_type": "SELECT",
+                        "read_only": True,
                         "row_count": len(rows),
                     }
                 )

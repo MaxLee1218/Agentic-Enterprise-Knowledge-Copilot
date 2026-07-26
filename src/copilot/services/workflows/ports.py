@@ -16,11 +16,13 @@ from copilot.contracts import (
     TaskResult,
     TaskState,
     ToolResult,
+    VerificationResult,
 )
 from copilot.services.workflows.models import (
     StepExecutionRecord,
     TaskStateEvent,
     WorkflowAuditRecord,
+    WorkflowExecutionContext,
 )
 
 
@@ -37,6 +39,14 @@ class EvidenceReader(Protocol):
 
     def get(self, evidence_id: str) -> EvidenceItem:
         """Return one evidence item."""
+        ...
+
+
+class WorkflowVerificationService(Protocol):
+    """Application port for deterministic final verification."""
+
+    def verify(self, context: WorkflowExecutionContext) -> VerificationResult:
+        """Return a persisted-ready structured verification result."""
         ...
 
 
@@ -99,6 +109,10 @@ class WorkflowRepository(Protocol):
 
     def save_task_result(self, result: TaskResult) -> None:
         """Save the one terminal task result."""
+        ...
+
+    def save_verification_result(self, result: VerificationResult) -> None:
+        """Append the task's deterministic verification result."""
         ...
 
 

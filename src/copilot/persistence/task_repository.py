@@ -12,6 +12,7 @@ from copilot.contracts import (
     TaskResult,
     TaskState,
     ToolResult,
+    VerificationResult,
 )
 from copilot.services.workflows.models import StepExecutionRecord, TaskStateEvent
 
@@ -29,6 +30,7 @@ class InMemoryWorkflowRepository:
         self._step_results: dict[str, StepResult] = {}
         self._step_executions: dict[str, StepExecutionRecord] = {}
         self._task_results: dict[str, TaskResult] = {}
+        self._verification_results: dict[str, VerificationResult] = {}
         self._lock = RLock()
 
     def initialize(
@@ -85,6 +87,13 @@ class InMemoryWorkflowRepository:
                 raise ValueError("task result already exists")
             self._task_results[result.task_id] = result
 
+    def save_verification_result(self, result: VerificationResult) -> None:
+        """Save exactly one deterministic verification result per task."""
+        with self._lock:
+            if result.task_id in self._verification_results:
+                raise ValueError("verification result already exists")
+            self._verification_results[result.task_id] = result
+
     def state_for(self, task_id: str) -> TaskState:
         """Return the authoritative state snapshot."""
         with self._lock:
@@ -104,3 +113,8 @@ class InMemoryWorkflowRepository:
         """Return immutable state events in transition order."""
         with self._lock:
             return tuple(self._state_events)
+
+    def verification_result_for(self, task_id: str) -> VerificationResult:
+        """Return the persisted deterministic verification result."""
+        with self._lock:
+            return self._verification_results[task_id]

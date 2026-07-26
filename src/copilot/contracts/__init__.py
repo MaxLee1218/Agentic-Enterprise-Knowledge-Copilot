@@ -18,7 +18,16 @@ from copilot.contracts.enums import (
     ToolResultStatus,
 )
 from copilot.contracts.errors import DomainError, TaskError
-from copilot.contracts.evidence import EvidenceContent, EvidenceItem, EvidenceSourceReference
+from copilot.contracts.evidence import (
+    EvidenceAddResult,
+    EvidenceContent,
+    EvidenceItem,
+    EvidenceLedgerSnapshot,
+    EvidenceSourceReference,
+    LineageEdge,
+    LineageIssue,
+    LineageTrace,
+)
 from copilot.contracts.plans import RetryPolicy, StepResult, TaskPlan, TaskStep
 from copilot.contracts.tasks import (
     ApprovalRequirement,
@@ -37,6 +46,19 @@ from copilot.contracts.tools import (
     ToolResult,
     ToolTimeout,
 )
+from copilot.contracts.verification import (
+    CandidateResult,
+    CitationClaim,
+    ClaimType,
+    DeliverableRecord,
+    NumericClaim,
+    VerificationCheck,
+    VerificationContext,
+    VerificationIssue,
+    VerificationResult,
+    VerificationSeverity,
+    VerificationStatus,
+)
 
 __all__ = [
     "ApprovalRequest",
@@ -49,12 +71,17 @@ __all__ = [
     "DomainError",
     "ErrorType",
     "EvidenceContent",
+    "EvidenceAddResult",
     "EvidenceItem",
+    "EvidenceLedgerSnapshot",
     "EvidenceSourceReference",
     "EvidenceType",
     "ExpectedOutput",
     "ImmutableContractModel",
     "JsonObject",
+    "LineageEdge",
+    "LineageIssue",
+    "LineageTrace",
     "ReportLanguage",
     "RetryPolicy",
     "RiskLevel",
@@ -78,4 +105,15 @@ __all__ = [
     "ToolResult",
     "ToolResultStatus",
     "ToolTimeout",
+    "CandidateResult",
+    "CitationClaim",
+    "ClaimType",
+    "DeliverableRecord",
+    "NumericClaim",
+    "VerificationCheck",
+    "VerificationContext",
+    "VerificationIssue",
+    "VerificationResult",
+    "VerificationSeverity",
+    "VerificationStatus",
 ]

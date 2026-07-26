@@ -23,6 +23,7 @@ from copilot.contracts import (
     ToolCall,
     ToolResult,
     ToolResultStatus,
+    VerificationStatus,
 )
 from copilot.services.workflows.dependency import DependencyChecker
 from copilot.services.workflows.errors import PlanValidationError, StepInputError, VerificationError
@@ -41,11 +42,11 @@ from copilot.services.workflows.ports import (
     IdentifierFactory,
     WorkflowAuditSink,
     WorkflowRepository,
+    WorkflowVerificationService,
 )
 from copilot.services.workflows.retry import WorkflowRetryPolicy
 from copilot.services.workflows.state_machine import TaskStateMachine
 from copilot.services.workflows.validation import PlanValidator
-from copilot.services.workflows.verification import WorkflowVerifier
 from copilot.tools.exceptions import ToolRuntimeError, ToolValidationError
 from copilot.tools.executor import ToolExecutor
 from copilot.tools.registry import ToolRegistry
@@ -63,7 +64,7 @@ class WorkflowRunner:
         dependency_checker: DependencyChecker,
         input_builder: StepInputBuilder,
         retry_policy: WorkflowRetryPolicy,
-        verifier: WorkflowVerifier,
+        verifier: WorkflowVerificationService,
         evidence_reader: EvidenceReader,
         artifact_store: ArtifactStore,
         repository: WorkflowRepository,
@@ -105,6 +106,7 @@ class WorkflowRunner:
             plan=plan,
             task_state=initial,
             started_at=started_at,
+            metadata={"registered_tools": tuple(self._registry.list())},
         )
         self._repository.initialize(request, contract, plan, initial)
         self._emit(context, "workflow_started", status=initial.state.value)
@@ -167,11 +169,32 @@ class WorkflowRunner:
             "ALL_REQUIRED_STEPS_FINISHED",
             "All required steps and report artifact completed",
         )
-        try:
-            self._verifier.verify(context)
-        except VerificationError as exc:
-            self._transition(context, "NON_REPAIRABLE_VERIFICATION_FAILURE", str(exc))
-            return self._finalize_failed(context, started_at, str(exc))
+        verification_result = self._verifier.verify(context)
+        context.verification_result = verification_result
+        self._repository.save_verification_result(verification_result)
+        self._emit(
+            context,
+            "verification_completed",
+            status=verification_result.status.value,
+            duration_ms=verification_result.duration_ms,
+            evidence_ids=verification_result.verified_evidence_ids,
+            metadata=JsonObject(
+                {
+                    "warning_count": verification_result.warning_count,
+                    "error_count": verification_result.error_count,
+                    "issue_codes": [issue.code for issue in verification_result.issues],
+                    "checks": [check.verifier for check in verification_result.checks],
+                }
+            ),
+        )
+        if verification_result.status is VerificationStatus.FAILED:
+            reason = (
+                verification_result.issues[0].code
+                if verification_result.issues
+                else "VERIFICATION_FAILED"
+            )
+            self._transition(context, "NON_REPAIRABLE_VERIFICATION_FAILURE", reason)
+            return self._finalize_failed(context, started_at, reason)
         self._transition(context, "VERIFICATION_PASSED", "Evidence and artifact verified")
         task_result = TaskResult(
             task_id=context.task_id,
@@ -223,6 +246,7 @@ class WorkflowRunner:
                 tenant_id=context.contract.constraints.tenant_id,
                 user_id=context.request.user_id,
             )
+            context.tool_calls.append(call)
             self._emit(
                 context,
                 "tool_attempt_started",
@@ -537,6 +561,7 @@ class WorkflowRunner:
             step_executions=ordered_records,
             evidence=tuple(context.evidence.values()),
             artifacts=tuple(context.artifacts),
+            verification_result=context.verification_result,
             started_at=started_at,
             completed_at=completed_at,
             duration_ms=_duration_ms(started_at, completed_at),

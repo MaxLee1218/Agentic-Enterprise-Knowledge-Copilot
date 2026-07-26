@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
+from pydantic import JsonValue
 
 from copilot.contracts import (
+    EvidenceItem,
     EvidenceType,
+    JsonObject,
     StepResultStatus,
     TaskStatus,
     ToolIdempotency,
+    VerificationStatus,
 )
 from copilot.services.workflows.models import SupplierQualityCommand
 from copilot.tools.mock_supplier_quality import MockBehavior, MockFailureKind
@@ -216,3 +221,95 @@ def test_workflow_audit_failure_is_fail_closed(
         with pytest.raises(OSError, match="audit outage"):
             container.service.execute(COMMAND)
         assert container.knowledge_tool.call_count == 0
+
+
+def test_structured_verification_result_is_persisted_on_success(tmp_path: Path) -> None:
+    with build_test_container(tmp_path) as container:
+        execution = container.service.execute(COMMAND)
+
+        assert execution.verification_result is not None
+        assert execution.verification_result.status is VerificationStatus.PASSED
+        persisted = container.repository.verification_result_for(execution.task_result.task_id)
+        assert persisted == execution.verification_result
+        verification_events = [
+            event
+            for event in container.workflow_audit.list()
+            if event.event == "verification_completed"
+        ]
+        assert len(verification_events) == 1
+        assert verification_events[0].status == VerificationStatus.PASSED.value
+
+
+def test_numeric_verification_failure_prevents_completed_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with build_test_container(tmp_path) as container:
+        original = container.report_tool._build_report
+
+        def corrupt_numeric(
+            arguments: JsonObject,
+            evidence: tuple[EvidenceItem, ...],
+        ) -> dict[str, object]:
+            report = original(arguments, evidence)
+            analysis = cast(dict[str, JsonValue], report["analysis_results"])
+            metrics = cast(list[JsonValue], analysis["metrics"])
+            metric = next(
+                item
+                for item in metrics
+                if isinstance(item, dict) and item.get("metric") == "defect_rate"
+            )
+            metric["value"] = 0.5
+            return report
+
+        monkeypatch.setattr(container.report_tool, "_build_report", corrupt_numeric)
+        execution = container.service.execute(COMMAND)
+
+        assert container.report_tool.call_count == 1
+        assert execution.task_result.final_status is TaskStatus.FAILED
+        assert execution.final_state.state is TaskStatus.FAILED
+        assert execution.task_result.artifacts == ()
+        assert len(execution.artifacts) == 1
+        assert execution.verification_result is not None
+        assert execution.verification_result.status is VerificationStatus.FAILED
+        assert "NUMERIC_CLAIM_MISMATCH" in {
+            issue.code for issue in execution.verification_result.issues
+        }
+        assert "workflow_completed" not in {
+            event.event for event in container.workflow_audit.list()
+        }
+
+
+def test_invalid_structured_citation_prevents_completed_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with build_test_container(tmp_path) as container:
+        original = container.report_tool._build_report
+
+        def remove_database_citation(
+            arguments: JsonObject,
+            evidence: tuple[EvidenceItem, ...],
+        ) -> dict[str, object]:
+            report = original(arguments, evidence)
+            references = cast(list[JsonValue], report["evidence_references"])
+            report["evidence_references"] = [
+                reference
+                for reference in references
+                if isinstance(reference, dict)
+                and reference.get("source_type") != EvidenceType.DATABASE.value
+            ]
+            return report
+
+        monkeypatch.setattr(
+            container.report_tool,
+            "_build_report",
+            remove_database_citation,
+        )
+        execution = container.service.execute(COMMAND)
+
+        assert execution.task_result.final_status is TaskStatus.FAILED
+        assert execution.verification_result is not None
+        codes = {issue.code for issue in execution.verification_result.issues}
+        assert "CITATION_REQUIRED" in codes
+        assert "DATA_CLAIM_DATABASE_LINEAGE_MISSING" not in codes

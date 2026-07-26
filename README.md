@@ -80,6 +80,11 @@ Artifact contract supports only PDF and JSON. See the
 [Deterministic Workflow](docs/deterministic-workflow.md) for execution, retry, Evidence, failure,
 and compatibility details.
 
+After report generation, deterministic Evidence, lineage, deliverable, citation, numeric, safety,
+and Artifact verifiers produce a persisted structured result. A Task reaches `COMPLETED` only when
+that result has no Errors. See
+[Evidence Ledger and Deterministic Verification](docs/evidence-and-verification.md).
+
 ## Tool Runtime
 
 The runtime under `src/copilot/tools` treats each enterprise capability as a registered plugin.

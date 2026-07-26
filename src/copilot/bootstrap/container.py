@@ -11,6 +11,7 @@ from copilot.bootstrap.knowledge import build_http_knowledge_client
 from copilot.config import PROJECT_ROOT, Settings
 from copilot.contracts.validators import utc_now
 from copilot.evidence.ledger import InMemoryEvidenceLedger
+from copilot.evidence.workflow import WorkflowVerifier
 from copilot.persistence.artifact_repository import LocalArtifactRepository
 from copilot.persistence.audit_repository import (
     InMemoryToolAuditRepository,
@@ -28,9 +29,9 @@ from copilot.services.workflows.runner import WorkflowRunner
 from copilot.services.workflows.service import SupplierQualityWorkflowService
 from copilot.services.workflows.state_machine import TaskStateMachine
 from copilot.services.workflows.validation import PlanValidator
-from copilot.services.workflows.verification import WorkflowVerifier
 from copilot.tools.analytics import AnalyticsTool
 from copilot.tools.database import DatabaseConnection, DatabaseTool
+from copilot.tools.database.schema_registry import SchemaRegistry
 from copilot.tools.executor import ToolExecutor
 from copilot.tools.knowledge import HttpKnowledgeClient, KnowledgeTool
 from copilot.tools.mock_supplier_quality import (
@@ -98,6 +99,7 @@ def build_workflow_container(
     repository = InMemoryWorkflowRepository()
     tool_audit = InMemoryToolAuditRepository()
     workflow_audit = InMemoryWorkflowAuditRepository()
+    schema_registry = SchemaRegistry()
     knowledge_client: HttpKnowledgeClient | None = None
     if settings.app_env == "production":
         knowledge_client = build_http_knowledge_client(
@@ -120,6 +122,7 @@ def build_workflow_container(
                 base_directory=PROJECT_ROOT,
             ),
             statement_timeout_seconds=settings.database_statement_timeout_seconds,
+            schema_registry=schema_registry,
         )
     else:
         database_tool = MockDatabaseTool(database_behavior)
@@ -160,7 +163,14 @@ def build_workflow_container(
             max_retries=settings.workflow_max_retries,
             retry_delay_seconds=settings.workflow_retry_delay_seconds,
         ),
-        verifier=WorkflowVerifier(artifacts),
+        verifier=WorkflowVerifier(
+            artifacts,
+            evidence,
+            allowed_tables=schema_registry.list_tables(),
+            allowed_columns=schema_registry.list_columns(),
+            sensitive_fields=schema_registry.list_sensitive_columns(),
+            clock=clock,
+        ),
         evidence_reader=evidence,
         artifact_store=artifacts,
         repository=repository,

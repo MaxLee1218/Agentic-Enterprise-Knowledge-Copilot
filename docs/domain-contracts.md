@@ -23,6 +23,7 @@ flowchart LR
     TC --> TR["ToolResult"]
     TR --> SR["StepResult"]
     TR --> E["EvidenceItem"]
+    E --> V["VerificationResult"]
     E --> A["Artifact"]
     SR --> RES["TaskResult"]
     A --> RES
@@ -40,6 +41,9 @@ flowchart LR
   evidence must reference its input evidence.
 - `Artifact` describes an immutable report in governed storage. `TaskResult` references artifacts
   and evidence only after the task reaches a terminal state.
+- `VerificationResult` records deterministic checks, structured Warning/Error issues, Evidence
+  references, counts, status, and timing. Claims and citations remain separate contracts and do
+  not extend the frozen Evidence type enum.
 
 ## Task lifecycle
 
@@ -75,6 +79,8 @@ stateDiagram-v2
 `TaskState` is deliberately a small authoritative snapshot containing `task_id`, state, version,
 UTC update time, and the last immutable event ID. Requests, plans, tool results, evidence, and
 artifacts remain separate append-only objects rather than being duplicated inside mutable state.
+The Evidence Ledger owns Evidence content, and the workflow repository persists the task's
+structured verification result before a terminal verification transition.
 
 ## JSON example
 
@@ -120,4 +126,3 @@ artifacts remain separate append-only objects rather than being duplicated insid
 Every contract supports `model_dump_json()` and `model_validate_json()`. Optional fields use
 defaults so older JSON remains readable when a backward-compatible field is added. Unknown fields
 remain forbidden; incompatible evolution requires a new contract version and design review.
-

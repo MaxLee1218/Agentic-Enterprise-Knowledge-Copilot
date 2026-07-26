@@ -96,3 +96,14 @@ ToolCall ID, and timestamp. The Analytics Tool does not write directly to the le
 
 Output Schema validation, evidence registration, audit recording, and latency measurement remain
 owned by the generic governed executor lifecycle.
+
+## Verification metadata
+
+The Database Tool's Evidence source reference includes the frozen `query_fingerprint`, sorted
+authorized table and column names, and explicit `statement_type=SELECT` / `read_only=true`
+metadata. The Safety Verifier consumes those fields without parsing or executing SQL.
+
+The Analytics Tool's structured metrics and `input_evidence_ids` are the Numeric and Citation
+Verifier baselines. Verification never reruns a metric formula. Full Ledger, lineage, precision,
+and issue rules are documented in
+[`evidence-and-verification.md`](evidence-and-verification.md).

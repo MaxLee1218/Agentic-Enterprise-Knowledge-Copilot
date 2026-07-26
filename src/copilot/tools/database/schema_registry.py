@@ -16,6 +16,12 @@ from copilot.tools.database.models import (
 )
 
 SCHEMA_VERSION = "quality.v1"
+DEFAULT_SENSITIVE_COLUMNS = frozenset(
+    {
+        "supplier_deviations.description",
+        "corrective_actions.description",
+    }
+)
 
 
 def _registered_columns() -> dict[str, frozenset[str]]:
@@ -36,10 +42,14 @@ class SchemaRegistry:
         *,
         schema_version: str = SCHEMA_VERSION,
         tables: Mapping[str, frozenset[str]] | None = None,
+        sensitive_columns: frozenset[str] | None = None,
     ) -> None:
         self._schema_version = schema_version
         registered = dict(tables or _registered_columns())
         self._tables: Mapping[str, frozenset[str]] = MappingProxyType(registered)
+        self._sensitive_columns = (
+            DEFAULT_SENSITIVE_COLUMNS if sensitive_columns is None else sensitive_columns
+        )
         self._query_templates = frozenset(
             {"supplier_quality_summary_v1", "supplier_quality_trend_v1"}
         )
@@ -67,6 +77,24 @@ class SchemaRegistry:
         """Return whether the frozen baseline permits a query template."""
         return template_id in self._query_templates
 
+    def is_sensitive_column(self, table_name: str, column_name: str) -> bool:
+        """Return whether a registered field requires restricted-output handling."""
+        return f"{table_name}.{column_name}" in self._sensitive_columns
+
+    def list_columns(self) -> tuple[str, ...]:
+        """List fully qualified approved fields in deterministic order."""
+        return tuple(
+            sorted(
+                f"{table_name}.{column_name}"
+                for table_name, columns in self._tables.items()
+                for column_name in columns
+            )
+        )
+
+    def list_sensitive_columns(self) -> tuple[str, ...]:
+        """List configured sensitive fields without exposing any field values."""
+        return tuple(sorted(self._sensitive_columns))
+
     def get_schema(self) -> Mapping[str, frozenset[str]]:
         """Return the immutable table-to-column allowlist."""
         return self._tables
@@ -80,4 +108,4 @@ class SchemaRegistry:
         return tuple(sorted(self._query_templates))
 
 
-__all__ = ["SCHEMA_VERSION", "SchemaRegistry"]
+__all__ = ["DEFAULT_SENSITIVE_COLUMNS", "SCHEMA_VERSION", "SchemaRegistry"]

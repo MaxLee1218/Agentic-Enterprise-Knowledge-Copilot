@@ -53,7 +53,7 @@ renderer implementation directly.
 | Application | `copilot.services`, `copilot.agent`, `copilot.policies` | Deterministic workflow services and narrow offline policy implemented; agent graph remains scaffold |
 | Governed capability runtime | `copilot.tools.base`, `registry`, `executor`, `runner`, `schema` | Implemented application-facing port, registration, authorization, execution, evidence, and audit sequence |
 | Capability adapters | `copilot.tools.knowledge`, `database`, `analytics`, `reporting`, offline mock module | HTTP knowledge, SQLAlchemy SQLite database, and deterministic analytics adapters are implemented; reporting remains a deterministic offline adapter |
-| Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | In-memory workflow/evidence/audit stores and local atomic Artifact storage support this stage; durable adapters remain planned |
+| Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | Task-isolated Evidence Ledger, deterministic verification, in-memory workflow/audit stores, and local atomic Artifact storage support this stage; durable adapters remain planned |
 | Interfaces | `copilot.api`, `copilot.cli` | Health API, dry-run, and fixed-workflow CLI are implemented |
 | Protocol boundary | `copilot.mcp` | Future Phase 5 boundary; scaffold only |
 | Bootstrap | `copilot.bootstrap` | Composition root uses offline adapters by default and registers the real read-only Database Tool in production or when explicitly enabled |
@@ -139,7 +139,8 @@ Database Tool
   -> Analytics Tool (quality_metrics.v1)
   -> CALCULATION EvidenceItem
   -> Report Tool
-  -> Verifier
+  -> structured Claim/Citation adapter
+  -> Evidence/Deliverable/Citation/Numeric/Safety/Artifact Verifiers
 ```
 
 `analysis_engine` receives the exact database rows, the database Evidence ID, and its dataset
@@ -156,6 +157,11 @@ and infrastructure supplies its implementation.
 
 No route, agent node, protocol handler, or tool may create an alternate execution path around
 policy, approval, registry, executor, evidence, audit, or verification.
+
+The Evidence Ledger is authoritative for Evidence content; `TaskState` remains a compact lifecycle
+snapshot. Verification results are persisted separately and correlated through Task and audit
+identifiers. See [`evidence-and-verification.md`](evidence-and-verification.md) for fingerprint,
+lineage, status aggregation, and failure rules.
 
 ## 4. Composition Root
 

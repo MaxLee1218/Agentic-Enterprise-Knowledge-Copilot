@@ -15,7 +15,9 @@ from copilot.contracts import (
     TaskRequest,
     TaskResult,
     TaskState,
+    ToolCall,
     ToolResult,
+    VerificationResult,
 )
 
 
@@ -107,10 +109,12 @@ class WorkflowExecutionContext:
     step_results: dict[str, StepResult] = field(default_factory=dict)
     step_executions: dict[str, StepExecutionRecord] = field(default_factory=dict)
     tool_results: dict[str, list[ToolResult]] = field(default_factory=dict)
+    tool_calls: list[ToolCall] = field(default_factory=list)
     evidence: dict[str, EvidenceItem] = field(default_factory=dict)
     artifacts: list[Artifact] = field(default_factory=list)
     retry_counts: dict[str, int] = field(default_factory=dict)
     metadata: dict[str, object] = field(default_factory=dict)
+    verification_result: VerificationResult | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +127,7 @@ class WorkflowExecution:
     step_executions: tuple[StepExecutionRecord, ...]
     evidence: tuple[EvidenceItem, ...]
     artifacts: tuple[Artifact, ...]
+    verification_result: VerificationResult | None
     started_at: datetime
     completed_at: datetime
     duration_ms: int

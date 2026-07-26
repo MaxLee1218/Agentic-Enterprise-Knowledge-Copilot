@@ -146,9 +146,18 @@ with `os.replace`, and verifies size. The default filename is:
 supplier-quality-analysis-{task_id}.json
 ```
 
-The verifier checks that all steps succeeded, all three Evidence types exist, the Artifact is
-readable and non-empty, size and SHA-256 match, every Evidence ID is cited, and the JSON report
-contains deterministic analysis results. Only then can the state enter `COMPLETED`.
+The verifier checks that all steps succeeded; source metadata and calculation lineage are complete;
+required deliverables and structured citations resolve; report numbers equal Calculation Evidence;
+tool, approval, schema, read-only, and sensitive-field rules hold; and the Artifact is readable,
+non-empty, checksum-valid, and citation-complete. It runs every safe check and persists one
+structured `VerificationResult`. Only `PASSED` or `PASSED_WITH_WARNINGS` can enter `COMPLETED`;
+`FAILED` preserves Evidence and the invalid Artifact for audit but omits that Artifact from the
+terminal `TaskResult`.
+
+The frozen lifecycle remains report generation followed by `VERIFYING`. The verifier does not
+recompute analytics, query a database, call a tool, or parse natural-language report text. See
+[`evidence-and-verification.md`](evidence-and-verification.md) for detailed contracts and issue
+codes.
 
 ## Audit and Current Limitations
 
