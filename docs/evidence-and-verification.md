@@ -162,7 +162,7 @@ The implemented frozen sequence is:
 Knowledge Tool
   -> Database Tool
   -> Analytics Tool
-  -> Mock Report Tool / JSON Artifact
+  -> Report Tool / PDF or JSON Artifact
   -> TaskStatus.VERIFYING
   -> deterministic verification
   -> COMPLETED or FAILED
@@ -223,9 +223,9 @@ Task T-001
 ## Stage 8 and Stage 9 boundary
 
 Stage 8 implements evidence storage, lineage, structured claims, deterministic verifiers,
-verification persistence, audit, and the completion gate. The existing mock JSON report is retained
-only as the current workflow fixture.
+verification persistence, audit, and the completion gate.
 
-Stage 8 does not implement the production Report Tool, templates, PDF rendering/inspection, DOCX,
-XLSX, an Artifact Repository beyond the existing local adapter, LangGraph, an LLM planner, or an
-LLM verifier. Those require their separately approved stages and tests.
+Stage 9 adds the production deterministic Report Tool, a common strong report model, PDF/JSON
+renderers, stricter atomic Artifact persistence, and report consistency checks. The final
+verification gate remains after Artifact generation. DOCX, XLSX, Markdown, HTML, LangGraph, an LLM
+planner, and an LLM verifier remain outside the frozen v1.0 implementation.

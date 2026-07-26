@@ -10,7 +10,8 @@ CREATED
   -> UNDERSTANDING
   -> PLANNING
   -> EXECUTING
-  -> report Artifact generated
+  -> Report Model and render consistency validated
+  -> report Artifact atomically generated
   -> VERIFYING
   -> COMPLETED (PASSED or PASSED_WITH_WARNINGS)
      or FAILED (VerificationStatus.FAILED)
@@ -19,6 +20,10 @@ CREATED
 `VerificationResult` is persisted before the terminal verification transition. A failed result
 does not delete Evidence, ToolResults, the audit trail, or the invalid Artifact, but the invalid
 Artifact is not exposed through `TaskResult.artifacts`.
+
+The Report Tool's input, render, and commit checks do not replace this lifecycle gate. Tool
+success means only that a structurally valid Artifact was committed. The independent frozen
+Verifier still decides whether the Task may reach `COMPLETED`.
 
 See [`evidence-and-verification.md`](evidence-and-verification.md) for verifier rules and the
 documented conflict between the proposed pre-report ordering and the frozen lifecycle.

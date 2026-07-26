@@ -70,13 +70,20 @@ class SupplierQualityWorkflowService:
             ),
         )
         language = ReportLanguage(command.language)
+        try:
+            artifact_type = {
+                "JSON": ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
+                "PDF": ArtifactType.QUALITY_ANALYSIS_REPORT_PDF,
+            }[command.report_format.upper()]
+        except KeyError as exc:
+            raise ValueError("report_format must be PDF or JSON") from exc
         contract = TaskContract(
             task_id=task_id,
             contract_version=1,
             task_type=TaskType.SUPPLIER_QUALITY_ANALYSIS_V1,
             required_capabilities=tuple(CapabilityName),
             expected_output=ExpectedOutput(
-                artifact_type=ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
+                artifact_type=artifact_type,
                 required_sections=(
                     "scope",
                     "quality_policy_findings",

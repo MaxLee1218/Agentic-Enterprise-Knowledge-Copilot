@@ -76,6 +76,10 @@ class ArtifactStore(Protocol):
         """Resolve an artifact to a controlled local path."""
         ...
 
+    def delete(self, artifact_id: str) -> None:
+        """Compensate one invalid, unpublished Artifact."""
+        ...
+
 
 class WorkflowRepository(Protocol):
     """Persistence port for task snapshots and append-only execution results."""

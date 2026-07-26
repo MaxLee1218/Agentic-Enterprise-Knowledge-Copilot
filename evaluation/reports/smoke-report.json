@@ -1,0 +1,37 @@
+{
+  "case_count": 2,
+  "cases": [
+    {
+      "case_id": "empty-result-semantics",
+      "expected": "empty_result_is_success",
+      "observed": "empty_result_is_success"
+    },
+    {
+      "case_id": "approval-semantics",
+      "expected": "rejected_approval_is_cancelled",
+      "observed": "rejected_approval_is_cancelled"
+    }
+  ],
+  "code_revision": "local-working-tree",
+  "configuration": {
+    "metric": "exact_match",
+    "mode": "offline"
+  },
+  "dataset_version": "evaluation-smoke.v1",
+  "known_limitations": [
+    "This smoke run validates evaluation plumbing, not product task quality."
+  ],
+  "metric_definitions": {
+    "exact_match": "Fraction of cases whose observed value exactly matches expected"
+  },
+  "metrics": [
+    {
+      "name": "exact_match",
+      "passed": true,
+      "value": 1.0
+    }
+  ],
+  "model_provider": "none",
+  "prompt_version": "none",
+  "timestamp": "2026-07-26T11:51:59.887755+00:00"
+}

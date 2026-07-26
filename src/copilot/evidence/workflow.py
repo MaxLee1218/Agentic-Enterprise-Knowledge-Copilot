@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from collections.abc import Callable
 from datetime import datetime
 from typing import cast
 
 from copilot.contracts import (
-    ArtifactType,
     CandidateResult,
     JsonObject,
     StepResultStatus,
@@ -22,12 +20,12 @@ from copilot.contracts import (
     VerificationSeverity,
     VerificationStatus,
 )
-from copilot.contracts.base import JsonMapping
 from copilot.contracts.validators import utc_now
 from copilot.evidence.citations import candidate_from_json_report
 from copilot.evidence.validators import CompositeVerifier, EvidenceLedgerView
 from copilot.services.workflows.models import WorkflowExecutionContext
 from copilot.services.workflows.ports import ArtifactStore
+from copilot.tools.reporting.validator import report_mapping_from_bytes
 
 
 class WorkflowVerifier:
@@ -193,32 +191,14 @@ class WorkflowVerifier:
                     "Report artifact does not cite all workflow evidence",
                 )
             )
-        if artifact.type is not ArtifactType.QUALITY_ANALYSIS_REPORT_JSON:
-            issues.append(
-                _artifact_issue(
-                    context.task_id,
-                    "ARTIFACT_FORMAT_NOT_VERIFIABLE",
-                    "This stage verifies the structured JSON report adapter only",
-                )
-            )
-            return tuple(issues), empty
         try:
-            raw = json.loads(content.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            issues.append(
-                _artifact_issue(
-                    context.task_id,
-                    "ARTIFACT_JSON_INVALID",
-                    "JSON report is not readable",
-                )
-            )
-            return tuple(issues), empty
-        if not isinstance(raw, dict):
+            raw = report_mapping_from_bytes(content, artifact.type)
+        except (UnicodeDecodeError, ValueError):
             issues.append(
                 _artifact_issue(
                     context.task_id,
                     "ARTIFACT_REPORT_MODEL_INVALID",
-                    "JSON report root must be a structured object",
+                    "Report Artifact does not carry a readable structured model",
                 )
             )
             return tuple(issues), empty
@@ -231,7 +211,7 @@ class WorkflowVerifier:
             candidate = candidate_from_json_report(
                 task_contract=context.contract,
                 report_step_id=report_step_id,
-                report=cast(JsonMapping, raw),
+                report=raw,
                 evidence=tuple(context.evidence.values()),
             )
         except (StopIteration, TypeError, ValueError):

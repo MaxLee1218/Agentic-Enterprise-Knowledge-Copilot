@@ -42,6 +42,7 @@ from copilot.tools.mock_supplier_quality import (
     MockReportTool,
 )
 from copilot.tools.registry import ToolRegistry
+from copilot.tools.reporting import ReportTool
 
 
 @dataclass(slots=True)
@@ -60,7 +61,7 @@ class WorkflowContainer:
     knowledge_client: HttpKnowledgeClient | None
     database_tool: MockDatabaseTool | DatabaseTool
     analytics_tool: MockAnalyticsTool | AnalyticsTool
-    report_tool: MockReportTool
+    report_tool: MockReportTool | ReportTool
 
     def close(self) -> None:
         """Release the executor's owned worker pool."""
@@ -95,7 +96,11 @@ def build_workflow_container(
         id_factory=lambda: identifier_factory.new_id("E"),
         clock=clock,
     )
-    artifacts = LocalArtifactRepository(settings.artifact_path, clock=clock)
+    artifacts = LocalArtifactRepository(
+        settings.artifact_path,
+        clock=clock,
+        max_size_bytes=settings.report_max_size_bytes,
+    )
     repository = InMemoryWorkflowRepository()
     tool_audit = InMemoryToolAuditRepository()
     workflow_audit = InMemoryWorkflowAuditRepository()
@@ -131,13 +136,22 @@ def build_workflow_container(
         analytics_tool = AnalyticsTool(evidence)
     else:
         analytics_tool = MockAnalyticsTool(analytics_behavior)
-    report_tool = MockReportTool(
-        evidence_reader=evidence,
-        artifact_store=artifacts,
-        ids=identifier_factory,
-        clock=clock,
-        behavior=report_behavior,
-    )
+    report_tool: MockReportTool | ReportTool
+    if report_behavior is None:
+        report_tool = ReportTool(
+            evidence_reader=evidence,
+            artifact_store=artifacts,
+            ids=identifier_factory,
+            clock=clock,
+        )
+    else:
+        report_tool = MockReportTool(
+            evidence_reader=evidence,
+            artifact_store=artifacts,
+            ids=identifier_factory,
+            clock=clock,
+            behavior=report_behavior,
+        )
     registry = ToolRegistry()
     for tool in (knowledge_tool, database_tool, analytics_tool, report_tool):
         registry.register(tool)

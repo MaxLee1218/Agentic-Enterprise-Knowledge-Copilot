@@ -35,6 +35,10 @@ def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
         time_range: Annotated[
             str | None, typer.Option("--time-range", help="Explicit period in YYYY-QN form.")
         ] = None,
+        report_format: Annotated[
+            str,
+            typer.Option("--report-format", help="Frozen report format: JSON or PDF."),
+        ] = "JSON",
         dry_run: Annotated[
             bool, typer.Option("--dry-run", help="Validate input without executing a task.")
         ] = False,
@@ -60,6 +64,7 @@ def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
                     supplier_id=supplier_id,
                     material_id=material_id,
                     time_range=time_range,
+                    report_format=report_format,
                 )
             )
         except ValueError as exc:
@@ -75,6 +80,12 @@ def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
             )
         artifact_path = execution.artifacts[0].location if execution.artifacts else "none"
         typer.echo(f"Artifact path: {artifact_path}")
+        if execution.artifacts:
+            artifact = execution.artifacts[0]
+            typer.echo(f"Artifact ID: {artifact.artifact_id}")
+            typer.echo(f"Artifact type: {artifact.type.value}")
+            typer.echo(f"Artifact checksum: {artifact.checksum}")
+            typer.echo(f"Artifact size: {artifact.size_bytes} bytes")
         typer.echo(f"Total duration: {execution.duration_ms} ms")
         if execution.task_result.final_status is not TaskStatus.COMPLETED:
             raise typer.Exit(code=1)

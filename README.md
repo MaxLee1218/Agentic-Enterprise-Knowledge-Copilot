@@ -5,8 +5,8 @@ system. This milestone provides configuration, CLI, API health checks, frozen v1
 contracts, a governed tool-runtime foundation, HTTP Enterprise RAG and read-only SQLite database
 adapters, and one
 deterministic offline Supplier Quality workflow with evidence, audit, retries, verification, and
-JSON Artifact generation. Agent graph execution, dynamic planning, real analytics/report
-adapters, and durable persistence remain future work.
+production deterministic PDF/JSON report generation. Agent graph execution, dynamic planning, and
+durable persistence remain future work.
 
 The typed Supplier Quality Analysis contracts and lifecycle are documented in
 [Domain Contracts](docs/domain-contracts.md).
@@ -73,12 +73,14 @@ See [Database Tool](docs/database-tool.md) for the schema, read-only boundary, E
 PostgreSQL migration notes.
 
 The default development/test fixed workflow runs without an LLM, database, network, or other
-external service. It writes a
-verified `QUALITY_ANALYSIS_REPORT_JSON` file beneath `ARTIFACT_DIR` (default `data/artifacts`) and
-prints its path. Markdown is intentionally not emitted because the frozen Supplier Quality v1.0
-Artifact contract supports only PDF and JSON. See the
+external service. It writes a verified `QUALITY_ANALYSIS_REPORT_JSON` file beneath `ARTIFACT_DIR`
+(default `data/artifacts`) and prints its ID, path, checksum, and size. Pass
+`--report-format PDF` to generate and independently verify the frozen PDF alternative. Markdown
+and HTML are intentionally not emitted because the frozen Supplier Quality v1.0 Artifact contract
+supports only PDF and JSON. See the
 [Deterministic Workflow](docs/deterministic-workflow.md) for execution, retry, Evidence, failure,
-and compatibility details.
+and compatibility details, and [Deterministic Report Tool](docs/report-tool.md) for report model,
+rendering, and Artifact integrity behavior.
 
 After report generation, deterministic Evidence, lineage, deliverable, citation, numeric, safety,
 and Artifact verifiers produce a persisted structured result. A Task reaches `COMPLETED` only when
@@ -112,11 +114,10 @@ To add a real v1 adapter:
 5. Add unit, boundary, contract, and smoke coverage for success, denial, validation, timeout,
    dependency failure, empty-result, and lineage behavior.
 
-The four adapters in `tests/mocks` remain narrow Tool Runtime test doubles. The composed fixed
-workflow uses deterministic offline adapters in `copilot.tools.mock_supplier_quality` for
-development/test by default. Production composition replaces the knowledge and database mocks
-with the HTTP Knowledge Tool and SQLAlchemy Database Tool; analytics and report generation remain
-offline implementations.
+The adapters in `tests/mocks` remain narrow Tool Runtime test doubles. Development/test composition
+uses offline knowledge and database fixtures, the real deterministic Analytics Tool, and the real
+deterministic Report Tool. Production composition replaces knowledge and database fixtures with
+the HTTP Knowledge Tool and SQLAlchemy Database Tool. Reporting remains network- and model-free.
 
 ## Verify
 

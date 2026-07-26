@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     database_url: str
     database_statement_timeout_seconds: float = Field(default=8, gt=0, le=8)
     artifact_dir: Path = Path("data/artifacts")
+    report_max_size_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=100 * 1024 * 1024)
     max_task_steps: int = Field(default=10, gt=0)
     workflow_max_retries: int = Field(default=2, ge=0, le=2)
     workflow_retry_delay_seconds: float = Field(default=0, ge=0)

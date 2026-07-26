@@ -52,7 +52,7 @@ renderer implementation directly.
 | Domain | `copilot.contracts` | Implemented v1.0 typed contracts; provider- and framework-independent |
 | Application | `copilot.services`, `copilot.agent`, `copilot.policies` | Deterministic workflow services and narrow offline policy implemented; agent graph remains scaffold |
 | Governed capability runtime | `copilot.tools.base`, `registry`, `executor`, `runner`, `schema` | Implemented application-facing port, registration, authorization, execution, evidence, and audit sequence |
-| Capability adapters | `copilot.tools.knowledge`, `database`, `analytics`, `reporting`, offline mock module | HTTP knowledge, SQLAlchemy SQLite database, and deterministic analytics adapters are implemented; reporting remains a deterministic offline adapter |
+| Capability adapters | `copilot.tools.knowledge`, `database`, `analytics`, `reporting`, offline mock module | HTTP knowledge, SQLAlchemy SQLite database, deterministic analytics, and deterministic PDF/JSON reporting adapters are implemented |
 | Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | Task-isolated Evidence Ledger, deterministic verification, in-memory workflow/audit stores, and local atomic Artifact storage support this stage; durable adapters remain planned |
 | Interfaces | `copilot.api`, `copilot.cli` | Health API, dry-run, and fixed-workflow CLI are implemented |
 | Protocol boundary | `copilot.mcp` | Future Phase 5 boundary; scaffold only |
@@ -178,6 +178,10 @@ implemented, this package may contain small modules such as `container.py` and `
 The current composition root registers the real deterministic `AnalyticsTool` by default.
 Explicit test-only failure injection may substitute `MockAnalyticsTool`; this does not change the
 registered `analysis_engine` contract.
+
+The composition root also registers the real deterministic `ReportTool` by default. Only explicit
+failure-injection tests substitute `MockReportTool`. PDF and JSON share one strong report model,
+and Artifact bytes are committed before the independent frozen verification gate.
 
 The composition root is not a business service and contains no task decisions. Until it exists,
 the API and CLI remain minimal entry points and must not be described as a composed task runtime.

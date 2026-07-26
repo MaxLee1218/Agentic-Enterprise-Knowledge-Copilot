@@ -31,6 +31,7 @@ class SupplierQualityCommand:
     user_id: str = "U-DEMO"
     tenant_id: str = "TENANT-DEMO"
     language: str = "en-US"
+    report_format: str = "JSON"
 
 
 @dataclass(frozen=True, slots=True)

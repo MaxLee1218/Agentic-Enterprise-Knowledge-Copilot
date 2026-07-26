@@ -6,8 +6,8 @@ This stage implements one serial, deterministic execution path for the frozen
 `supplier_quality_analysis.v1` scenario. Development and test composition is offline by default;
 an explicit composition option, and production composition, can replace the database mock with
 the governed SQLAlchemy SQLite Database Tool. It does not use an LLM planner, LangGraph, or a real
-report service. The implementation exercises the frozen contracts and governed runtime before
-autonomous planning is introduced.
+external report service. The composition uses the real deterministic Report Tool; its mock remains
+only for explicit failure injection.
 
 The frozen v1.0 design remains authoritative. Consequently:
 
@@ -134,16 +134,18 @@ TaskResult is still `FAILED` but retains those Evidence IDs and emits
 
 ## Artifact and Verification
 
-The offline report tool resolves Evidence through an injected reader and builds content from the
-policy excerpts, database summary, deterministic metrics, scope, risks, recommendations, and
-citations. It never uses a static input-independent report.
+The Report Tool resolves Evidence through an injected reader and builds one strong report model
+from policy excerpts, database coverage, deterministic metrics, scope, bounded risks, fixed-rule
+actions, limitations, and citations. JSON and PDF use this same model. It never uses a static
+input-independent report or recalculates metrics.
 
-`LocalArtifactRepository` writes UTF-8 JSON under configured `ARTIFACT_DIR`, rejects absolute or
-multi-component filenames, creates the root directory, writes a temporary file, fsyncs it, commits
-with `os.replace`, and verifies size. The default filename is:
+`LocalArtifactRepository` writes PDF or UTF-8 JSON under configured `ARTIFACT_DIR`, rejects
+absolute or multi-component filenames, enforces type/extension and size limits, writes a temporary
+file, fsyncs it, commits with `os.replace`, and verifies bytes, size, and SHA-256. Filenames bind
+the Task and Artifact IDs:
 
 ```text
-supplier-quality-analysis-{task_id}.json
+supplier-quality-analysis-{task_id}-{artifact_id}.{json|pdf}
 ```
 
 The verifier checks that all steps succeeded; source metadata and calculation lineage are complete;

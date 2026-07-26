@@ -73,6 +73,24 @@ def test_success_path_runs_four_tools_and_creates_evidence_backed_report(tmp_pat
         assert audit_events[-1] == "workflow_completed"
 
 
+def test_pdf_report_path_is_generated_and_verified_from_the_same_model(tmp_path: Path) -> None:
+    command = SupplierQualityCommand(
+        supplier_id="SUP-001",
+        material_id="MAT-001",
+        time_range="2026-Q1",
+        report_format="PDF",
+    )
+    with build_test_container(tmp_path / "artifacts") as container:
+        execution = container.service.execute(command)
+
+        assert execution.task_result.final_status is TaskStatus.COMPLETED
+        assert execution.verification_result is not None
+        assert execution.verification_result.status is VerificationStatus.PASSED
+        artifact = execution.artifacts[0]
+        assert artifact.type.value == "QUALITY_ANALYSIS_REPORT_PDF"
+        assert Path(artifact.location).read_bytes().startswith(b"%PDF-")
+
+
 def test_database_permanent_failure_blocks_downstream_and_retains_partial_evidence(
     tmp_path: Path,
 ) -> None:
@@ -260,7 +278,7 @@ def test_numeric_verification_failure_prevents_completed_state(
                 if isinstance(item, dict) and item.get("metric") == "defect_rate"
             )
             metric["value"] = 0.5
-            return report
+            return cast(dict[str, object], report)
 
         monkeypatch.setattr(container.report_tool, "_build_report", corrupt_numeric)
         execution = container.service.execute(COMMAND)
@@ -299,7 +317,7 @@ def test_invalid_structured_citation_prevents_completed_state(
                 if isinstance(reference, dict)
                 and reference.get("source_type") != EvidenceType.DATABASE.value
             ]
-            return report
+            return cast(dict[str, object], report)
 
         monkeypatch.setattr(
             container.report_tool,

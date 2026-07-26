@@ -107,3 +107,21 @@ The Analytics Tool's structured metrics and `input_evidence_ids` are the Numeric
 Verifier baselines. Verification never reruns a metric formula. Full Ledger, lineage, precision,
 and issue rules are documented in
 [`evidence-and-verification.md`](evidence-and-verification.md).
+
+## Report Tool: `report_generator`
+
+The implemented adapter follows the exact frozen `PDF | JSON` input and output schemas. It consumes
+only the current Task's structured Analytics result and Document/Database/Calculation Evidence,
+uses version `supplier_quality_report.v1`, and executes only through
+`ToolRegistry -> ToolExecutor -> ReportTool`.
+
+Both formats derive from `ReportDocument`. JSON uses strict stable serialization; PDF uses a local
+offline renderer and carries the same structured model for independent verification. Pre-render
+validation checks query fingerprints, calculation formulas, Database lineage, Analytics metric
+identity, Task ownership, and finite numbers. Atomic storage verifies final SHA-256 and size before
+saving frozen Artifact metadata.
+
+The tool produces no new `EvidenceItem`: the frozen Evidence enum has no report-Artifact source,
+and the frozen walkthrough records Artifact generation in audit while the Artifact cites all
+upstream Evidence. See [`report-tool.md`](report-tool.md) for format, persistence, validation, and
+error details.
