@@ -2,14 +2,17 @@
 
 ## Scope
 
-This stage implements one serial, deterministic execution path for the frozen
+This document describes the legacy serial regression implementation for the frozen
 `supplier_quality_analysis.v1` scenario. Development and test composition is offline by default;
 an explicit composition option, and production composition, can replace the database mock with
 the governed SQLAlchemy SQLite Database Tool. It does not use an LLM planner, LangGraph, or a real
 external report service. The composition uses the real deterministic Report Tool; its mock remains
 only for explicit failure injection.
 
-The frozen v1.0 design remains authoritative. Consequently:
+The default production path now uses the deterministic LangGraph engine documented in
+[`langgraph-workflow.md`](langgraph-workflow.md). `WorkflowRunner` is retained only as a regression
+fixture and is deprecated as a production entry point. The frozen v1.0 design remains
+authoritative. Consequently:
 
 - the deliverable is `QUALITY_ANALYSIS_REPORT_JSON`, not Markdown, because v1.0 permits only PDF
   and JSON Artifacts;
@@ -169,11 +172,13 @@ retry scheduling, Evidence collection, and Artifact creation using identifiers a
 instead of full sensitive payloads.
 
 The repositories, tools, policy decision, and Artifact Store are local implementations for this
-stage. There is no human approval UI, cross-process recovery, distributed queue, dynamic
-replanning, DAG parallelism, or external service access. The CLI composes a pre-authorized mock
-scope only; it is not a production authorization implementation.
+stage. This legacy runner has no checkpoint recovery and remains only for regression comparison;
+the default LangGraph path adds local SQLite restart recovery. Neither path provides a human
+approval UI, distributed queue, dynamic replanning, DAG parallelism, or external report service.
+The CLI composes a pre-authorized mock scope only; it is not a production authorization
+implementation.
 
 A future planner may replace `SupplierQualityAnalysisPlanFactory` with a dynamic TaskPlan producer.
 The same plan validation, state machine, policy, Registry, Executor, Evidence, Artifact,
-verification, audit, and frozen domain contracts remain downstream boundaries. LangGraph is not
-needed to prove those invariants in this deterministic stage.
+verification, audit, and frozen domain contracts remain downstream boundaries. The Stage 10
+LangGraph layer schedules those same deterministic boundaries without changing their semantics.

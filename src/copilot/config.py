@@ -45,11 +45,19 @@ class Settings(BaseSettings):
     max_task_steps: int = Field(default=10, gt=0)
     workflow_max_retries: int = Field(default=2, ge=0, le=2)
     workflow_retry_delay_seconds: float = Field(default=0, ge=0)
+    workflow_engine: Literal["langgraph"] = "langgraph"
+    checkpoint_enabled: bool = True
+    checkpoint_database_path: Path = Path("data/database/workflow-checkpoints.db")
+    checkpoint_connection_timeout_seconds: float = Field(default=5, gt=0, le=60)
+    checkpoint_cleanup_policy: Literal["retain"] = "retain"
+    max_replan_count: int = Field(default=2, ge=0, le=2)
+    max_total_execution_seconds: int = Field(default=300, ge=1, le=3600)
+    graph_recursion_limit: int = Field(default=100, ge=20, le=1000)
 
-    @field_validator("artifact_dir", mode="after")
+    @field_validator("artifact_dir", "checkpoint_database_path", mode="after")
     @classmethod
-    def normalize_artifact_dir(cls, value: Path) -> Path:
-        """Resolve a relative artifact directory against the repository root."""
+    def normalize_project_path(cls, value: Path) -> Path:
+        """Resolve configured local persistence paths against the repository root."""
         return value.resolve() if value.is_absolute() else (PROJECT_ROOT / value).resolve()
 
     @field_validator("rag_base_url", mode="after")

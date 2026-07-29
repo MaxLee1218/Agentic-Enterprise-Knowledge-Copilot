@@ -227,5 +227,8 @@ verification persistence, audit, and the completion gate.
 
 Stage 9 adds the production deterministic Report Tool, a common strong report model, PDF/JSON
 renderers, stricter atomic Artifact persistence, and report consistency checks. The final
-verification gate remains after Artifact generation. DOCX, XLSX, Markdown, HTML, LangGraph, an LLM
-planner, and an LLM verifier remain outside the frozen v1.0 implementation.
+verification gate remains after Artifact generation.
+
+Stage 10 adds deterministic LangGraph scheduling and SQLite checkpoint/restart recovery around
+those same boundaries. DOCX, XLSX, Markdown, HTML, an LLM planner, automatic replanning,
+human-approval APIs, and an LLM verifier remain outside the frozen v1.0 implementation.

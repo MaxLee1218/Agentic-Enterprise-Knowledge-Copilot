@@ -5,8 +5,8 @@ system. This milestone provides configuration, CLI, API health checks, frozen v1
 contracts, a governed tool-runtime foundation, HTTP Enterprise RAG and read-only SQLite database
 adapters, and one
 deterministic offline Supplier Quality workflow with evidence, audit, retries, verification, and
-production deterministic PDF/JSON report generation. Agent graph execution, dynamic planning, and
-durable persistence remain future work.
+production deterministic PDF/JSON report generation, and a LangGraph workflow with SQLite
+checkpoint/restart recovery. Dynamic and LLM planning remain future work.
 
 The typed Supplier Quality Analysis contracts and lifecycle are documented in
 [Domain Contracts](docs/domain-contracts.md).
@@ -72,8 +72,8 @@ The Database Tool accepts only the frozen query-template contract, never caller-
 See [Database Tool](docs/database-tool.md) for the schema, read-only boundary, Evidence model, and
 PostgreSQL migration notes.
 
-The default development/test fixed workflow runs without an LLM, database, network, or other
-external service. It writes a verified `QUALITY_ANALYSIS_REPORT_JSON` file beneath `ARTIFACT_DIR`
+The default development/test LangGraph workflow runs without an LLM, network, or external
+service. It writes a verified `QUALITY_ANALYSIS_REPORT_JSON` file beneath `ARTIFACT_DIR`
 (default `data/artifacts`) and prints its ID, path, checksum, and size. Pass
 `--report-format PDF` to generate and independently verify the frozen PDF alternative. Markdown
 and HTML are intentionally not emitted because the frozen Supplier Quality v1.0 Artifact contract
@@ -86,6 +86,11 @@ After report generation, deterministic Evidence, lineage, deliverable, citation,
 and Artifact verifiers produce a persisted structured result. A Task reaches `COMPLETED` only when
 that result has no Errors. See
 [Evidence Ledger and Deterministic Verification](docs/evidence-and-verification.md).
+
+LangGraph supplies explicit nodes, routing, bounded tool loops, SQLite checkpointing, and
+task/tenant-scoped resume. Domain facts, Evidence, Artifact metadata, leases, and audit remain in
+separate business tables rather than using checkpoints as the source of truth. See
+[Deterministic LangGraph Workflow](docs/langgraph-workflow.md).
 
 ## Tool Runtime
 

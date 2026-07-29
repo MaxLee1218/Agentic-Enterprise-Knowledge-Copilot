@@ -27,3 +27,9 @@ Verifier still decides whether the Task may reach `COMPLETED`.
 
 See [`evidence-and-verification.md`](evidence-and-verification.md) for verifier rules and the
 documented conflict between the proposed pre-report ordering and the frozen lifecycle.
+
+The lifecycle is now scheduled by explicit LangGraph nodes. SQLite checkpoints are written after
+graph steps, while separate SQLite business tables remain authoritative for TaskState, results,
+Evidence, Artifact metadata, audit, and leases. Resume uses the tenant/task checkpoint key and
+continues the next safe node without repeating committed successful steps. See
+[`langgraph-workflow.md`](langgraph-workflow.md).

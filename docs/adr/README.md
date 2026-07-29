@@ -91,3 +91,4 @@ What becomes easier or harder, including operational and migration effects?
 | ADR | Status | Date | Decision |
 |---|---|---|---|
 | [ADR-001](ADR-001-package-and-layer-boundary.md) | Accepted | 2026-07-21 | Use one `copilot` production package with explicit conceptual layer and dependency boundaries |
+| [ADR-002](ADR-002-langgraph-orchestration.md) | Accepted | 2026-07-28 | Use LangGraph orchestration with separate SQLite checkpoints, business facts, and execution leases |

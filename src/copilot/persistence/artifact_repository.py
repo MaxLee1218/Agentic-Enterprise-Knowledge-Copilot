@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import sqlite3
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -93,12 +94,34 @@ class LocalArtifactRepository:
         *,
         clock: Callable[[], datetime],
         max_size_bytes: int = 10 * 1024 * 1024,
+        database_path: Path | None = None,
     ) -> None:
         self._root = root.resolve()
         self._clock = clock
         self._writer = AtomicArtifactWriter(self._root, max_size_bytes=max_size_bytes)
         self._artifacts: dict[str, Artifact] = {}
         self._lock = RLock()
+        self._database = (
+            sqlite3.connect(database_path, check_same_thread=False)
+            if database_path is not None
+            else None
+        )
+        if self._database is not None:
+            self._database.execute(
+                """
+                CREATE TABLE IF NOT EXISTS workflow_artifacts (
+                    artifact_id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    payload_json TEXT NOT NULL
+                )
+                """
+            )
+            self._database.commit()
+            for row in self._database.execute(
+                "SELECT payload_json FROM workflow_artifacts ORDER BY rowid"
+            ):
+                artifact = Artifact.model_validate_json(row[0])
+                self._artifacts[artifact.artifact_id] = artifact
 
     def write(
         self,
@@ -187,12 +210,35 @@ class LocalArtifactRepository:
         with self._lock:
             artifact = self._artifacts.pop(artifact_id)
             self._writer.delete(Path(artifact.location))
+            if self._database is not None:
+                self._database.execute(
+                    "DELETE FROM workflow_artifacts WHERE artifact_id = ?",
+                    (artifact_id,),
+                )
+                self._database.commit()
 
     def _save_metadata(self, artifact: Artifact) -> None:
         """Commit metadata after final bytes have been verified."""
         if artifact.artifact_id in self._artifacts:
             raise ValueError("artifact identifier already exists")
+        if self._database is not None:
+            try:
+                self._database.execute(
+                    "INSERT INTO workflow_artifacts VALUES (?, ?, ?)",
+                    (artifact.artifact_id, artifact.task_id, artifact.model_dump_json()),
+                )
+                self._database.commit()
+            except Exception:
+                self._database.rollback()
+                raise
         self._artifacts[artifact.artifact_id] = artifact
+
+    def close(self) -> None:
+        """Close the optional durable Artifact metadata connection."""
+        with self._lock:
+            if self._database is not None:
+                self._database.close()
+                self._database = None
 
 
 __all__ = ["AtomicArtifactWriter", "LocalArtifactRepository", "WrittenArtifact"]

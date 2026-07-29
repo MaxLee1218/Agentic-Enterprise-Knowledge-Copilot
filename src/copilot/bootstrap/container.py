@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from time import sleep
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
+
+from copilot.agent.graph import LangGraphWorkflowEngine
+from copilot.agent.runtime import GraphNodeRuntime
+from copilot.agent.state import checkpoint_serializer
 from copilot.bootstrap.knowledge import build_http_knowledge_client
 from copilot.config import PROJECT_ROOT, Settings
 from copilot.contracts.validators import utc_now
@@ -25,7 +33,6 @@ from copilot.services.workflows.fixed_plan import SupplierQualityAnalysisPlanFac
 from copilot.services.workflows.inputs import StepInputBuilder
 from copilot.services.workflows.ports import IdentifierFactory
 from copilot.services.workflows.retry import WorkflowRetryPolicy
-from copilot.services.workflows.runner import WorkflowRunner
 from copilot.services.workflows.service import SupplierQualityWorkflowService
 from copilot.services.workflows.state_machine import TaskStateMachine
 from copilot.services.workflows.validation import PlanValidator
@@ -62,6 +69,9 @@ class WorkflowContainer:
     database_tool: MockDatabaseTool | DatabaseTool
     analytics_tool: MockAnalyticsTool | AnalyticsTool
     report_tool: MockReportTool | ReportTool
+    graph_runtime: GraphNodeRuntime
+    engine: LangGraphWorkflowEngine
+    checkpoint_connection: sqlite3.Connection | None = None
 
     def close(self) -> None:
         """Release the executor's owned worker pool."""
@@ -70,6 +80,13 @@ class WorkflowContainer:
             self.knowledge_client.close()
         if isinstance(self.database_tool, DatabaseTool):
             self.database_tool.close()
+        self.evidence.close()
+        self.artifacts.close()
+        self.repository.close()
+        self.tool_audit.close()
+        self.workflow_audit.close()
+        if self.checkpoint_connection is not None:
+            self.checkpoint_connection.close()
 
     def __enter__(self) -> WorkflowContainer:
         return self
@@ -89,21 +106,29 @@ def build_workflow_container(
     analytics_behavior: MockBehavior | None = None,
     report_behavior: MockBehavior | None = None,
     use_real_database: bool | None = None,
+    interrupt_after: tuple[str, ...] = (),
 ) -> WorkflowContainer:
     """Construct all application ports and offline adapters without global mutable state."""
     identifier_factory = ids or UuidIdentifierFactory()
+    if settings.checkpoint_enabled:
+        settings.checkpoint_database_path.parent.mkdir(parents=True, exist_ok=True)
     evidence = InMemoryEvidenceLedger(
         id_factory=lambda: identifier_factory.new_id("E"),
         clock=clock,
+        database_path=(settings.checkpoint_database_path if settings.checkpoint_enabled else None),
     )
     artifacts = LocalArtifactRepository(
         settings.artifact_path,
         clock=clock,
         max_size_bytes=settings.report_max_size_bytes,
+        database_path=(settings.checkpoint_database_path if settings.checkpoint_enabled else None),
     )
-    repository = InMemoryWorkflowRepository()
-    tool_audit = InMemoryToolAuditRepository()
-    workflow_audit = InMemoryWorkflowAuditRepository()
+    repository = InMemoryWorkflowRepository(
+        settings.checkpoint_database_path if settings.checkpoint_enabled else None
+    )
+    audit_database_path = settings.checkpoint_database_path if settings.checkpoint_enabled else None
+    tool_audit = InMemoryToolAuditRepository(audit_database_path)
+    workflow_audit = InMemoryWorkflowAuditRepository(audit_database_path)
     schema_registry = SchemaRegistry()
     knowledge_client: HttpKnowledgeClient | None = None
     if settings.app_env == "production":
@@ -164,7 +189,7 @@ def build_workflow_container(
     )
     plan_factory = SupplierQualityAnalysisPlanFactory(registry)
     state_machine = TaskStateMachine(clock=clock, ids=identifier_factory)
-    runner = WorkflowRunner(
+    runtime = GraphNodeRuntime(
         tool_executor=executor,
         registry=registry,
         plan_validator=PlanValidator(
@@ -193,12 +218,39 @@ def build_workflow_container(
         ids=identifier_factory,
         clock=clock,
         sleeper=sleeper or sleep,
+        max_task_steps=settings.max_task_steps,
+        max_replan_count=settings.max_replan_count,
+    )
+    checkpoint_connection: sqlite3.Connection | None = None
+    checkpointer: BaseCheckpointSaver[str]
+    checkpoint_serde = checkpoint_serializer()
+    if settings.checkpoint_enabled:
+        settings.checkpoint_database_path.parent.mkdir(parents=True, exist_ok=True)
+        checkpoint_connection = sqlite3.connect(
+            settings.checkpoint_database_path,
+            timeout=settings.checkpoint_connection_timeout_seconds,
+            check_same_thread=False,
+        )
+        checkpointer = SqliteSaver(checkpoint_connection, serde=checkpoint_serde)
+    else:
+        checkpointer = InMemorySaver(serde=checkpoint_serde)
+    engine = LangGraphWorkflowEngine(
+        runtime=runtime,
+        checkpointer=checkpointer,
+        repository=repository,
+        evidence_reader=evidence,
+        state_machine=state_machine,
+        ids=identifier_factory,
+        clock=clock,
+        recursion_limit=settings.graph_recursion_limit,
+        interrupt_after=interrupt_after,
     )
     service = SupplierQualityWorkflowService(
-        runner=runner,
+        engine=engine,
         plan_factory=plan_factory,
         ids=identifier_factory,
         clock=clock,
+        max_total_execution_seconds=settings.max_total_execution_seconds,
     )
     return WorkflowContainer(
         service=service,
@@ -214,4 +266,7 @@ def build_workflow_container(
         database_tool=database_tool,
         analytics_tool=analytics_tool,
         report_tool=report_tool,
+        graph_runtime=runtime,
+        engine=engine,
+        checkpoint_connection=checkpoint_connection,
     )

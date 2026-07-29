@@ -51,3 +51,16 @@ def test_created_cannot_jump_directly_to_completed() -> None:
     machine = TaskStateMachine(clock=_clock, ids=SequentialIdentifierFactory())
     with pytest.raises(StateTransitionError):
         machine.transition(machine.initial("T-001"), "VERIFICATION_PASSED", reason="invalid")
+
+
+def test_cancellation_and_approval_waiting_follow_frozen_transitions() -> None:
+    machine = TaskStateMachine(clock=_clock, ids=SequentialIdentifierFactory())
+    state = machine.initial("T-001")
+    state, _ = machine.transition(state, "START_UNDERSTANDING", reason="test")
+    state, _ = machine.transition(state, "CONTRACT_VALIDATED", reason="test")
+    state, _ = machine.transition(state, "APPROVAL_REQUIRED", reason="test")
+    assert state.state is TaskStatus.WAITING_APPROVAL
+
+    state, _ = machine.transition(state, "CANCEL_REQUESTED", reason="test")
+
+    assert state.state is TaskStatus.CANCELLED

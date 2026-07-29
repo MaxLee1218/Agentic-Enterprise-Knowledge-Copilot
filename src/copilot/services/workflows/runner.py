@@ -53,7 +53,7 @@ from copilot.tools.registry import ToolRegistry
 
 
 class WorkflowRunner:
-    """Coordinate state, dependencies, governed calls, evidence, retries, and finalization."""
+    """Deprecated serial regression runner; production composition uses LangGraph."""
 
     def __init__(
         self,

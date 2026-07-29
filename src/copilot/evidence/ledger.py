@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 from collections.abc import Callable
 from copy import deepcopy
 from datetime import datetime
+from pathlib import Path
 from threading import RLock
 from typing import cast
 from uuid import uuid4
@@ -56,12 +58,35 @@ class InMemoryEvidenceLedger:
         *,
         id_factory: Callable[[], str] | None = None,
         clock: Callable[[], datetime] | None = None,
+        database_path: Path | None = None,
     ) -> None:
         self._id_factory = id_factory or (lambda: f"E-{uuid4().hex}")
         self._clock = clock or utc_now
         self._items: dict[str, EvidenceItem] = {}
         self._fingerprints: dict[tuple[str, str], str] = {}
         self._lock = RLock()
+        self._database = (
+            sqlite3.connect(database_path, check_same_thread=False)
+            if database_path is not None
+            else None
+        )
+        if self._database is not None:
+            self._database.execute(
+                """
+                CREATE TABLE IF NOT EXISTS workflow_evidence (
+                    evidence_id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    payload_json TEXT NOT NULL
+                )
+                """
+            )
+            self._database.commit()
+            for row in self._database.execute(
+                "SELECT payload_json FROM workflow_evidence ORDER BY rowid"
+            ):
+                item = EvidenceItem.model_validate_json(row[0])
+                self._items[item.evidence_id] = item
+                self._fingerprints[(item.task_id, evidence_fingerprint(item))] = item.evidence_id
 
     def record(self, call: ToolCall, drafts: tuple[EvidenceDraft, ...]) -> tuple[EvidenceItem, ...]:
         """Bind drafts to one governed call and atomically append canonical evidence."""
@@ -92,12 +117,22 @@ class InMemoryEvidenceLedger:
                     )
                 )
             results = self._add_many_locked(tuple(pending), call.task_id)
+            try:
+                self._persist_created(results)
+            except Exception:
+                self._rollback_created(results)
+                raise
             return tuple(_copy_item(result.evidence) for result in results)
 
     def add(self, evidence: EvidenceItem) -> EvidenceAddResult:
         """Append one item or return the existing canonical logical duplicate."""
         with self._lock:
             result = self._add_locked(_copy_item(evidence))
+            try:
+                self._persist_created((result,))
+            except Exception:
+                self._rollback_created((result,))
+                raise
             return result.model_copy(deep=True)
 
     def get(self, evidence_id: str, *, task_id: str | None = None) -> EvidenceItem:
@@ -360,6 +395,40 @@ class InMemoryEvidenceLedger:
             self._items[stored.evidence_id] = stored
             self._fingerprints[key] = stored.evidence_id
         return tuple(results)
+
+    def close(self) -> None:
+        """Close the optional durable Evidence connection."""
+        with self._lock:
+            if self._database is not None:
+                self._database.close()
+                self._database = None
+
+    def _persist_created(self, results: tuple[EvidenceAddResult, ...]) -> None:
+        if self._database is None:
+            return
+        try:
+            for result in results:
+                if result.created:
+                    self._database.execute(
+                        "INSERT INTO workflow_evidence VALUES (?, ?, ?)",
+                        (
+                            result.evidence.evidence_id,
+                            result.evidence.task_id,
+                            result.evidence.model_dump_json(),
+                        ),
+                    )
+            self._database.commit()
+        except Exception:
+            self._database.rollback()
+            raise
+
+    def _rollback_created(self, results: tuple[EvidenceAddResult, ...]) -> None:
+        for result in results:
+            if not result.created:
+                continue
+            item = self._items.pop(result.evidence.evidence_id, None)
+            if item is not None:
+                self._fingerprints.pop((item.task_id, evidence_fingerprint(item)), None)
 
     def _add_locked(self, item: EvidenceItem) -> EvidenceAddResult:
         if item.evidence_id in self._items:

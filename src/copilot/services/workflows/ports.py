@@ -119,6 +119,18 @@ class WorkflowRepository(Protocol):
         """Append the task's deterministic verification result."""
         ...
 
+    def state_for(self, task_id: str) -> TaskState:
+        """Return the authoritative persisted domain-state snapshot."""
+        ...
+
+    def acquire_execution(self, task_id: str, owner_id: str) -> None:
+        """Acquire the single-task execution lease or raise on a conflict."""
+        ...
+
+    def release_execution(self, task_id: str, owner_id: str) -> None:
+        """Release a lease owned by the current workflow engine."""
+        ...
+
 
 class WorkflowAuditSink(Protocol):
     """Fail-closed append-only structured workflow event sink."""

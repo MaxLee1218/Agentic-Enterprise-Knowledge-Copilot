@@ -9,8 +9,8 @@ Machine-checked governance covers the dependency matrix and calling direction. I
 layer boundary, composition root, and transaction boundary where static analysis can enforce it.
 
 Most packages remain scaffolds. Today, the stable domain contracts, governed tool runtime, and one
-serial deterministic offline Supplier Quality workflow are implemented. The agent graph, dynamic
-planner, real enterprise adapters, durable persistence, and MCP interoperability are not. A path
+deterministic offline Supplier Quality LangGraph workflow are implemented. Dynamic/LLM planning,
+general enterprise adapters, distributed persistence, and MCP interoperability are not. A path
 in this document identifies an approved boundary, not proof that every capability is implemented.
 
 ## 1. System Architecture
@@ -50,10 +50,10 @@ renderer implementation directly.
 | Conceptual responsibility | Repository packages | Status and boundary |
 |---|---|---|
 | Domain | `copilot.contracts` | Implemented v1.0 typed contracts; provider- and framework-independent |
-| Application | `copilot.services`, `copilot.agent`, `copilot.policies` | Deterministic workflow services and narrow offline policy implemented; agent graph remains scaffold |
+| Application | `copilot.services`, `copilot.agent`, `copilot.policies` | Deterministic LangGraph workflow services and narrow offline policy implemented; LLM planning is not |
 | Governed capability runtime | `copilot.tools.base`, `registry`, `executor`, `runner`, `schema` | Implemented application-facing port, registration, authorization, execution, evidence, and audit sequence |
 | Capability adapters | `copilot.tools.knowledge`, `database`, `analytics`, `reporting`, offline mock module | HTTP knowledge, SQLAlchemy SQLite database, deterministic analytics, and deterministic PDF/JSON reporting adapters are implemented |
-| Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | Task-isolated Evidence Ledger, deterministic verification, in-memory workflow/audit stores, and local atomic Artifact storage support this stage; durable adapters remain planned |
+| Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | Task-isolated Evidence Ledger, deterministic verification, SQLite workflow/checkpoint/audit storage, execution leases, and local atomic Artifact storage support this stage |
 | Interfaces | `copilot.api`, `copilot.cli` | Health API, dry-run, and fixed-workflow CLI are implemented |
 | Protocol boundary | `copilot.mcp` | Future Phase 5 boundary; scaffold only |
 | Bootstrap | `copilot.bootstrap` | Composition root uses offline adapters by default and registers the real read-only Database Tool in production or when explicitly enabled |

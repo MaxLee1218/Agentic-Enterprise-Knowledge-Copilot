@@ -34,6 +34,12 @@ def test_settings_load_defaults_and_normalize_paths(
     assert settings.database_statement_timeout_seconds == 8
     assert settings.workflow_max_retries == 2
     assert settings.workflow_retry_delay_seconds == 0
+    assert settings.workflow_engine == "langgraph"
+    assert settings.checkpoint_enabled is True
+    assert settings.max_replan_count == 2
+    assert settings.max_total_execution_seconds == 300
+    assert settings.graph_recursion_limit == 100
+    assert settings.checkpoint_database_path.is_absolute()
     assert settings.artifact_path == (PROJECT_ROOT / "build/test-artifacts").resolve()
     assert settings.artifact_path.is_absolute()
 
@@ -100,4 +106,26 @@ def test_database_statement_timeout_cannot_exceed_frozen_limit(
     monkeypatch.setenv("DATABASE_STATEMENT_TIMEOUT_SECONDS", "9")
 
     with pytest.raises(ConfigurationError, match="DATABASE_STATEMENT_TIMEOUT_SECONDS"):
+        get_settings()
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("WORKFLOW_ENGINE", "fixed"),
+        ("MAX_REPLAN_COUNT", "3"),
+        ("MAX_TOTAL_EXECUTION_SECONDS", "0"),
+        ("GRAPH_RECURSION_LIMIT", "10"),
+        ("CHECKPOINT_CLEANUP_POLICY", "delete"),
+    ],
+)
+def test_invalid_workflow_graph_configuration_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    value: str,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///test.db")
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ConfigurationError, match=name):
         get_settings()

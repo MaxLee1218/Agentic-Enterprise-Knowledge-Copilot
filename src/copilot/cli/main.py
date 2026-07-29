@@ -71,6 +71,7 @@ def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
             typer.echo(f"Invalid input: {exc}", err=True)
             raise typer.Exit(code=2) from exc
         typer.echo(f"Task ID: {execution.task_result.task_id}")
+        typer.echo(f"Trace ID: {execution.task_result.task_id}")
         typer.echo(f"Task status: {execution.task_result.final_status.value}")
         typer.echo("Step summary:")
         for result, record in zip(execution.step_results, execution.step_executions, strict=True):

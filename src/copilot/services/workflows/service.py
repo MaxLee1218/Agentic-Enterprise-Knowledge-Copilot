@@ -1,4 +1,4 @@
-"""Use-case service that creates frozen contracts and runs the fixed plan."""
+"""Use-case service that creates frozen contracts and starts governed orchestration."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import re
 from calendar import monthrange
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
+from typing import Protocol
 
 from copilot.contracts import (
     ApprovalRequirement,
@@ -16,13 +17,27 @@ from copilot.contracts import (
     ReportLanguage,
     TaskConstraints,
     TaskContract,
+    TaskPlan,
     TaskRequest,
     TaskType,
 )
 from copilot.services.workflows.fixed_plan import SupplierQualityAnalysisPlanFactory
 from copilot.services.workflows.models import SupplierQualityCommand, WorkflowExecution
 from copilot.services.workflows.ports import IdentifierFactory
-from copilot.services.workflows.runner import WorkflowRunner
+
+
+class WorkflowEngine(Protocol):
+    """Stable orchestration boundary used by application services."""
+
+    def start(
+        self,
+        request: TaskRequest,
+        contract: TaskContract,
+        plan: TaskPlan,
+    ) -> WorkflowExecution:
+        """Start one governed workflow."""
+        ...
+
 
 _TIME_RANGE = re.compile(r"^(?P<year>\d{4})-Q(?P<quarter>[1-4])$")
 
@@ -33,18 +48,20 @@ class SupplierQualityWorkflowService:
     def __init__(
         self,
         *,
-        runner: WorkflowRunner,
+        engine: WorkflowEngine,
         plan_factory: SupplierQualityAnalysisPlanFactory,
         ids: IdentifierFactory,
         clock: Callable[[], datetime],
+        max_total_execution_seconds: int = 300,
     ) -> None:
-        self._runner = runner
+        self._engine = engine
         self._plan_factory = plan_factory
         self._ids = ids
         self._clock = clock
+        self._max_total_execution_seconds = max_total_execution_seconds
 
     def execute(self, command: SupplierQualityCommand) -> WorkflowExecution:
-        """Create immutable request/contract objects and run their fixed plan."""
+        """Create immutable request/contract objects and start their governed workflow."""
         year, quarter, start_date, end_date = parse_time_range(command.time_range)
         if not command.supplier_id.strip():
             raise ValueError("supplier_id must not be blank")
@@ -110,13 +127,13 @@ class SupplierQualityWorkflowService:
                     "defect_rate",
                     "period_over_period_trend",
                 ),
-                deadline_at=now + timedelta(minutes=5),
+                deadline_at=now + timedelta(seconds=self._max_total_execution_seconds),
             ),
             approval_requirement=ApprovalRequirement(required=False),
             created_at=now,
         )
         plan = self._plan_factory.create(request, contract)
-        return self._runner.run(request, contract, plan)
+        return self._engine.start(request, contract, plan)
 
 
 def parse_time_range(value: str) -> tuple[int, int, date, date]:

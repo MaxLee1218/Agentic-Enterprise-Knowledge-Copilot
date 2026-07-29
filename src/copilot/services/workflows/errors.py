@@ -19,3 +19,7 @@ class StateTransitionError(WorkflowError):
 
 class VerificationError(WorkflowError):
     """Raised when final evidence or artifact verification fails."""
+
+
+class WorkflowRecoveryError(WorkflowError):
+    """Raised when durable domain state and a checkpoint cannot be reconciled safely."""
