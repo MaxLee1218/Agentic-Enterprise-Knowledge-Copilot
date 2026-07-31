@@ -17,8 +17,10 @@ from copilot.agent.routing import (
     route_after_classification,
     route_after_evidence,
     route_after_plan_creation,
+    route_after_plan_repair,
     route_after_plan_validation,
     route_after_policy,
+    route_after_replan,
     route_after_report,
     route_after_tool,
     route_after_understanding,
@@ -51,6 +53,8 @@ def build_agent_graph(
     builder.add_node("classify_task", partial(nodes.classify_task, node_runtime=runtime))
     builder.add_node("create_plan", partial(nodes.create_plan, node_runtime=runtime))
     builder.add_node("validate_plan", partial(nodes.validate_plan, node_runtime=runtime))
+    builder.add_node("repair_plan", partial(nodes.repair_plan, node_runtime=runtime))
+    builder.add_node("replan", partial(nodes.replan, node_runtime=runtime))
     builder.add_node("policy_check", partial(nodes.policy_check, node_runtime=runtime))
     builder.add_node("execute_tool", partial(nodes.execute_tool, node_runtime=runtime))
     builder.add_node("aggregate_evidence", partial(nodes.aggregate_evidence, node_runtime=runtime))
@@ -64,6 +68,8 @@ def build_agent_graph(
     builder.add_conditional_edges("classify_task", route_after_classification)
     builder.add_conditional_edges("create_plan", route_after_plan_creation)
     builder.add_conditional_edges("validate_plan", route_after_plan_validation)
+    builder.add_conditional_edges("repair_plan", route_after_plan_repair)
+    builder.add_conditional_edges("replan", route_after_replan)
     builder.add_conditional_edges("policy_check", route_after_policy)
     builder.add_conditional_edges("execute_tool", route_after_tool)
     builder.add_conditional_edges("generate_report", route_after_report)
@@ -188,6 +194,7 @@ class LangGraphWorkflowEngine:
         ordered_records = tuple(
             records[step.step_id] for step in state["plan"].steps if step.step_id in records
         )
+        active_artifact = state.get("active_artifact")
         return WorkflowExecution(
             task_result=state["task_result"],
             final_state=state["domain_state"],
@@ -196,7 +203,7 @@ class LangGraphWorkflowEngine:
             evidence=tuple(
                 self._evidence_reader.get(evidence_id) for evidence_id in state["evidence_ids"]
             ),
-            artifacts=tuple(state["artifacts"]),
+            artifacts=(active_artifact,) if active_artifact is not None else (),
             verification_result=state["verification_result"],
             started_at=state["started_at"],
             completed_at=completed_at,

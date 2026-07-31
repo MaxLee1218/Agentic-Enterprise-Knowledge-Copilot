@@ -116,6 +116,61 @@ class InMemoryWorkflowRepository:
             self._state_events.append(event)
             self._states[current.task_id] = current
 
+    def save_contract(self, contract: TaskContract) -> None:
+        """Persist the understanding result before any business tool execution."""
+        with self._lock:
+            if contract.task_id not in self._states:
+                raise ValueError("workflow task was not initialized")
+            if self._tool_results:
+                existing_task_results = [
+                    result for result in self._tool_results if result.task_id == contract.task_id
+                ]
+                if existing_task_results:
+                    raise ValueError("contract cannot change after tool execution")
+            existing = self._contracts[contract.task_id]
+            if contract.contract_version < existing.contract_version:
+                raise ValueError("contract version cannot decrease")
+            if self._database is not None:
+                with self._database:
+                    self._database.execute(
+                        "UPDATE workflow_tasks SET contract_json = ? WHERE task_id = ?",
+                        (contract.model_dump_json(), contract.task_id),
+                    )
+            self._contracts[contract.task_id] = contract
+
+    def save_plan(self, plan: TaskPlan) -> None:
+        """Persist an LLM candidate as the current plan before tool execution."""
+        with self._lock:
+            if plan.task_id not in self._states:
+                raise ValueError("workflow task was not initialized")
+            existing = self._plans[plan.task_id]
+            if plan == existing:
+                return
+            if any(result.task_id == plan.task_id for result in self._tool_results):
+                if plan.planning_version <= existing.planning_version:
+                    raise ValueError("replan version must increase after tool execution")
+            elif plan.planning_version < existing.planning_version:
+                raise ValueError("plan version cannot decrease")
+            if self._database is not None:
+                with self._database:
+                    self._database.execute(
+                        """
+                        INSERT OR IGNORE INTO workflow_plan_history
+                        (task_id, planning_version, plan_json)
+                        VALUES (?, ?, ?)
+                        """,
+                        (
+                            existing.task_id,
+                            existing.planning_version,
+                            existing.model_dump_json(),
+                        ),
+                    )
+                    self._database.execute(
+                        "UPDATE workflow_tasks SET plan_json = ? WHERE task_id = ?",
+                        (plan.model_dump_json(), plan.task_id),
+                    )
+            self._plans[plan.task_id] = plan
+
     def save_tool_result(self, result: ToolResult) -> None:
         """Append one unique tool attempt."""
         with self._lock:
@@ -123,9 +178,8 @@ class InMemoryWorkflowRepository:
                 (item for item in self._tool_results if item.tool_call_id == result.tool_call_id),
                 None,
             )
-            if existing is not None:
-                if existing == result:
-                    return
+            if existing is not None and existing == result:
+                return
                 raise ValueError("tool result already exists")
             if self._database is not None:
                 with self._database:
@@ -176,14 +230,22 @@ class InMemoryWorkflowRepository:
             self._task_results[result.task_id] = result
 
     def save_verification_result(self, result: VerificationResult) -> None:
-        """Save exactly one deterministic verification result per task."""
+        """Append a verification attempt and retain the latest result for recovery."""
         with self._lock:
-            if result.task_id in self._verification_results:
-                if self._verification_results[result.task_id] == result:
-                    return
-                raise ValueError("verification result already exists")
+            existing = self._verification_results.get(result.task_id)
+            if existing is not None and existing == result:
+                return
             if self._database is not None:
                 with self._database:
+                    if existing is not None:
+                        self._database.execute(
+                            """
+                            INSERT OR IGNORE INTO workflow_verification_history
+                            (task_id, verification_json)
+                            VALUES (?, ?)
+                            """,
+                            (existing.task_id, existing.model_dump_json()),
+                        )
                     self._database.execute(
                         "UPDATE workflow_tasks SET verification_json = ? WHERE task_id = ?",
                         (result.model_dump_json(), result.task_id),
@@ -294,6 +356,17 @@ class InMemoryWorkflowRepository:
                 task_id TEXT PRIMARY KEY,
                 owner_id TEXT NOT NULL,
                 expires_at REAL NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS workflow_plan_history (
+                task_id TEXT NOT NULL,
+                planning_version INTEGER NOT NULL,
+                plan_json TEXT NOT NULL,
+                UNIQUE(task_id, planning_version, plan_json)
+            );
+            CREATE TABLE IF NOT EXISTS workflow_verification_history (
+                task_id TEXT NOT NULL,
+                verification_json TEXT NOT NULL,
+                UNIQUE(task_id, verification_json)
             );
             """
         )

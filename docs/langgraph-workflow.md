@@ -37,8 +37,11 @@ through ToolExecutor. The frozen lifecycle requires the report Artifact before v
 this implementation intentionally does not use the pre-report verification ordering shown in the
 Stage 10 proposal.
 
-Task understanding, classification, and plan creation remain deterministic. There is no LLM
-planner, prompt-based plan repair, automatic replan, multi-agent behavior, or approval-resume API.
+The default offline composition keeps deterministic task understanding and plan creation. An
+explicitly injected structured LLM service may instead generate the understanding and candidate
+plan, use a separate bounded `repair_plan` node, and use the frozen `REPLANNING` path for eligible
+verification failures. Every candidate still passes the same deterministic PlanValidator before
+policy or execution. There is no multi-agent behavior or approval-resume API.
 
 ## State and Persistence
 
@@ -66,6 +69,7 @@ duplicate effects. Exactly-once execution is not claimed.
 - `MAX_TASK_STEPS` counts first entry into business tool steps, not graph node transitions.
 - `WORKFLOW_MAX_RETRIES` is layered under each frozen `RetryPolicy`.
 - `MAX_REPLAN_COUNT` is enforced, although Stage 10 never creates a replacement plan.
+- `MAX_PLAN_REPAIR_ATTEMPTS` separately bounds pre-execution candidate repair.
 - `MAX_TOTAL_EXECUTION_SECONDS` creates the Task deadline checked before governed work.
 - `GRAPH_RECURSION_LIMIT` is a final graph-level loop guard.
 - Only idempotent, recoverable technical failures/timeouts with allowlisted error codes retry.

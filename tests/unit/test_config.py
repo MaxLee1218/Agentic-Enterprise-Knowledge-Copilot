@@ -99,6 +99,42 @@ def test_invalid_rag_trace_header_is_rejected(monkeypatch: pytest.MonkeyPatch) -
         get_settings()
 
 
+def test_mock_llm_requires_no_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///test.db")
+    monkeypatch.setenv("LLM_PROVIDER", "mock")
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+
+    settings = get_settings()
+
+    assert settings.llm_api_key is None
+    assert settings.llm_model == "deepseek-chat"
+
+
+def test_deepseek_api_key_is_required_only_at_real_provider_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///test.db")
+    monkeypatch.setenv("LLM_PROVIDER", "deepseek")
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+
+    settings = get_settings()
+
+    with pytest.raises(ConfigurationError, match="LLM_API_KEY"):
+        settings.require_llm_api_key()
+
+
+def test_llm_secret_repr_is_redacted(monkeypatch: pytest.MonkeyPatch) -> None:
+    secret = "not-visible-in-repr"
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///test.db")
+    monkeypatch.setenv("LLM_PROVIDER", "deepseek")
+    monkeypatch.setenv("LLM_API_KEY", secret)
+
+    settings = get_settings()
+
+    assert secret not in repr(settings)
+    assert settings.require_llm_api_key().get_secret_value() == secret
+
+
 def test_database_statement_timeout_cannot_exceed_frozen_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

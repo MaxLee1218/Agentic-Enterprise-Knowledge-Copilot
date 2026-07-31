@@ -6,7 +6,9 @@ contracts, a governed tool-runtime foundation, HTTP Enterprise RAG and read-only
 adapters, and one
 deterministic offline Supplier Quality workflow with evidence, audit, retries, verification, and
 production deterministic PDF/JSON report generation, and a LangGraph workflow with SQLite
-checkpoint/restart recovery. Dynamic and LLM planning remain future work.
+checkpoint/restart recovery. Stage 11 adds optional structured LLM task understanding and planning
+with DeepSeek and deterministic MockLLM providers, bounded plan repair/replan, and an unchanged
+policy/Registry/Executor execution boundary.
 
 The typed Supplier Quality Analysis contracts and lifecycle are documented in
 [Domain Contracts](docs/domain-contracts.md).
@@ -91,6 +93,18 @@ LangGraph supplies explicit nodes, routing, bounded tool loops, SQLite checkpoin
 task/tenant-scoped resume. Domain facts, Evidence, Artifact metadata, leases, and audit remain in
 separate business tables rather than using checkpoints as the source of truth. See
 [Deterministic LangGraph Workflow](docs/langgraph-workflow.md).
+
+An LLM planning service can be injected at composition time. It produces only candidate
+understanding and plans; deterministic Contract binding, PlanValidator, policy, approval,
+ToolExecutor, Evidence, and verification remain mandatory. See
+[Structured LLM Architecture](docs/llm-architecture.md) and
+[Task Understanding and Planning](docs/task-understanding-and-planning.md).
+
+The real DeepSeek smoke test is opt-in and stops after deterministic plan validation:
+
+```bash
+LLM_PROVIDER=deepseek LLM_API_KEY=... python scripts/smoke_llm_planner.py
+```
 
 ## Tool Runtime
 

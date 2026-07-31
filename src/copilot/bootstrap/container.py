@@ -20,6 +20,9 @@ from copilot.config import PROJECT_ROOT, Settings
 from copilot.contracts.validators import utc_now
 from copilot.evidence.ledger import InMemoryEvidenceLedger
 from copilot.evidence.workflow import WorkflowVerifier
+from copilot.llm.deepseek import DeepSeekProvider
+from copilot.llm.manifest import PlannerToolManifestBuilder
+from copilot.llm.planning import LLMPlanningService
 from copilot.persistence.artifact_repository import LocalArtifactRepository
 from copilot.persistence.audit_repository import (
     InMemoryToolAuditRepository,
@@ -28,6 +31,7 @@ from copilot.persistence.audit_repository import (
 from copilot.persistence.identifiers import UuidIdentifierFactory
 from copilot.persistence.task_repository import InMemoryWorkflowRepository
 from copilot.policies.offline import OfflineSupplierQualityAuthorizer
+from copilot.services.llm import LLMGenerationOptions, LLMProvider
 from copilot.services.workflows.dependency import DependencyChecker
 from copilot.services.workflows.fixed_plan import SupplierQualityAnalysisPlanFactory
 from copilot.services.workflows.inputs import StepInputBuilder
@@ -71,6 +75,8 @@ class WorkflowContainer:
     report_tool: MockReportTool | ReportTool
     graph_runtime: GraphNodeRuntime
     engine: LangGraphWorkflowEngine
+    planning_service: LLMPlanningService | None = None
+    owned_llm_provider: DeepSeekProvider | None = None
     checkpoint_connection: sqlite3.Connection | None = None
 
     def close(self) -> None:
@@ -78,6 +84,8 @@ class WorkflowContainer:
         self.executor.close()
         if self.knowledge_client is not None:
             self.knowledge_client.close()
+        if self.owned_llm_provider is not None:
+            self.owned_llm_provider.close()
         if isinstance(self.database_tool, DatabaseTool):
             self.database_tool.close()
         self.evidence.close()
@@ -107,6 +115,7 @@ def build_workflow_container(
     report_behavior: MockBehavior | None = None,
     use_real_database: bool | None = None,
     interrupt_after: tuple[str, ...] = (),
+    llm_provider: LLMProvider | None = None,
 ) -> WorkflowContainer:
     """Construct all application ports and offline adapters without global mutable state."""
     identifier_factory = ids or UuidIdentifierFactory()
@@ -188,14 +197,45 @@ def build_workflow_container(
         clock=clock,
     )
     plan_factory = SupplierQualityAnalysisPlanFactory(registry)
+    plan_validator = PlanValidator(
+        registry=registry,
+        max_task_steps=settings.max_task_steps,
+        max_planning_version=settings.max_replan_count + 1,
+    )
+    owned_llm_provider: DeepSeekProvider | None = None
+    effective_llm_provider = llm_provider
+    if effective_llm_provider is None and settings.llm_provider == "deepseek":
+        owned_llm_provider = DeepSeekProvider(
+            api_key=settings.require_llm_api_key().get_secret_value(),
+            model=settings.llm_model,
+            base_url=str(settings.llm_base_url),
+            connect_timeout_seconds=settings.llm_connect_timeout_seconds,
+            read_timeout_seconds=settings.llm_read_timeout_seconds,
+            max_retries=settings.llm_max_retries,
+            retry_base_delay_seconds=settings.llm_retry_base_delay_seconds,
+            user_agent=settings.llm_user_agent,
+            trace_header=settings.llm_trace_header,
+        )
+        effective_llm_provider = owned_llm_provider
+    planning_service = (
+        LLMPlanningService(
+            provider=effective_llm_provider,
+            manifest_builder=PlannerToolManifestBuilder(registry),
+            validator=plan_validator,
+            options=LLMGenerationOptions(
+                temperature=settings.llm_temperature,
+                max_output_tokens=settings.llm_max_output_tokens,
+            ),
+            max_plan_repair_attempts=settings.max_plan_repair_attempts,
+        )
+        if effective_llm_provider is not None
+        else None
+    )
     state_machine = TaskStateMachine(clock=clock, ids=identifier_factory)
     runtime = GraphNodeRuntime(
         tool_executor=executor,
         registry=registry,
-        plan_validator=PlanValidator(
-            registry=registry,
-            max_task_steps=settings.max_task_steps,
-        ),
+        plan_validator=plan_validator,
         dependency_checker=DependencyChecker(),
         input_builder=StepInputBuilder(),
         retry_policy=WorkflowRetryPolicy(
@@ -220,6 +260,8 @@ def build_workflow_container(
         sleeper=sleeper or sleep,
         max_task_steps=settings.max_task_steps,
         max_replan_count=settings.max_replan_count,
+        max_plan_repair_attempts=settings.max_plan_repair_attempts,
+        planning_service=planning_service,
     )
     checkpoint_connection: sqlite3.Connection | None = None
     checkpointer: BaseCheckpointSaver[str]
@@ -268,5 +310,7 @@ def build_workflow_container(
         report_tool=report_tool,
         graph_runtime=runtime,
         engine=engine,
+        planning_service=planning_service,
+        owned_llm_provider=owned_llm_provider,
         checkpoint_connection=checkpoint_connection,
     )

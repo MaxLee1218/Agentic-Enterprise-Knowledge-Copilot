@@ -19,6 +19,8 @@ from copilot.agent.state import AgentGraphState
         (nodes.classify_task, "classify_task"),
         (nodes.create_plan, "create_plan"),
         (nodes.validate_plan, "validate_plan"),
+        (nodes.repair_plan, "repair_plan"),
+        (nodes.replan, "replan"),
         (nodes.policy_check, "policy_check"),
         (nodes.execute_tool, "execute_tool"),
         (nodes.aggregate_evidence, "aggregate_evidence"),

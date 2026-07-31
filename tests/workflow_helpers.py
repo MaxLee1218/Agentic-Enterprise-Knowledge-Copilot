@@ -8,6 +8,7 @@ from pathlib import Path
 from copilot.bootstrap.container import WorkflowContainer, build_workflow_container
 from copilot.config import Settings
 from copilot.persistence.identifiers import SequentialIdentifierFactory
+from copilot.services.llm import LLMProvider
 from copilot.services.workflows.ports import IdentifierFactory
 from copilot.tools.mock_supplier_quality import MockBehavior
 
@@ -30,6 +31,7 @@ def build_test_container(
     report_behavior: MockBehavior | None = None,
     interrupt_after: tuple[str, ...] = (),
     ids: IdentifierFactory | None = None,
+    llm_provider: LLMProvider | None = None,
 ) -> WorkflowContainer:
     """Compose the real runner/runtime with offline adapters and no real waiting."""
     settings = Settings(
@@ -52,4 +54,5 @@ def build_test_container(
         report_behavior=report_behavior,
         use_real_database=use_real_database,
         interrupt_after=interrupt_after,
+        llm_provider=llm_provider,
     )

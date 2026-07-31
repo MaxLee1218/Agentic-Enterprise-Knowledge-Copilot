@@ -103,6 +103,14 @@ class WorkflowRepository(Protocol):
         """Compare-and-swap a state and append its event atomically."""
         ...
 
+    def save_contract(self, contract: TaskContract) -> None:
+        """Persist a validated understanding result before planning."""
+        ...
+
+    def save_plan(self, plan: TaskPlan) -> None:
+        """Persist the current validated candidate while retaining prior versions."""
+        ...
+
     def save_tool_result(self, result: ToolResult) -> None:
         """Append one immutable tool attempt result."""
         ...

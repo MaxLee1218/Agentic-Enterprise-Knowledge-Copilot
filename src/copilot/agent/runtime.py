@@ -25,8 +25,9 @@ from copilot.contracts import (
     ToolResultStatus,
     VerificationStatus,
 )
+from copilot.services.llm import LLMErrorCode, LLMProviderError
 from copilot.services.workflows.dependency import DependencyChecker
-from copilot.services.workflows.errors import PlanValidationError, StepInputError
+from copilot.services.workflows.errors import StepInputError
 from copilot.services.workflows.fixed_plan import SUPPLIER_QUALITY_PLAN_ID
 from copilot.services.workflows.inputs import StepInputBuilder, summarize_payload
 from copilot.services.workflows.models import (
@@ -35,6 +36,7 @@ from copilot.services.workflows.models import (
     WorkflowAuditRecord,
     WorkflowExecutionContext,
 )
+from copilot.services.workflows.planning import PlanningService
 from copilot.services.workflows.ports import (
     ArtifactStore,
     EvidenceReader,
@@ -45,10 +47,23 @@ from copilot.services.workflows.ports import (
 )
 from copilot.services.workflows.retry import WorkflowRetryPolicy
 from copilot.services.workflows.state_machine import TaskStateMachine
-from copilot.services.workflows.validation import PlanValidator
+from copilot.services.workflows.validation import PlanValidationIssue, PlanValidator
 from copilot.tools.exceptions import ToolRuntimeError, ToolValidationError
 from copilot.tools.executor import ToolExecutor
 from copilot.tools.registry import ToolRegistry
+
+_REPAIRABLE_VERIFICATION_CODES = {
+    "ARTIFACT_CHECKSUM_MISMATCH",
+    "ARTIFACT_CITATION_COVERAGE_INCOMPLETE",
+    "ARTIFACT_REPORT_MODEL_INVALID",
+    "CITATION_REQUIRED",
+    "CITATION_REFERENCE_INVALID",
+    "NUMERIC_CLAIM_MISMATCH",
+    "NUMERIC_PRECISION_MISMATCH",
+    "NUMERIC_RANKING_MISMATCH",
+    "NUMERIC_UNIT_MISMATCH",
+    "NUMERIC_VALUE_MISMATCH",
+}
 
 
 class GraphNodeRuntime:
@@ -74,6 +89,8 @@ class GraphNodeRuntime:
         sleeper: Callable[[float], None],
         max_task_steps: int,
         max_replan_count: int,
+        max_plan_repair_attempts: int = 2,
+        planning_service: PlanningService | None = None,
     ) -> None:
         self._tool_executor = tool_executor
         self._registry = registry
@@ -92,6 +109,8 @@ class GraphNodeRuntime:
         self._sleeper = sleeper
         self._max_task_steps = max_task_steps
         self._max_replan_count = max_replan_count
+        self._max_plan_repairs = max_plan_repair_attempts
+        self._planning_service = planning_service
 
     def validate_request(self, state: AgentGraphState) -> dict[str, object]:
         """Reject inconsistent, terminal, cancelled, expired, or over-budget input."""
@@ -121,8 +140,9 @@ class GraphNodeRuntime:
         )
 
     def understand_task(self, state: AgentGraphState) -> dict[str, object]:
-        """Use the existing deterministic TaskContract and enter UNDERSTANDING."""
+        """Interpret the request through an optional injected LLM planning boundary."""
         started = self._clock()
+        self._emit(state, "TASK_UNDERSTANDING_STARTED", status="STARTED")
         error = self._guard(state, "understand_task")
         if error is not None:
             return self._node_result(
@@ -138,7 +158,59 @@ class GraphNodeRuntime:
             domain_state = self._transition(
                 state, domain_state, "START_UNDERSTANDING", "Authenticated request accepted"
             )
-        constraints = state["contract"].constraints
+        contract = state["contract"]
+        if self._planning_service is not None:
+            try:
+                outcome = self._planning_service.understand(
+                    request=state["request"],
+                    trusted_contract=contract,
+                    trace_id=state["trace_id"],
+                    max_steps=self._max_task_steps,
+                )
+            except LLMProviderError as exc:
+                error = self._llm_error(state, exc, "understand_task")
+                domain_state = self._transition(
+                    state, domain_state, "UNDERSTANDING_FAILED", error.message
+                )
+                self._emit(
+                    state,
+                    "TASK_UNDERSTANDING_FAILED",
+                    status=exc.code.value,
+                )
+                return self._node_result(
+                    state,
+                    "understand_task",
+                    started,
+                    "llm_failure",
+                    error.message,
+                    domain_state=domain_state,
+                    errors=[error],
+                )
+            if outcome.contract is None:
+                message = "; ".join(outcome.missing_information)
+                error = self._error(
+                    state,
+                    "TASK_INFORMATION_MISSING",
+                    ErrorType.VALIDATION,
+                    message or "Required task information is missing",
+                    recoverable=True,
+                )
+                domain_state = self._transition(
+                    state, domain_state, "UNDERSTANDING_FAILED", error.message
+                )
+                self._emit(state, "TASK_UNDERSTANDING_FAILED", status="MISSING_INFORMATION")
+                return self._node_result(
+                    state,
+                    "understand_task",
+                    started,
+                    "missing_information",
+                    error.message,
+                    domain_state=domain_state,
+                    errors=[error],
+                )
+            contract = outcome.contract
+            self._repository.save_contract(contract)
+        constraints = contract.constraints
         if not constraints.tenant_id or not constraints.data_scope:
             error = self._error(
                 state,
@@ -159,6 +231,7 @@ class GraphNodeRuntime:
                 domain_state=domain_state,
                 errors=[error],
             )
+        self._emit(state, "TASK_UNDERSTANDING_COMPLETED", status="COMPLETED")
         return self._node_result(
             state,
             "understand_task",
@@ -166,6 +239,7 @@ class GraphNodeRuntime:
             "understood",
             "Frozen deterministic contract available",
             domain_state=domain_state,
+            contract=contract,
         )
 
     def classify_task(self, state: AgentGraphState) -> dict[str, object]:
@@ -198,7 +272,7 @@ class GraphNodeRuntime:
         )
 
     def create_plan(self, state: AgentGraphState) -> dict[str, object]:
-        """Expose the already-created fixed plan as an explicit orchestration step."""
+        """Generate a candidate plan or expose the injected deterministic fallback."""
         started = self._clock()
         guarded = self._guard_node(state, "create_plan", started)
         if guarded is not None:
@@ -207,15 +281,46 @@ class GraphNodeRuntime:
             state,
             state["domain_state"],
             "CONTRACT_VALIDATED",
-            "Frozen task contract and deterministic plan supplied",
+            "Frozen task contract validated",
         )
+        plan = state["plan"]
+        repair_count = state.get("plan_repair_count", 0)
+        if self._planning_service is not None:
+            self._emit(state, "PLAN_GENERATION_STARTED", status="STARTED")
+            try:
+                outcome = self._planning_service.create_plan(
+                    contract=state["contract"],
+                    trace_id=state["trace_id"],
+                    max_steps=self._max_task_steps,
+                )
+            except LLMProviderError as exc:
+                error = self._llm_error(state, exc, "create_plan")
+                domain_state = self._transition(state, domain_state, "PLAN_INVALID", error.message)
+                self._emit(state, "PLAN_REPAIR_EXHAUSTED", status=exc.code.value)
+                return self._node_result(
+                    state,
+                    "create_plan",
+                    started,
+                    "llm_failure",
+                    error.message,
+                    domain_state=domain_state,
+                    errors=[error],
+                )
+            plan = outcome.plan
+            repair_count = outcome.repair_attempts
+            self._repository.save_plan(plan)
+            self._emit(state, "PLAN_GENERATED", status="GENERATED")
+            if repair_count:
+                self._emit(state, "PLAN_REPAIRED", status="REPAIRED")
         return self._node_result(
             state,
             "create_plan",
             started,
             "plan_created",
-            "Fixed Supplier Quality plan created",
+            "Supplier Quality candidate plan created",
             domain_state=domain_state,
+            plan=plan,
+            plan_repair_count=repair_count,
         )
 
     def validate_plan(self, state: AgentGraphState) -> dict[str, object]:
@@ -224,14 +329,53 @@ class GraphNodeRuntime:
         guarded = self._guard_node(state, "validate_plan", started)
         if guarded is not None:
             return guarded
-        try:
-            self._plan_validator.validate(state["plan"], state["contract"])
-        except PlanValidationError as exc:
+        validation = self._plan_validator.evaluate(state["plan"], state["contract"])
+        if not validation.is_valid:
+            first = validation.errors[0]
+            if (
+                self._planning_service is not None
+                and state["domain_state"].state is TaskStatus.PLANNING
+                and validation.is_repairable
+                and state.get("plan_repair_count", 0) < self._max_plan_repairs
+            ):
+                self._emit(state, "PLAN_VALIDATION_FAILED", status=first.error_code)
+                return self._node_result(
+                    state,
+                    "validate_plan",
+                    started,
+                    "repairable_plan",
+                    first.message,
+                    plan_validation_errors=[
+                        JsonObject(
+                            {
+                                "error_code": issue.error_code,
+                                "message": issue.message,
+                                "repair_hint": issue.repair_hint,
+                                "step_id": issue.step_id,
+                                "field": issue.field,
+                                "repairable": issue.repairable,
+                            }
+                        )
+                        for issue in validation.errors
+                    ],
+                )
             error = self._error(
-                state, "PLAN_INVALID", ErrorType.VALIDATION, str(exc), recoverable=False
+                state,
+                "PLAN_INVALID",
+                ErrorType.VALIDATION,
+                first.message,
+                recoverable=False,
             )
-            domain_state = self._transition(
-                state, state["domain_state"], "PLAN_INVALID", error.message
+            event = (
+                "REPLAN_FAILED"
+                if state["domain_state"].state is TaskStatus.REPLANNING
+                else "PLAN_INVALID"
+            )
+            domain_state = self._transition(state, state["domain_state"], event, error.message)
+            self._emit(
+                state,
+                "REPLAN_EXHAUSTED" if event == "REPLAN_FAILED" else "PLAN_REPAIR_EXHAUSTED",
+                status=first.error_code,
             )
             return self._node_result(
                 state,
@@ -241,9 +385,214 @@ class GraphNodeRuntime:
                 error.message,
                 domain_state=domain_state,
                 errors=[error],
+                plan_validation_errors=[
+                    JsonObject(
+                        {
+                            "error_code": issue.error_code,
+                            "message": issue.message,
+                            "repair_hint": issue.repair_hint,
+                            "step_id": issue.step_id,
+                            "field": issue.field,
+                            "repairable": issue.repairable,
+                        }
+                    )
+                    for issue in validation.errors
+                ],
+            )
+        domain_state = state["domain_state"]
+        if domain_state.state is TaskStatus.REPLANNING:
+            domain_state = self._transition(
+                state,
+                domain_state,
+                "REVISED_PLAN_VALID",
+                "Replanned DAG passed complete deterministic validation",
             )
         return self._node_result(
-            state, "validate_plan", started, "plan_valid", "Plan validation passed"
+            state,
+            "validate_plan",
+            started,
+            "plan_valid",
+            "Plan validation passed",
+            domain_state=domain_state,
+            plan_validation_errors=[],
+        )
+
+    def repair_plan(self, state: AgentGraphState) -> dict[str, object]:
+        """Run one bounded repair attempt and checkpoint before full revalidation."""
+        started = self._clock()
+        guarded = self._guard_node(state, "repair_plan", started)
+        if guarded is not None:
+            return guarded
+        if self._planning_service is None:
+            error = self._error(
+                state,
+                "PLAN_REPAIR_UNAVAILABLE",
+                ErrorType.VALIDATION,
+                "No planning service is configured for plan repair",
+            )
+            domain_state = self._transition(
+                state, state["domain_state"], "PLAN_INVALID", error.message
+            )
+            return self._node_result(
+                state,
+                "repair_plan",
+                started,
+                "repair_exhausted",
+                error.message,
+                domain_state=domain_state,
+                errors=[error],
+            )
+        attempt = state.get("plan_repair_count", 0) + 1
+        if attempt > self._max_plan_repairs:
+            error = self._error(
+                state,
+                "PLAN_REPAIR_ATTEMPTS_EXHAUSTED",
+                ErrorType.VALIDATION,
+                "Maximum plan repair attempts were exhausted",
+            )
+            domain_state = self._transition(
+                state, state["domain_state"], "PLAN_INVALID", error.message
+            )
+            self._emit(state, "PLAN_REPAIR_EXHAUSTED", status=error.error_code)
+            return self._node_result(
+                state,
+                "repair_plan",
+                started,
+                "repair_exhausted",
+                error.message,
+                domain_state=domain_state,
+                errors=[error],
+            )
+        issues = tuple(
+            PlanValidationIssue(
+                error_code=str(item.root["error_code"]),
+                message=str(item.root["message"]),
+                repair_hint=str(item.root["repair_hint"]),
+                step_id=_optional_string(item.root.get("step_id")),
+                field=_optional_string(item.root.get("field")),
+                repairable=bool(item.root.get("repairable", True)),
+            )
+            for item in state.get("plan_validation_errors", [])
+        )
+        self._emit(state, "PLAN_REPAIR_STARTED", status=f"ATTEMPT_{attempt}")
+        try:
+            outcome = self._planning_service.repair_plan(
+                contract=state["contract"],
+                invalid_plan=state["plan"],
+                errors=issues,
+                trace_id=state["trace_id"],
+                max_steps=self._max_task_steps,
+                attempt=attempt,
+            )
+        except LLMProviderError as exc:
+            error = self._llm_error(state, exc, "repair_plan")
+            domain_state = self._transition(
+                state, state["domain_state"], "PLAN_INVALID", error.message
+            )
+            self._emit(state, "PLAN_REPAIR_EXHAUSTED", status=exc.code.value)
+            return self._node_result(
+                state,
+                "repair_plan",
+                started,
+                "repair_exhausted",
+                error.message,
+                domain_state=domain_state,
+                errors=[error],
+            )
+        self._repository.save_plan(outcome.plan)
+        self._emit(state, "PLAN_REPAIRED", status=f"ATTEMPT_{attempt}")
+        return self._node_result(
+            state,
+            "repair_plan",
+            started,
+            "plan_repaired",
+            "Candidate plan repaired and queued for full validation",
+            plan=outcome.plan,
+            plan_repair_count=attempt,
+            plan_validation_errors=[],
+        )
+
+    def replan(self, state: AgentGraphState) -> dict[str, object]:
+        """Generate one constrained higher-version plan after a frozen eligible event."""
+        started = self._clock()
+        if state["domain_state"].state is not TaskStatus.REPLANNING:
+            error = self._error(
+                state,
+                "REPLAN_STATE_INVALID",
+                ErrorType.VALIDATION,
+                "Replan is only allowed in the frozen REPLANNING state",
+            )
+            return self._node_result(
+                state, "replan", started, "replan_failed", error.message, errors=[error]
+            )
+        if self._planning_service is None or state["replan_count"] >= self._max_replan_count:
+            error = self._error(
+                state,
+                "REPLAN_ATTEMPTS_EXHAUSTED",
+                ErrorType.VALIDATION,
+                "No LLM replan service or replan budget remains",
+            )
+            domain_state = self._transition(
+                state, state["domain_state"], "REPLAN_FAILED", error.message
+            )
+            self._emit(state, "REPLAN_EXHAUSTED", status=error.error_code)
+            return self._node_result(
+                state,
+                "replan",
+                started,
+                "replan_failed",
+                error.message,
+                domain_state=domain_state,
+                errors=[error],
+            )
+        remaining_steps = self._max_task_steps - state["executed_step_count"]
+        self._emit(state, "REPLAN_STARTED", status=f"ATTEMPT_{state['replan_count'] + 1}")
+        try:
+            outcome = self._planning_service.replan(
+                contract=state["contract"],
+                current_plan=state["plan"],
+                step_results=tuple(state["step_results"]),
+                evidence_ids=tuple(state["evidence_ids"]),
+                reason="REPAIRABLE_VERIFICATION_FAILURE",
+                trace_id=state["trace_id"],
+                remaining_steps=remaining_steps,
+            )
+        except (LLMProviderError, ValueError) as exc:
+            error = (
+                self._llm_error(state, exc, "replan")
+                if isinstance(exc, LLMProviderError)
+                else self._error(
+                    state,
+                    "REPLAN_INVALID",
+                    ErrorType.VALIDATION,
+                    "Replan violated a deterministic invariant",
+                )
+            )
+            domain_state = self._transition(
+                state, state["domain_state"], "REPLAN_FAILED", error.message
+            )
+            self._emit(state, "REPLAN_EXHAUSTED", status=error.error_code)
+            return self._node_result(
+                state,
+                "replan",
+                started,
+                "replan_failed",
+                error.message,
+                domain_state=domain_state,
+                errors=[error],
+            )
+        self._repository.save_plan(outcome.plan)
+        count = state["replan_count"] + 1
+        self._emit(state, "REPLAN_COMPLETED", status=f"ATTEMPT_{count}")
+        return self._node_result(
+            state,
+            "replan",
+            started,
+            "replan_created",
+            "Replan candidate created and queued for deterministic validation",
+            plan=outcome.plan,
+            replan_count=count,
+            plan_validation_errors=[],
         )
 
     def policy_check(self, state: AgentGraphState) -> dict[str, object]:
@@ -408,7 +757,11 @@ class GraphNodeRuntime:
             artifacts.append(self._artifact_store.get(artifact_id))
             self._emit(state, "artifact_created", status="CREATED")
         projected_results = [*state["step_results"], result]
-        if len(projected_results) == len(state["plan"].steps):
+        current_step_ids = {item.step_id for item in state["plan"].steps}
+        completed_current = {
+            item.step_id for item in projected_results if item.step_id in current_step_ids
+        }
+        if len(completed_current) == len(current_step_ids):
             domain_state = self._transition(
                 state,
                 state["domain_state"],
@@ -438,6 +791,7 @@ class GraphNodeRuntime:
             step_executions=[record],
             evidence_ids=list(final.evidence_ids),
             artifacts=artifacts,
+            active_artifact=artifacts[0] if artifacts else state.get("active_artifact"),
         )
 
     def verify_result(self, state: AgentGraphState) -> dict[str, object]:
@@ -466,17 +820,23 @@ class GraphNodeRuntime:
         self._emit(state, "verification_completed", status=result.status.value)
         if result.status is VerificationStatus.FAILED:
             reason = result.issues[0].code if result.issues else "VERIFICATION_FAILED"
-            domain_state = self._transition(
-                state,
-                state["domain_state"],
-                "NON_REPAIRABLE_VERIFICATION_FAILURE",
-                reason,
+            repairable = (
+                self._planning_service is not None
+                and state["replan_count"] < self._max_replan_count
+                and bool(result.issues)
+                and all(issue.code in _REPAIRABLE_VERIFICATION_CODES for issue in result.issues)
             )
+            event = (
+                "REPAIRABLE_VERIFICATION_FAILURE"
+                if repairable
+                else "NON_REPAIRABLE_VERIFICATION_FAILURE"
+            )
+            domain_state = self._transition(state, state["domain_state"], event, reason)
             return self._node_result(
                 state,
                 "verify_result",
                 started,
-                "verification_failed",
+                "verification_replan" if repairable else "verification_failed",
                 reason,
                 domain_state=domain_state,
                 verification_result=result,
@@ -492,6 +852,35 @@ class GraphNodeRuntime:
             "Independent verification passed",
             domain_state=domain_state,
             verification_result=result,
+        )
+
+    def _llm_error(
+        self,
+        state: AgentGraphState,
+        error: LLMProviderError,
+        node_name: str,
+    ) -> TaskError:
+        error_type = (
+            ErrorType.TIMEOUT
+            if error.code is LLMErrorCode.TIMEOUT
+            else ErrorType.VALIDATION
+            if error.code
+            in {
+                LLMErrorCode.INVALID_RESPONSE,
+                LLMErrorCode.SCHEMA_VALIDATION,
+                LLMErrorCode.CONTEXT_LIMIT,
+                LLMErrorCode.CONFIGURATION,
+            }
+            else ErrorType.PERMISSION
+            if error.code is LLMErrorCode.AUTHENTICATION
+            else ErrorType.TECHNICAL
+        )
+        return self._error(
+            state,
+            error.code.value,
+            error_type,
+            f"Structured LLM call failed in {node_name}",
+            recoverable=False,
         )
 
     def persist_result(self, state: AgentGraphState) -> dict[str, object]:
@@ -553,6 +942,7 @@ class GraphNodeRuntime:
                 cancelled_results.append(step_result)
                 cancelled_records.append(record)
         successful = sum(item.status is StepResultStatus.SUCCESS for item in state["step_results"])
+        active_artifact = state.get("active_artifact")
         result = TaskResult(
             task_id=state["task_id"],
             final_status=domain_state.state,
@@ -564,7 +954,9 @@ class GraphNodeRuntime:
                     "committed evidence is retained."
                 )
             ),
-            artifacts=tuple(item.artifact_id for item in state["artifacts"]) if completed else (),
+            artifacts=(
+                (active_artifact.artifact_id,) if completed and active_artifact is not None else ()
+            ),
             evidence=tuple(state["evidence_ids"]),
         )
         self._repository.save_task_result(result)
@@ -766,6 +1158,8 @@ class GraphNodeRuntime:
         return next(item for item in state["plan"].steps if item.step_id == step_id)
 
     def _context(self, state: AgentGraphState) -> WorkflowExecutionContext:
+        current_step_ids = {item.step_id for item in state["plan"].steps}
+        active_artifact = state.get("active_artifact")
         context = WorkflowExecutionContext(
             task_id=state["task_id"],
             request=state["request"],
@@ -774,12 +1168,20 @@ class GraphNodeRuntime:
             task_state=state["domain_state"],
             started_at=state["started_at"],
             current_step_id=state["current_step_id"],
-            step_results={item.step_id: item for item in state["step_results"]},
-            step_executions={item.step_id: item for item in state["step_executions"]},
+            step_results={
+                item.step_id: item
+                for item in state["step_results"]
+                if item.step_id in current_step_ids
+            },
+            step_executions={
+                item.step_id: item
+                for item in state["step_executions"]
+                if item.step_id in current_step_ids
+            },
             tool_results={},
             tool_calls=list(state["tool_calls"]),
             evidence=self._load_evidence(state),
-            artifacts=list(state["artifacts"]),
+            artifacts=[active_artifact] if active_artifact is not None else [],
             retry_counts=dict(state["retry_counts"]),
             metadata={"registered_tools": tuple(self._registry.list())},
             verification_result=state["verification_result"],
@@ -1005,6 +1407,10 @@ def _idempotency_key(
 
 def _duration_ms(started_at: datetime, completed_at: datetime) -> int:
     return max(0, round((completed_at - started_at).total_seconds() * 1000))
+
+
+def _optional_string(value: object) -> str | None:
+    return value if isinstance(value, str) else None
 
 
 __all__ = ["GraphNodeRuntime"]

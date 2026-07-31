@@ -1,6 +1,6 @@
-"""Stable public provider abstraction for structured LLM calls."""
+"""Structured LLM provider adapters and deterministic planning support."""
 
-from copilot.services.llm import (
+from copilot.llm.base import (
     LLMCallContext,
     LLMGenerationOptions,
     LLMMessage,
@@ -9,13 +9,18 @@ from copilot.services.llm import (
     LLMUsage,
     StructuredLLMResult,
 )
+from copilot.llm.deepseek import DeepSeekProvider
+from copilot.llm.mock import MockLLM, MockLLMCall
 
 __all__ = [
+    "DeepSeekProvider",
     "LLMCallContext",
     "LLMGenerationOptions",
     "LLMMessage",
     "LLMProvider",
     "LLMProviderMetadata",
     "LLMUsage",
+    "MockLLM",
+    "MockLLMCall",
     "StructuredLLMResult",
 ]

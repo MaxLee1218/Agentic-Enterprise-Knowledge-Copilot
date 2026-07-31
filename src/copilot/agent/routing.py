@@ -20,7 +20,19 @@ def route_after_plan_creation(state: AgentGraphState) -> str:
 
 
 def route_after_plan_validation(state: AgentGraphState) -> str:
-    return "policy_check" if state["route"] == "plan_valid" else "persist_result"
+    if state["route"] == "plan_valid":
+        return "policy_check"
+    if state["route"] == "repairable_plan":
+        return "repair_plan"
+    return "persist_result"
+
+
+def route_after_plan_repair(state: AgentGraphState) -> str:
+    return "validate_plan" if state["route"] == "plan_repaired" else "persist_result"
+
+
+def route_after_replan(state: AgentGraphState) -> str:
+    return "validate_plan" if state["route"] == "replan_created" else "persist_result"
 
 
 def route_after_policy(state: AgentGraphState) -> str:
@@ -55,7 +67,7 @@ def route_after_evidence(state: AgentGraphState) -> str:
 
 
 def route_after_verification(state: AgentGraphState) -> str:
-    return "persist_result"
+    return "replan" if state["route"] == "verification_replan" else "persist_result"
 
 
 __all__ = [
@@ -63,8 +75,10 @@ __all__ = [
     "route_after_evidence",
     "route_after_plan_creation",
     "route_after_plan_validation",
+    "route_after_plan_repair",
     "route_after_policy",
     "route_after_report",
+    "route_after_replan",
     "route_after_tool",
     "route_after_understanding",
     "route_after_validate",

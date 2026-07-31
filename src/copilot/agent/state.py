@@ -191,9 +191,12 @@ class AgentGraphState(TypedDict):
     tool_results: Annotated[list[ToolResult], merge_tool_results]
     evidence_ids: Annotated[list[str], merge_identifiers]
     artifacts: Annotated[list[Artifact], merge_artifacts]
+    active_artifact: Artifact | None
     errors: Annotated[list[TaskError], merge_errors]
+    plan_validation_errors: list[JsonObject]
     retry_counts: Annotated[dict[str, int], merge_counts]
     tool_retry_count: int
+    plan_repair_count: int
     replan_count: int
     executed_step_count: int
     resume_count: int
@@ -230,9 +233,12 @@ def initial_graph_state(
         tool_results=[],
         evidence_ids=[],
         artifacts=[],
+        active_artifact=None,
         errors=[],
+        plan_validation_errors=[],
         retry_counts={},
         tool_retry_count=0,
+        plan_repair_count=0,
         replan_count=0,
         executed_step_count=0,
         resume_count=0,

@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AnyHttpUrl, Field, ValidationError, field_validator
+from pydantic import AnyHttpUrl, Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -38,6 +38,23 @@ class Settings(BaseSettings):
         max_length=256,
     )
     rag_trace_header: str = Field(default="X-Trace-ID", min_length=1, max_length=128)
+    llm_provider: Literal["mock", "deepseek"] = "mock"
+    llm_model: str = Field(default="deepseek-chat", min_length=1, max_length=128)
+    llm_base_url: AnyHttpUrl = AnyHttpUrl("https://api.deepseek.com")
+    llm_api_key: SecretStr | None = None
+    llm_connect_timeout_seconds: float = Field(default=10, gt=0, le=60)
+    llm_read_timeout_seconds: float = Field(default=60, gt=0, le=300)
+    llm_max_retries: int = Field(default=2, ge=0, le=5)
+    llm_retry_base_delay_seconds: float = Field(default=0.2, ge=0, le=10)
+    llm_max_output_tokens: int = Field(default=4096, ge=1, le=65536)
+    llm_temperature: float = Field(default=0, ge=0, le=2)
+    llm_user_agent: str = Field(
+        default="agentic-enterprise-knowledge-copilot/0.1.0",
+        min_length=1,
+        max_length=256,
+    )
+    llm_trace_header: str = Field(default="X-Trace-ID", min_length=1, max_length=128)
+    max_plan_repair_attempts: int = Field(default=2, ge=0, le=2)
     database_url: str
     database_statement_timeout_seconds: float = Field(default=8, gt=0, le=8)
     artifact_dir: Path = Path("data/artifacts")
@@ -60,29 +77,37 @@ class Settings(BaseSettings):
         """Resolve configured local persistence paths against the repository root."""
         return value.resolve() if value.is_absolute() else (PROJECT_ROOT / value).resolve()
 
-    @field_validator("rag_base_url", mode="after")
+    @field_validator("rag_base_url", "llm_base_url", mode="after")
     @classmethod
-    def normalize_rag_base_url(cls, value: AnyHttpUrl) -> AnyHttpUrl:
+    def normalize_base_url(cls, value: AnyHttpUrl) -> AnyHttpUrl:
         """Remove trailing slashes so endpoint paths are composed exactly once."""
         return AnyHttpUrl(str(value).rstrip("/"))
 
-    @field_validator("rag_user_agent")
+    @field_validator("rag_user_agent", "llm_user_agent")
     @classmethod
-    def validate_rag_user_agent(cls, value: str) -> str:
+    def validate_user_agent(cls, value: str) -> str:
         """Reject blank or control-bearing configured User Agent values."""
         clean = value.strip()
         if not clean or any(ord(character) < 32 or ord(character) == 127 for character in clean):
-            raise ValueError("RAG_USER_AGENT is invalid")
+            raise ValueError("configured User Agent is invalid")
         return clean
 
-    @field_validator("rag_trace_header")
+    @field_validator("rag_trace_header", "llm_trace_header")
     @classmethod
-    def validate_rag_trace_header(cls, value: str) -> str:
+    def validate_trace_header(cls, value: str) -> str:
         """Require an RFC-compatible HTTP header name."""
         clean = value.strip()
         if not _HTTP_HEADER_NAME.fullmatch(clean):
-            raise ValueError("RAG_TRACE_HEADER is invalid")
+            raise ValueError("configured trace header is invalid")
         return clean
+
+    def require_llm_api_key(self) -> SecretStr:
+        """Return the configured secret only for the real DeepSeek provider."""
+        if self.llm_provider != "deepseek":
+            raise ConfigurationError("LLM_API_KEY is only required for LLM_PROVIDER=deepseek")
+        if self.llm_api_key is None or not self.llm_api_key.get_secret_value().strip():
+            raise ConfigurationError("Missing required configuration: LLM_API_KEY")
+        return self.llm_api_key
 
     @property
     def artifact_path(self) -> Path:

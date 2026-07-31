@@ -33,3 +33,13 @@ graph steps, while separate SQLite business tables remain authoritative for Task
 Evidence, Artifact metadata, audit, and leases. Resume uses the tenant/task checkpoint key and
 continues the next safe node without repeating committed successful steps. See
 [`langgraph-workflow.md`](langgraph-workflow.md).
+
+When an LLM planning service is injected, `understand_task` and `create_plan` call that service and
+checkpoint only schema-valid results. `validate_plan` remains deterministic. A repairable initial
+plan loops through the separately bounded `repair_plan` node without leaving `PLANNING`. An
+eligible verification failure uses the frozen
+`VERIFYING -> REPLANNING -> EXECUTING` transitions and a separate replan counter.
+
+The frozen machine has no clarification state. Required missing information therefore records a
+recoverable `TASK_INFORMATION_MISSING` error but transitions `UNDERSTANDING -> FAILED`; a corrected
+request starts a new Task. The frozen database-empty path remains Success and never replans.
