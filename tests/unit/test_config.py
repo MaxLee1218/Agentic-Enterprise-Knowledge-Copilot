@@ -1,15 +1,20 @@
 """Unit tests for application configuration."""
 
 from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 
-from copilot.config import PROJECT_ROOT, ConfigurationError, get_settings
+from copilot.config import PROJECT_ROOT, ConfigurationError, Settings, get_settings
 
 
 @pytest.fixture(autouse=True)
-def clear_settings_cache() -> Generator[None, None, None]:
-    """Isolate the process-wide settings cache between tests."""
+def isolate_settings_sources(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> Generator[None, None, None]:
+    """Isolate the settings cache and local dotenv source between tests."""
+    monkeypatch.setitem(Settings.model_config, "env_file", tmp_path / ".env")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

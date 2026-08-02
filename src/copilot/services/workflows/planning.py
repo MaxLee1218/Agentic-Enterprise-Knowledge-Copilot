@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from copilot.contracts import StepResult, TaskContract, TaskPlan, TaskRequest
+from copilot.services.task_intake import TrustedTaskContext
 from copilot.services.workflows.validation import PlanValidationIssue, PlanValidationResult
 
 
@@ -33,7 +34,7 @@ class PlanningService(Protocol):
         self,
         *,
         request: TaskRequest,
-        trusted_contract: TaskContract,
+        trusted_context: TrustedTaskContext,
         trace_id: str,
         max_steps: int,
     ) -> TaskUnderstandingOutcome:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from datetime import datetime
 from functools import partial
@@ -30,6 +31,7 @@ from copilot.agent.routing import (
 from copilot.agent.runtime import GraphNodeRuntime
 from copilot.agent.state import AgentGraphState, initial_graph_state
 from copilot.contracts import TaskContract, TaskPlan, TaskRequest
+from copilot.services.task_intake import RequestSource, TrustedTaskContext
 from copilot.services.workflows.errors import WorkflowRecoveryError
 from copilot.services.workflows.models import WorkflowExecution
 from copilot.services.workflows.ports import EvidenceReader, IdentifierFactory, WorkflowRepository
@@ -38,6 +40,21 @@ from copilot.services.workflows.state_machine import TaskStateMachine
 
 class WorkflowInterrupted(RuntimeError):
     """Raised to interfaces when a checkpointed task is waiting for external authority."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        task_id: str = "",
+        trace_id: str = "",
+        status: str = "",
+        created_at: datetime | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.task_id = task_id
+        self.trace_id = trace_id
+        self.status = status
+        self.created_at = created_at
 
 
 def build_agent_graph(
@@ -97,8 +114,10 @@ class LangGraphWorkflowEngine:
         ids: IdentifierFactory,
         clock: Callable[[], datetime],
         recursion_limit: int,
+        max_task_steps: int,
         interrupt_after: tuple[str, ...] = (),
     ) -> None:
+        self._runtime = runtime
         self._graph = build_agent_graph(
             runtime,
             checkpointer=checkpointer,
@@ -110,6 +129,7 @@ class LangGraphWorkflowEngine:
         self._ids = ids
         self._clock = clock
         self._recursion_limit = recursion_limit
+        self._max_task_steps = max_task_steps
 
     def start(
         self,
@@ -120,6 +140,23 @@ class LangGraphWorkflowEngine:
         """Initialize domain facts, acquire the task lease, and execute the graph."""
         started_at = self._clock()
         initial = self._state_machine.initial(contract.task_id)
+        intake_context = TrustedTaskContext(
+            task_id=contract.task_id,
+            trace_id=contract.task_id,
+            session_id=contract.task_id,
+            user_id=request.user_id,
+            tenant_id=contract.constraints.tenant_id,
+            data_scope=contract.constraints.data_scope,
+            authorized_supplier_ids=contract.constraints.supplier_ids,
+            output_format=contract.expected_output.artifact_type,
+            max_steps=self._max_task_steps,
+            read_only=True,
+            require_approval=contract.approval_requirement.required,
+            deadline_at=contract.constraints.deadline_at,
+            request_source=RequestSource.INTERNAL,
+            task_text_hash=hashlib.sha256(request.raw_input.encode("utf-8")).hexdigest(),
+            task_text_length=len(request.raw_input),
+        )
         self._repository.initialize(request, contract, plan, initial)
         owner_id = self._ids.new_id("LEASE")
         self._repository.acquire_execution(contract.task_id, owner_id)
@@ -128,6 +165,7 @@ class LangGraphWorkflowEngine:
             output = self._graph.invoke(
                 initial_graph_state(
                     request=request,
+                    intake_context=intake_context,
                     contract=contract,
                     plan=plan,
                     domain_state=initial,
@@ -139,6 +177,37 @@ class LangGraphWorkflowEngine:
         finally:
             self._repository.release_execution(contract.task_id, owner_id)
 
+    def submit(
+        self,
+        request: TaskRequest,
+        intake_context: TrustedTaskContext,
+    ) -> WorkflowExecution:
+        """Persist a natural-language request before invoking task understanding."""
+        started_at = self._clock()
+        initial = self._state_machine.initial(intake_context.task_id)
+        state = initial_graph_state(
+            request=request,
+            intake_context=intake_context,
+            domain_state=initial,
+            started_at=started_at,
+        )
+        self._repository.initialize(
+            request,
+            None,
+            None,
+            initial,
+            task_id=intake_context.task_id,
+        )
+        self._runtime.record_submission(state)
+        owner_id = self._ids.new_id("LEASE")
+        self._repository.acquire_execution(intake_context.task_id, owner_id)
+        config = self._config(intake_context.task_id, intake_context.tenant_id)
+        try:
+            output = self._graph.invoke(state, config)
+            return self._execution(cast(AgentGraphState, output))
+        finally:
+            self._repository.release_execution(intake_context.task_id, owner_id)
+
     def resume(self, task_id: str, tenant_id: str) -> WorkflowExecution:
         """Continue from the latest safe checkpoint without replaying successful nodes."""
         config = self._config(task_id, tenant_id)
@@ -146,7 +215,7 @@ class LangGraphWorkflowEngine:
         if not snapshot.values:
             raise ValueError("workflow checkpoint was not found")
         current = cast(AgentGraphState, snapshot.values)
-        if current["task_id"] != task_id or current["contract"].constraints.tenant_id != tenant_id:
+        if current["task_id"] != task_id or current["intake_context"].tenant_id != tenant_id:
             raise ValueError("workflow checkpoint scope does not match the requested task")
         if current["domain_state"] != self._repository.state_for(task_id):
             raise WorkflowRecoveryError(
@@ -172,7 +241,7 @@ class LangGraphWorkflowEngine:
         if not snapshot.values:
             raise ValueError("workflow checkpoint was not found")
         state = cast(AgentGraphState, snapshot.values)
-        if state["task_id"] != task_id or state["contract"].constraints.tenant_id != tenant_id:
+        if state["task_id"] != task_id or state["intake_context"].tenant_id != tenant_id:
             raise ValueError("workflow checkpoint scope does not match the requested task")
         return state
 
@@ -184,15 +253,26 @@ class LangGraphWorkflowEngine:
 
     def _execution(self, state: AgentGraphState) -> WorkflowExecution:
         if state["task_result"] is None:
-            raise WorkflowInterrupted(state["route_reason"])
+            raise WorkflowInterrupted(
+                state["route_reason"],
+                task_id=state["task_id"],
+                trace_id=state["trace_id"],
+                status=state["domain_state"].state.value,
+                created_at=state["request"].created_at,
+            )
         completed_at = self._clock()
         results = {item.step_id: item for item in state["step_results"]}
         records = {item.step_id: item for item in state["step_executions"]}
-        ordered_results = tuple(
-            results[step.step_id] for step in state["plan"].steps if step.step_id in results
+        plan = state.get("plan")
+        ordered_results = (
+            tuple(results[step.step_id] for step in plan.steps if step.step_id in results)
+            if plan is not None
+            else ()
         )
-        ordered_records = tuple(
-            records[step.step_id] for step in state["plan"].steps if step.step_id in records
+        ordered_records = (
+            tuple(records[step.step_id] for step in plan.steps if step.step_id in records)
+            if plan is not None
+            else ()
         )
         active_artifact = state.get("active_artifact")
         return WorkflowExecution(
@@ -208,6 +288,8 @@ class LangGraphWorkflowEngine:
             started_at=state["started_at"],
             completed_at=completed_at,
             duration_ms=max(0, round((completed_at - state["started_at"]).total_seconds() * 1000)),
+            trace_id=state["trace_id"],
+            errors=tuple(state["errors"]),
         )
 
 

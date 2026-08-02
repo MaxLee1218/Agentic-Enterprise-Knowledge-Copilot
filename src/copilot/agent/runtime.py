@@ -121,8 +121,9 @@ class GraphNodeRuntime:
             state["request"].user_id.strip()
             and state["request"].raw_input.strip()
             and state["request"].created_at <= state["deadline_at"]
-            and len(state["plan"].steps) <= self._max_task_steps
+            and state["intake_context"].max_steps <= self._max_task_steps
         ):
+            self._emit(state, "TASK_VALIDATED", status="VALID")
             return self._node_result(state, "validate_request", started, "valid", "Request valid")
         error = error or self._error(
             state,
@@ -158,14 +159,14 @@ class GraphNodeRuntime:
             domain_state = self._transition(
                 state, domain_state, "START_UNDERSTANDING", "Authenticated request accepted"
             )
-        contract = state["contract"]
+        contract = state.get("contract")
         if self._planning_service is not None:
             try:
                 outcome = self._planning_service.understand(
                     request=state["request"],
-                    trusted_contract=contract,
+                    trusted_context=state["intake_context"],
                     trace_id=state["trace_id"],
-                    max_steps=self._max_task_steps,
+                    max_steps=state["intake_context"].max_steps,
                 )
             except LLMProviderError as exc:
                 error = self._llm_error(state, exc, "understand_task")
@@ -198,6 +199,7 @@ class GraphNodeRuntime:
                 domain_state = self._transition(
                     state, domain_state, "UNDERSTANDING_FAILED", error.message
                 )
+                self._emit(state, "TASK_CLARIFICATION_REQUIRED", status="MISSING_INFORMATION")
                 self._emit(state, "TASK_UNDERSTANDING_FAILED", status="MISSING_INFORMATION")
                 return self._node_result(
                     state,
@@ -210,6 +212,27 @@ class GraphNodeRuntime:
                 )
             contract = outcome.contract
             self._repository.save_contract(contract)
+        elif contract is None:
+            error = self._error(
+                state,
+                LLMErrorCode.UNAVAILABLE.value,
+                ErrorType.TECHNICAL,
+                "Natural-language task understanding is unavailable",
+            )
+            domain_state = self._transition(
+                state, domain_state, "UNDERSTANDING_FAILED", error.message
+            )
+            self._emit(state, "TASK_UNDERSTANDING_FAILED", status=error.error_code)
+            return self._node_result(
+                state,
+                "understand_task",
+                started,
+                "llm_failure",
+                error.message,
+                domain_state=domain_state,
+                errors=[error],
+            )
+        assert contract is not None
         constraints = contract.constraints
         if not constraints.tenant_id or not constraints.data_scope:
             error = self._error(
@@ -283,7 +306,7 @@ class GraphNodeRuntime:
             "CONTRACT_VALIDATED",
             "Frozen task contract validated",
         )
-        plan = state["plan"]
+        plan = state.get("plan")
         repair_count = state.get("plan_repair_count", 0)
         if self._planning_service is not None:
             self._emit(state, "PLAN_GENERATION_STARTED", status="STARTED")
@@ -291,7 +314,7 @@ class GraphNodeRuntime:
                 outcome = self._planning_service.create_plan(
                     contract=state["contract"],
                     trace_id=state["trace_id"],
-                    max_steps=self._max_task_steps,
+                    max_steps=state["intake_context"].max_steps,
                 )
             except LLMProviderError as exc:
                 error = self._llm_error(state, exc, "create_plan")
@@ -312,6 +335,24 @@ class GraphNodeRuntime:
             self._emit(state, "PLAN_GENERATED", status="GENERATED")
             if repair_count:
                 self._emit(state, "PLAN_REPAIRED", status="REPAIRED")
+        elif plan is None:
+            error = self._error(
+                state,
+                "PLANNER_UNAVAILABLE",
+                ErrorType.TECHNICAL,
+                "Natural-language task planning is unavailable",
+            )
+            domain_state = self._transition(state, domain_state, "PLAN_INVALID", error.message)
+            return self._node_result(
+                state,
+                "create_plan",
+                started,
+                "llm_failure",
+                error.message,
+                domain_state=domain_state,
+                errors=[error],
+            )
+        assert plan is not None
         return self._node_result(
             state,
             "create_plan",
@@ -908,7 +949,8 @@ class GraphNodeRuntime:
         cancelled_records: list[StepExecutionRecord] = []
         if not completed:
             existing = {item.step_id for item in state["step_results"]}
-            for step in state["plan"].steps:
+            plan = state.get("plan")
+            for step in plan.steps if plan is not None else ():
                 if step.step_id in existing:
                     continue
                 now = self._clock()
@@ -1341,13 +1383,39 @@ class GraphNodeRuntime:
                 event=event,
                 task_id=state["task_id"],
                 plan_id=SUPPLIER_QUALITY_PLAN_ID,
-                plan_version=state["plan"].planning_version,
+                plan_version=(
+                    state["plan"].planning_version if state.get("plan") is not None else 0
+                ),
                 timestamp=self._clock(),
                 step_id=state["current_step_id"],
                 status=status,
                 duration_ms=duration_ms,
                 metadata=metadata or JsonObject({}),
             )
+        )
+
+    def record_submission(self, state: AgentGraphState) -> None:
+        """Write a minimized audit event after persistence and before graph execution."""
+        context = state["intake_context"]
+        self._emit(
+            state,
+            "TASK_SUBMITTED",
+            status=TaskStatus.CREATED.value,
+            metadata=JsonObject(
+                {
+                    "trace_id": context.trace_id,
+                    "session_id": context.session_id,
+                    "request_source": context.request_source.value,
+                    "task_text_hash": context.task_text_hash,
+                    "task_text_length": context.task_text_length,
+                    "effective_max_steps": context.max_steps,
+                    "effective_read_only": context.read_only,
+                    "effective_require_approval": context.require_approval,
+                    "output_format": (
+                        context.output_format.value if context.output_format is not None else None
+                    ),
+                }
+            ),
         )
 
     def _error(

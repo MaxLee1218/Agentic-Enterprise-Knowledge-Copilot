@@ -22,6 +22,7 @@ from copilot.evidence.ledger import InMemoryEvidenceLedger
 from copilot.evidence.workflow import WorkflowVerifier
 from copilot.llm.deepseek import DeepSeekProvider
 from copilot.llm.manifest import PlannerToolManifestBuilder
+from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.llm.planning import LLMPlanningService
 from copilot.persistence.artifact_repository import LocalArtifactRepository
 from copilot.persistence.audit_repository import (
@@ -32,6 +33,8 @@ from copilot.persistence.identifiers import UuidIdentifierFactory
 from copilot.persistence.task_repository import InMemoryWorkflowRepository
 from copilot.policies.offline import OfflineSupplierQualityAuthorizer
 from copilot.services.llm import LLMGenerationOptions, LLMProvider
+from copilot.services.task_intake import IntakeLimits
+from copilot.services.task_service import NaturalLanguageTaskService
 from copilot.services.workflows.dependency import DependencyChecker
 from copilot.services.workflows.fixed_plan import SupplierQualityAnalysisPlanFactory
 from copilot.services.workflows.inputs import StepInputBuilder
@@ -61,6 +64,7 @@ class WorkflowContainer:
     """Owned runtime resources plus inspectable local adapters."""
 
     service: SupplierQualityWorkflowService
+    task_service: NaturalLanguageTaskService
     executor: ToolExecutor
     registry: ToolRegistry
     evidence: InMemoryEvidenceLedger
@@ -285,6 +289,7 @@ def build_workflow_container(
         ids=identifier_factory,
         clock=clock,
         recursion_limit=settings.graph_recursion_limit,
+        max_task_steps=settings.max_task_steps,
         interrupt_after=interrupt_after,
     )
     service = SupplierQualityWorkflowService(
@@ -294,8 +299,24 @@ def build_workflow_container(
         clock=clock,
         max_total_execution_seconds=settings.max_total_execution_seconds,
     )
+    task_service = NaturalLanguageTaskService(
+        engine=engine,
+        ids=identifier_factory,
+        clock=clock,
+        limits=IntakeLimits(
+            max_task_text_length=settings.max_task_text_length,
+            max_metadata_bytes=settings.max_task_metadata_bytes,
+            max_metadata_depth=settings.max_task_metadata_depth,
+            max_metadata_items=settings.max_task_metadata_items,
+            max_task_steps=settings.max_task_steps,
+            max_total_execution_seconds=settings.max_total_execution_seconds,
+            force_read_only=settings.task_force_read_only,
+            require_approval=settings.task_require_approval_by_default,
+        ),
+    )
     return WorkflowContainer(
         service=service,
+        task_service=task_service,
         executor=executor,
         registry=registry,
         evidence=evidence,
@@ -314,3 +335,12 @@ def build_workflow_container(
         owned_llm_provider=owned_llm_provider,
         checkpoint_connection=checkpoint_connection,
     )
+
+
+def build_application(settings: Settings) -> WorkflowContainer:
+    """Build the shared API/CLI application, including an offline mock LLM when configured."""
+    provider: LLMProvider | None = OfflineMockLLM() if settings.llm_provider == "mock" else None
+    return build_workflow_container(settings, llm_provider=provider)
+
+
+__all__ = ["WorkflowContainer", "build_application", "build_workflow_container"]

@@ -118,9 +118,15 @@ The intended governed task flow is:
 ```text
 User or approved protocol client
   -> API / CLI / protocol adapter
-  -> Application service
+  -> NaturalLanguageTaskSubmission (transport only)
+  -> NaturalLanguageTaskService / Task Intake
+  -> immutable TaskRequest + trusted execution context
+  -> initial CREATED state persisted + TASK_SUBMITTED audit
+  -> LangGraph validate_request
   -> Task understanding and classification
+  -> TaskContract
   -> Planner and plan validator
+  -> TaskPlan
   -> Policy check and approval gate
   -> Tool registry and executor
   -> Concrete capability adapter
@@ -158,6 +164,29 @@ and infrastructure supplies its implementation.
 
 No route, agent node, protocol handler, or tool may create an alternate execution path around
 policy, approval, registry, executor, evidence, audit, or verification.
+
+### Natural-language boundary objects
+
+The public entry point deliberately keeps four objects distinct:
+
+| Object | Owner | Created by | Meaning |
+|---|---|---|---|
+| `NaturalLanguageTaskSubmission` | API/CLI transport | external caller | Raw task plus a few tightening-only execution options |
+| `TaskRequest` | Domain/application | Task Intake | Immutable authenticated original text and audit starting point |
+| `TaskContract` | Domain | `understand_task` | Structured business scope derived by LLM output plus trusted authorization constraints |
+| `TaskPlan` | Domain | `create_plan` | Versioned executable DAG restricted to the ToolRegistry manifest |
+
+`NaturalLanguageTaskSubmission != TaskRequest != TaskContract != TaskPlan`. Identity, tenant,
+roles, data scope, read-only enforcement, approval requirements, deadlines, and system limits
+travel in a separate trusted context. They are never inferred from or concatenated into user text.
+API and CLI both call `NaturalLanguageTaskService`; neither transport constructs a Contract,
+Plan, prompt, tool call, or persistence record.
+
+Task Intake validates Unicode text and bounded JSON metadata, rejects disallowed controls,
+creates task/session/trace identifiers, merges constraints with deterministic precedence, and
+persists `TaskRequest`/`CREATED` before invoking LangGraph. Caller settings can only tighten:
+requested steps are capped by the server maximum, read-only policy cannot be disabled, and a
+policy-required approval cannot be turned off.
 
 The Evidence Ledger is authoritative for Evidence content; `TaskState` remains a compact lifecycle
 snapshot. Verification results are persisted separately and correlated through Task and audit
@@ -205,6 +234,11 @@ class TaskService:
 
 Scripts under `scripts/` call reusable package APIs. They are not composition roots for business
 logic.
+
+`build_application(settings)` is the shared API/CLI composition function. In mock mode it installs
+the bounded offline structured provider; in DeepSeek mode it installs the configured real
+provider. Tests may inject MockLLM, identifiers, clocks, repositories, tools, and Artifact paths
+through `build_workflow_container`.
 
 ## 5. Transaction Boundaries
 

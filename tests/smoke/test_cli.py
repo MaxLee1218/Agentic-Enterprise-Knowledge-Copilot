@@ -69,14 +69,10 @@ def test_run_supplier_quality_workflow_offline(tmp_path: Path) -> None:
         [
             sys.executable,
             "scripts/run_task.py",
-            "--task",
-            "supplier-quality-analysis",
-            "--supplier-id",
-            "SUP-001",
-            "--material-id",
-            "MAT-001",
-            "--time-range",
-            "2026-Q1",
+            (
+                "Analyze Q1 2026 supplier quality deviations for SUP-001 "
+                "and generate a JSON management report."
+            ),
         ],
         cwd=project_root,
         env=environment,

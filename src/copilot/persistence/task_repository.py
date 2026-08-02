@@ -51,13 +51,16 @@ class InMemoryWorkflowRepository:
     def initialize(
         self,
         request: TaskRequest,
-        contract: TaskContract,
-        plan: TaskPlan,
+        contract: TaskContract | None,
+        plan: TaskPlan | None,
         state: TaskState,
+        *,
+        task_id: str | None = None,
     ) -> None:
         """Persist initial values exactly once per task."""
+        task_id = task_id or (contract.task_id if contract is not None else state.task_id)
         with self._lock:
-            if contract.task_id in self._states:
+            if task_id in self._states:
                 raise ValueError("workflow task already exists")
             if self._database is not None:
                 with self._database:
@@ -68,17 +71,19 @@ class InMemoryWorkflowRepository:
                         VALUES (?, ?, ?, ?, ?)
                         """,
                         (
-                            contract.task_id,
+                            task_id,
                             request.model_dump_json(),
-                            contract.model_dump_json(),
-                            plan.model_dump_json(),
+                            contract.model_dump_json() if contract is not None else "null",
+                            plan.model_dump_json() if plan is not None else "null",
                             state.model_dump_json(),
                         ),
                     )
-            self._requests[contract.task_id] = request
-            self._contracts[contract.task_id] = contract
-            self._plans[contract.task_id] = plan
-            self._states[contract.task_id] = state
+            self._requests[task_id] = request
+            if contract is not None:
+                self._contracts[task_id] = contract
+            if plan is not None:
+                self._plans[task_id] = plan
+            self._states[task_id] = state
 
     def commit_transition(
         self,
@@ -127,8 +132,8 @@ class InMemoryWorkflowRepository:
                 ]
                 if existing_task_results:
                     raise ValueError("contract cannot change after tool execution")
-            existing = self._contracts[contract.task_id]
-            if contract.contract_version < existing.contract_version:
+            existing = self._contracts.get(contract.task_id)
+            if existing is not None and contract.contract_version < existing.contract_version:
                 raise ValueError("contract version cannot decrease")
             if self._database is not None:
                 with self._database:
@@ -143,28 +148,29 @@ class InMemoryWorkflowRepository:
         with self._lock:
             if plan.task_id not in self._states:
                 raise ValueError("workflow task was not initialized")
-            existing = self._plans[plan.task_id]
-            if plan == existing:
+            existing = self._plans.get(plan.task_id)
+            if existing is not None and plan == existing:
                 return
             if any(result.task_id == plan.task_id for result in self._tool_results):
-                if plan.planning_version <= existing.planning_version:
+                if existing is not None and plan.planning_version <= existing.planning_version:
                     raise ValueError("replan version must increase after tool execution")
-            elif plan.planning_version < existing.planning_version:
+            elif existing is not None and plan.planning_version < existing.planning_version:
                 raise ValueError("plan version cannot decrease")
             if self._database is not None:
                 with self._database:
-                    self._database.execute(
-                        """
-                        INSERT OR IGNORE INTO workflow_plan_history
-                        (task_id, planning_version, plan_json)
-                        VALUES (?, ?, ?)
-                        """,
-                        (
-                            existing.task_id,
-                            existing.planning_version,
-                            existing.model_dump_json(),
-                        ),
-                    )
+                    if existing is not None:
+                        self._database.execute(
+                            """
+                            INSERT OR IGNORE INTO workflow_plan_history
+                            (task_id, planning_version, plan_json)
+                            VALUES (?, ?, ?)
+                            """,
+                            (
+                                existing.task_id,
+                                existing.planning_version,
+                                existing.model_dump_json(),
+                            ),
+                        )
                     self._database.execute(
                         "UPDATE workflow_tasks SET plan_json = ? WHERE task_id = ?",
                         (plan.model_dump_json(), plan.task_id),
@@ -296,6 +302,11 @@ class InMemoryWorkflowRepository:
         with self._lock:
             return self._states[task_id]
 
+    def request_for(self, task_id: str) -> TaskRequest:
+        """Return the immutable original request."""
+        with self._lock:
+            return self._requests[task_id]
+
     def step_results(self) -> tuple[StepResult, ...]:
         """Return step results in persistence order."""
         with self._lock:
@@ -383,8 +394,10 @@ class InMemoryWorkflowRepository:
         ):
             task_id = str(row[0])
             self._requests[task_id] = TaskRequest.model_validate_json(row[1])
-            self._contracts[task_id] = TaskContract.model_validate_json(row[2])
-            self._plans[task_id] = TaskPlan.model_validate_json(row[3])
+            if row[2] != "null":
+                self._contracts[task_id] = TaskContract.model_validate_json(row[2])
+            if row[3] != "null":
+                self._plans[task_id] = TaskPlan.model_validate_json(row[3])
             self._states[task_id] = TaskState.model_validate_json(row[4])
             if row[5] is not None:
                 self._task_results[task_id] = TaskResult.model_validate_json(row[5])

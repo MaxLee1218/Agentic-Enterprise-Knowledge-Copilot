@@ -87,9 +87,11 @@ class WorkflowRepository(Protocol):
     def initialize(
         self,
         request: TaskRequest,
-        contract: TaskContract,
-        plan: TaskPlan,
+        contract: TaskContract | None,
+        plan: TaskPlan | None,
         state: TaskState,
+        *,
+        task_id: str | None = None,
     ) -> None:
         """Persist the initial immutable workflow objects."""
         ...
@@ -129,6 +131,10 @@ class WorkflowRepository(Protocol):
 
     def state_for(self, task_id: str) -> TaskState:
         """Return the authoritative persisted domain-state snapshot."""
+        ...
+
+    def request_for(self, task_id: str) -> TaskRequest:
+        """Return the immutable original request."""
         ...
 
     def acquire_execution(self, task_id: str, owner_id: str) -> None:

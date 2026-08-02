@@ -1,0 +1,657 @@
+{
+  "analysis_results": {
+    "calculation_version": "quality_metrics.v1",
+    "dataset_checksum": "sha256:cb5549269b5b5d6ccbf25b26508f7b28db25a3485a4b02bd8a0f016cf32b1427",
+    "empty_result": false,
+    "input_row_count": 3,
+    "metrics": [
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "P1",
+          "supplier_id": "SUP-001"
+        },
+        "metric": "defect_count",
+        "numerator": 10,
+        "unit": "count",
+        "value": 10
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "P2",
+          "supplier_id": "SUP-001"
+        },
+        "metric": "defect_count",
+        "numerator": 15,
+        "unit": "count",
+        "value": 15
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "P3",
+          "supplier_id": "SUP-001"
+        },
+        "metric": "defect_count",
+        "numerator": 20,
+        "unit": "count",
+        "value": 20
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "P1",
+          "supplier_id": "SUP-001"
+        },
+        "metric": "inspected_count",
+        "numerator": 1000,
+        "unit": "count",
+        "value": 1000
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "P2",
+          "supplier_id": "SUP-001"
+        },
+        "metric": "inspected_count",
+        "numerator": 1000,
+        "unit": "count",
+        "value": 1000
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "P3",
+          "supplier_id": "SUP-001"
+        },
+        "metric": "inspected_count",
+        "numerator": 1000,
+        "unit": "count",
+        "value": 1000
+      },
+      {
+        "denominator": 1000,
+        "dimensions": {
+          "period": "P1",
+          "supplier_id": "SUP-001"
+        },
+        "metric": "defect_rate",
+        "numerator": 10,
+        "unit": "ratio",
+        "value": 0.01
+      },
+      {
+        "denominator": 1000,
+        "dimensions": {
+          "period": "P2",
+          "supplier_id": "SUP-001"
+        },
+        "metric": "defect_rate",
+        "numerator": 15,
+        "unit": "ratio",
+        "value": 0.015
+      },
+      {
+        "denominator": 1000,
+        "dimensions": {
+          "period": "P3",
+          "supplier_id": "SUP-001"
+        },
+        "metric": "defect_rate",
+        "numerator": 20,
+        "unit": "ratio",
+        "value": 0.02
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "P1",
+          "supplier_id": "SUP-001"
+        },
+        "metric": "period_over_period_trend",
+        "numerator": 0.01,
+        "unit": "ratio_delta",
+        "value": null
+      },
+      {
+        "denominator": 0.01,
+        "dimensions": {
+          "period": "P2",
+          "supplier_id": "SUP-001"
+        },
+        "metric": "period_over_period_trend",
+        "numerator": 0.015,
+        "unit": "ratio_delta",
+        "value": 0.005
+      },
+      {
+        "denominator": 0.015,
+        "dimensions": {
+          "period": "P3",
+          "supplier_id": "SUP-001"
+        },
+        "metric": "period_over_period_trend",
+        "numerator": 0.02,
+        "unit": "ratio_delta",
+        "value": 0.005
+      }
+    ],
+    "warnings": [
+      "Trend is undefined for the first period (period=P1, supplier_id=SUP-001)"
+    ]
+  },
+  "applicable_policies": [
+    {
+      "document_id": "quality-policy",
+      "document_version": "v1",
+      "evidence_id": "E-0f2352da136c4de79aa3ec02548e467f",
+      "excerpt": "Defect rate is defect count divided by inspected count; zero denominators are null.",
+      "location": "chunk-1"
+    },
+    {
+      "document_id": "deviation-process",
+      "document_version": "v1",
+      "evidence_id": "E-df16fe174164409caf024492d1f4344e",
+      "excerpt": "Quality deviations above the reviewed threshold require documented containment.",
+      "location": "chunk-2"
+    }
+  ],
+  "data_overview": [
+    {
+      "checksum": "sha256:cb5549269b5b5d6ccbf25b26508f7b28db25a3485a4b02bd8a0f016cf32b1427",
+      "evidence_id": "E-bbb598e2a73a4ac3910ad4b7e1810d74",
+      "query_id": "sha256:ea076a1e62ee4be6dcd9851261b201f66ee22b5b3e6544c50ab9ff05a5fdc785",
+      "row_count": 3,
+      "snapshot_at": "2026-07-31T07:04:39.705435+00:00"
+    }
+  ],
+  "evidence": [
+    {
+      "checksum": "sha256:0ba54fadccc2074d8aebfedceee12cc3b342ad27131a3369a1360afa794ddbf6",
+      "evidence_id": "E-0f2352da136c4de79aa3ec02548e467f",
+      "formulas": {},
+      "input_evidence_ids": [],
+      "query_id": null,
+      "source": {
+        "chunk_id": "chunk-1",
+        "document_id": "quality-policy",
+        "document_version": "v1",
+        "index_snapshot_id": "supplier-quality-policy-snapshot-v1"
+      },
+      "source_step_id": "T-51388157fa2748ec925e0f110a344635:retrieve-quality-policy",
+      "source_tool_call_id": "TC-8129bf2e640040df94dda9384d0eea47",
+      "source_type": "DOCUMENT"
+    },
+    {
+      "checksum": "sha256:d31fe10cd515a83c15bf0a31aa4b9132a6366fbdcd406546f44a1845b1644d92",
+      "evidence_id": "E-df16fe174164409caf024492d1f4344e",
+      "formulas": {},
+      "input_evidence_ids": [],
+      "query_id": null,
+      "source": {
+        "chunk_id": "chunk-2",
+        "document_id": "deviation-process",
+        "document_version": "v1",
+        "index_snapshot_id": "supplier-quality-policy-snapshot-v1"
+      },
+      "source_step_id": "T-51388157fa2748ec925e0f110a344635:retrieve-quality-policy",
+      "source_tool_call_id": "TC-8129bf2e640040df94dda9384d0eea47",
+      "source_type": "DOCUMENT"
+    },
+    {
+      "checksum": "sha256:cb5549269b5b5d6ccbf25b26508f7b28db25a3485a4b02bd8a0f016cf32b1427",
+      "evidence_id": "E-bbb598e2a73a4ac3910ad4b7e1810d74",
+      "formulas": {},
+      "input_evidence_ids": [],
+      "query_id": "sha256:ea076a1e62ee4be6dcd9851261b201f66ee22b5b3e6544c50ab9ff05a5fdc785",
+      "source": {
+        "column_names": [
+          "incoming_inspections.inspection_date",
+          "incoming_inspections.rejected_quantity",
+          "incoming_inspections.supplier_id",
+          "incoming_inspections.total_quantity",
+          "suppliers.id",
+          "suppliers.supplier_code",
+          "suppliers.tenant_id"
+        ],
+        "query_fingerprint": "sha256:ea076a1e62ee4be6dcd9851261b201f66ee22b5b3e6544c50ab9ff05a5fdc785",
+        "query_template_id": "supplier_quality_summary_v1",
+        "read_only": true,
+        "row_count": 3,
+        "schema_version": "quality.v1",
+        "snapshot_at": "2026-07-31T07:04:39.705435+00:00",
+        "statement_type": "SELECT",
+        "table_names": [
+          "incoming_inspections",
+          "suppliers"
+        ]
+      },
+      "source_step_id": "T-51388157fa2748ec925e0f110a344635:query-supplier-quality-data",
+      "source_tool_call_id": "TC-c10a7de2fd84483394509ef127eebc6b",
+      "source_type": "DATABASE"
+    },
+    {
+      "checksum": "765be2cac54fdfe16fae12289511d91f0d45306d8fe0fce8671af118abc2ee7d",
+      "evidence_id": "E-2eea1a5abf734e47b8638bc4e5802098",
+      "formulas": {
+        "defect_count": "sum(defect_count)",
+        "defect_rate": "sum(defect_count) / sum(inspected_count)",
+        "inspected_count": "sum(inspected_count)",
+        "period_over_period_trend": "current_period_defect_rate - previous_period_defect_rate"
+      },
+      "input_evidence_ids": [
+        "E-bbb598e2a73a4ac3910ad4b7e1810d74"
+      ],
+      "query_id": null,
+      "source": {
+        "dataset_checksum": "sha256:cb5549269b5b5d6ccbf25b26508f7b28db25a3485a4b02bd8a0f016cf32b1427",
+        "engine_version": "quality_metrics.v1",
+        "formulas": {
+          "defect_count": "sum(defect_count)",
+          "defect_rate": "sum(defect_count) / sum(inspected_count)",
+          "inspected_count": "sum(inspected_count)",
+          "period_over_period_trend": "current_period_defect_rate - previous_period_defect_rate"
+        },
+        "group_by": [
+          "supplier_id",
+          "period"
+        ],
+        "operation": "deterministic_quality_metrics"
+      },
+      "source_step_id": "T-51388157fa2748ec925e0f110a344635:analyze-supplier-quality",
+      "source_tool_call_id": "TC-afaffb9e32684c5389a19174bf68c17d",
+      "source_type": "CALCULATION"
+    }
+  ],
+  "evidence_references": [
+    {
+      "checksum": "sha256:0ba54fadccc2074d8aebfedceee12cc3b342ad27131a3369a1360afa794ddbf6",
+      "evidence_id": "E-0f2352da136c4de79aa3ec02548e467f",
+      "formulas": {},
+      "input_evidence_ids": [],
+      "query_id": null,
+      "source": {
+        "chunk_id": "chunk-1",
+        "document_id": "quality-policy",
+        "document_version": "v1",
+        "index_snapshot_id": "supplier-quality-policy-snapshot-v1"
+      },
+      "source_step_id": "T-51388157fa2748ec925e0f110a344635:retrieve-quality-policy",
+      "source_tool_call_id": "TC-8129bf2e640040df94dda9384d0eea47",
+      "source_type": "DOCUMENT"
+    },
+    {
+      "checksum": "sha256:d31fe10cd515a83c15bf0a31aa4b9132a6366fbdcd406546f44a1845b1644d92",
+      "evidence_id": "E-df16fe174164409caf024492d1f4344e",
+      "formulas": {},
+      "input_evidence_ids": [],
+      "query_id": null,
+      "source": {
+        "chunk_id": "chunk-2",
+        "document_id": "deviation-process",
+        "document_version": "v1",
+        "index_snapshot_id": "supplier-quality-policy-snapshot-v1"
+      },
+      "source_step_id": "T-51388157fa2748ec925e0f110a344635:retrieve-quality-policy",
+      "source_tool_call_id": "TC-8129bf2e640040df94dda9384d0eea47",
+      "source_type": "DOCUMENT"
+    },
+    {
+      "checksum": "sha256:cb5549269b5b5d6ccbf25b26508f7b28db25a3485a4b02bd8a0f016cf32b1427",
+      "evidence_id": "E-bbb598e2a73a4ac3910ad4b7e1810d74",
+      "formulas": {},
+      "input_evidence_ids": [],
+      "query_id": "sha256:ea076a1e62ee4be6dcd9851261b201f66ee22b5b3e6544c50ab9ff05a5fdc785",
+      "source": {
+        "column_names": [
+          "incoming_inspections.inspection_date",
+          "incoming_inspections.rejected_quantity",
+          "incoming_inspections.supplier_id",
+          "incoming_inspections.total_quantity",
+          "suppliers.id",
+          "suppliers.supplier_code",
+          "suppliers.tenant_id"
+        ],
+        "query_fingerprint": "sha256:ea076a1e62ee4be6dcd9851261b201f66ee22b5b3e6544c50ab9ff05a5fdc785",
+        "query_template_id": "supplier_quality_summary_v1",
+        "read_only": true,
+        "row_count": 3,
+        "schema_version": "quality.v1",
+        "snapshot_at": "2026-07-31T07:04:39.705435+00:00",
+        "statement_type": "SELECT",
+        "table_names": [
+          "incoming_inspections",
+          "suppliers"
+        ]
+      },
+      "source_step_id": "T-51388157fa2748ec925e0f110a344635:query-supplier-quality-data",
+      "source_tool_call_id": "TC-c10a7de2fd84483394509ef127eebc6b",
+      "source_type": "DATABASE"
+    },
+    {
+      "checksum": "765be2cac54fdfe16fae12289511d91f0d45306d8fe0fce8671af118abc2ee7d",
+      "evidence_id": "E-2eea1a5abf734e47b8638bc4e5802098",
+      "formulas": {
+        "defect_count": "sum(defect_count)",
+        "defect_rate": "sum(defect_count) / sum(inspected_count)",
+        "inspected_count": "sum(inspected_count)",
+        "period_over_period_trend": "current_period_defect_rate - previous_period_defect_rate"
+      },
+      "input_evidence_ids": [
+        "E-bbb598e2a73a4ac3910ad4b7e1810d74"
+      ],
+      "query_id": null,
+      "source": {
+        "dataset_checksum": "sha256:cb5549269b5b5d6ccbf25b26508f7b28db25a3485a4b02bd8a0f016cf32b1427",
+        "engine_version": "quality_metrics.v1",
+        "formulas": {
+          "defect_count": "sum(defect_count)",
+          "defect_rate": "sum(defect_count) / sum(inspected_count)",
+          "inspected_count": "sum(inspected_count)",
+          "period_over_period_trend": "current_period_defect_rate - previous_period_defect_rate"
+        },
+        "group_by": [
+          "supplier_id",
+          "period"
+        ],
+        "operation": "deterministic_quality_metrics"
+      },
+      "source_step_id": "T-51388157fa2748ec925e0f110a344635:analyze-supplier-quality",
+      "source_tool_call_id": "TC-afaffb9e32684c5389a19174bf68c17d",
+      "source_type": "CALCULATION"
+    }
+  ],
+  "execution_metadata": {
+    "generated_at": "2026-07-31T07:04:39.728916Z",
+    "generator_version": "report_generator.v1",
+    "language": "en-US",
+    "schema_version": "supplier_quality_report_model.v1",
+    "template_version": "supplier_quality_report.v1",
+    "verification_status": "PENDING"
+  },
+  "execution_trace": [
+    {
+      "evidence_id": "E-0f2352da136c4de79aa3ec02548e467f",
+      "source_type": "DOCUMENT",
+      "step_id": "T-51388157fa2748ec925e0f110a344635:retrieve-quality-policy",
+      "tool_call_id": "TC-8129bf2e640040df94dda9384d0eea47"
+    },
+    {
+      "evidence_id": "E-df16fe174164409caf024492d1f4344e",
+      "source_type": "DOCUMENT",
+      "step_id": "T-51388157fa2748ec925e0f110a344635:retrieve-quality-policy",
+      "tool_call_id": "TC-8129bf2e640040df94dda9384d0eea47"
+    },
+    {
+      "evidence_id": "E-bbb598e2a73a4ac3910ad4b7e1810d74",
+      "source_type": "DATABASE",
+      "step_id": "T-51388157fa2748ec925e0f110a344635:query-supplier-quality-data",
+      "tool_call_id": "TC-c10a7de2fd84483394509ef127eebc6b"
+    },
+    {
+      "evidence_id": "E-2eea1a5abf734e47b8638bc4e5802098",
+      "source_type": "CALCULATION",
+      "step_id": "T-51388157fa2748ec925e0f110a344635:analyze-supplier-quality",
+      "tool_call_id": "TC-afaffb9e32684c5389a19174bf68c17d"
+    }
+  ],
+  "executive_summary": "The deterministic quality analysis produced 12 metric observations for 1 authorized supplier(s).",
+  "key_metrics": [
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "P1",
+        "supplier_id": "SUP-001"
+      },
+      "metric": "defect_count",
+      "numerator": 10,
+      "unit": "count",
+      "value": 10
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "P2",
+        "supplier_id": "SUP-001"
+      },
+      "metric": "defect_count",
+      "numerator": 15,
+      "unit": "count",
+      "value": 15
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "P3",
+        "supplier_id": "SUP-001"
+      },
+      "metric": "defect_count",
+      "numerator": 20,
+      "unit": "count",
+      "value": 20
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "P1",
+        "supplier_id": "SUP-001"
+      },
+      "metric": "inspected_count",
+      "numerator": 1000,
+      "unit": "count",
+      "value": 1000
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "P2",
+        "supplier_id": "SUP-001"
+      },
+      "metric": "inspected_count",
+      "numerator": 1000,
+      "unit": "count",
+      "value": 1000
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "P3",
+        "supplier_id": "SUP-001"
+      },
+      "metric": "inspected_count",
+      "numerator": 1000,
+      "unit": "count",
+      "value": 1000
+    },
+    {
+      "denominator": 1000,
+      "dimensions": {
+        "period": "P1",
+        "supplier_id": "SUP-001"
+      },
+      "metric": "defect_rate",
+      "numerator": 10,
+      "unit": "ratio",
+      "value": 0.01
+    },
+    {
+      "denominator": 1000,
+      "dimensions": {
+        "period": "P2",
+        "supplier_id": "SUP-001"
+      },
+      "metric": "defect_rate",
+      "numerator": 15,
+      "unit": "ratio",
+      "value": 0.015
+    },
+    {
+      "denominator": 1000,
+      "dimensions": {
+        "period": "P3",
+        "supplier_id": "SUP-001"
+      },
+      "metric": "defect_rate",
+      "numerator": 20,
+      "unit": "ratio",
+      "value": 0.02
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "P1",
+        "supplier_id": "SUP-001"
+      },
+      "metric": "period_over_period_trend",
+      "numerator": 0.01,
+      "unit": "ratio_delta",
+      "value": null
+    },
+    {
+      "denominator": 0.01,
+      "dimensions": {
+        "period": "P2",
+        "supplier_id": "SUP-001"
+      },
+      "metric": "period_over_period_trend",
+      "numerator": 0.015,
+      "unit": "ratio_delta",
+      "value": 0.005
+    },
+    {
+      "denominator": 0.015,
+      "dimensions": {
+        "period": "P3",
+        "supplier_id": "SUP-001"
+      },
+      "metric": "period_over_period_trend",
+      "numerator": 0.02,
+      "unit": "ratio_delta",
+      "value": 0.005
+    }
+  ],
+  "key_risks": [
+    {
+      "evidence_ids": [
+        "E-2eea1a5abf734e47b8638bc4e5802098"
+      ],
+      "level": "REVIEW_REQUIRED",
+      "risk_id": "risk-analytics-warning-1",
+      "statement": "Trend is undefined for the first period (period=P1, supplier_id=SUP-001)"
+    }
+  ],
+  "limitations": [
+    {
+      "code": "RANKING_NOT_AVAILABLE",
+      "statement": "Supplier ranking is not produced because quality_metrics.v1 does not define a ranking operation."
+    },
+    {
+      "code": "DETERMINISTIC_SCOPE",
+      "statement": "The report reproduces approved Evidence and Analytics outputs and does not infer root causes."
+    }
+  ],
+  "major_findings": [
+    {
+      "evidence_ids": [
+        "E-2eea1a5abf734e47b8638bc4e5802098"
+      ],
+      "finding_id": "finding-defect-rate-7",
+      "severity": "INFO",
+      "statement": "Analytics reported defect_rate=0.01 ratio for period=P1, supplier_id=SUP-001.",
+      "title": "Reported defect rate"
+    },
+    {
+      "evidence_ids": [
+        "E-2eea1a5abf734e47b8638bc4e5802098"
+      ],
+      "finding_id": "finding-defect-rate-8",
+      "severity": "INFO",
+      "statement": "Analytics reported defect_rate=0.015 ratio for period=P2, supplier_id=SUP-001.",
+      "title": "Reported defect rate"
+    },
+    {
+      "evidence_ids": [
+        "E-2eea1a5abf734e47b8638bc4e5802098"
+      ],
+      "finding_id": "finding-defect-rate-9",
+      "severity": "INFO",
+      "statement": "Analytics reported defect_rate=0.02 ratio for period=P3, supplier_id=SUP-001.",
+      "title": "Reported defect rate"
+    }
+  ],
+  "quality_policy_findings": [
+    {
+      "document_id": "quality-policy",
+      "document_version": "v1",
+      "evidence_id": "E-0f2352da136c4de79aa3ec02548e467f",
+      "excerpt": "Defect rate is defect count divided by inspected count; zero denominators are null.",
+      "location": "chunk-1"
+    },
+    {
+      "document_id": "deviation-process",
+      "document_version": "v1",
+      "evidence_id": "E-df16fe174164409caf024492d1f4344e",
+      "excerpt": "Quality deviations above the reviewed threshold require documented containment.",
+      "location": "chunk-2"
+    }
+  ],
+  "recommendations": [
+    {
+      "action": "Review recorded deviations and document containment in accordance with the cited controlled quality policy.",
+      "action_id": "action-review-deviations",
+      "basis": "POLICY_EVIDENCE",
+      "evidence_ids": [
+        "E-0f2352da136c4de79aa3ec02548e467f",
+        "E-df16fe174164409caf024492d1f4344e"
+      ]
+    }
+  ],
+  "recommended_actions": [
+    {
+      "action": "Review recorded deviations and document containment in accordance with the cited controlled quality policy.",
+      "action_id": "action-review-deviations",
+      "basis": "POLICY_EVIDENCE",
+      "evidence_ids": [
+        "E-0f2352da136c4de79aa3ec02548e467f",
+        "E-df16fe174164409caf024492d1f4344e"
+      ]
+    }
+  ],
+  "risk_analysis": [
+    {
+      "evidence_ids": [
+        "E-2eea1a5abf734e47b8638bc4e5802098"
+      ],
+      "level": "REVIEW_REQUIRED",
+      "risk_id": "risk-analytics-warning-1",
+      "statement": "Trend is undefined for the first period (period=P1, supplier_id=SUP-001)"
+    }
+  ],
+  "scope": {
+    "end_date": "2026-03-31",
+    "quarter": 1,
+    "start_date": "2026-01-01",
+    "supplier_ids": [
+      "SUP-001"
+    ],
+    "year": 2026
+  },
+  "supplier_quality_data": [
+    {
+      "checksum": "sha256:cb5549269b5b5d6ccbf25b26508f7b28db25a3485a4b02bd8a0f016cf32b1427",
+      "evidence_id": "E-bbb598e2a73a4ac3910ad4b7e1810d74",
+      "query_id": "sha256:ea076a1e62ee4be6dcd9851261b201f66ee22b5b3e6544c50ab9ff05a5fdc785",
+      "row_count": 3,
+      "snapshot_at": "2026-07-31T07:04:39.705435+00:00"
+    }
+  ],
+  "supplier_ranking": [],
+  "task_summary": {
+    "task_id": "T-51388157fa2748ec925e0f110a344635",
+    "task_status": "EXECUTING",
+    "trace_id": "T-51388157fa2748ec925e0f110a344635"
+  },
+  "title": "Supplier Quality Analysis Report"
+}

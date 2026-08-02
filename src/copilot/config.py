@@ -60,6 +60,14 @@ class Settings(BaseSettings):
     artifact_dir: Path = Path("data/artifacts")
     report_max_size_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=100 * 1024 * 1024)
     max_task_steps: int = Field(default=10, gt=0)
+    max_task_text_length: int = Field(default=10_000, ge=1, le=100_000)
+    max_task_metadata_bytes: int = Field(default=16_384, ge=2, le=1_048_576)
+    max_task_metadata_depth: int = Field(default=5, ge=1, le=20)
+    max_task_metadata_items: int = Field(default=100, ge=0, le=10_000)
+    task_force_read_only: bool = True
+    task_require_approval_by_default: bool = False
+    demo_user_id: str = Field(default="U-DEMO", min_length=1, max_length=200)
+    demo_tenant_id: str = Field(default="TENANT-DEMO", min_length=1, max_length=200)
     workflow_max_retries: int = Field(default=2, ge=0, le=2)
     workflow_retry_delay_seconds: float = Field(default=0, ge=0)
     workflow_engine: Literal["langgraph"] = "langgraph"

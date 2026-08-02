@@ -6,6 +6,9 @@ from calendar import monthrange
 from datetime import date
 
 from copilot.contracts import (
+    ApprovalRequirement,
+    ArtifactType,
+    CapabilityName,
     ExpectedOutput,
     StepResult,
     StepResultStatus,
@@ -14,6 +17,7 @@ from copilot.contracts import (
     TaskContract,
     TaskPlan,
     TaskRequest,
+    TaskType,
 )
 from copilot.llm.manifest import PlannerToolManifestBuilder
 from copilot.llm.prompts import (
@@ -33,6 +37,7 @@ from copilot.services.llm import (
     LLMProvider,
     LLMSchemaValidationError,
 )
+from copilot.services.task_intake import TrustedTaskContext
 from copilot.services.workflows.planning import (
     PlanGenerationOutcome,
     TaskUnderstandingOutcome,
@@ -77,13 +82,13 @@ class LLMPlanningService:
         self,
         *,
         request: TaskRequest,
-        trusted_contract: TaskContract,
+        trusted_context: TrustedTaskContext,
         trace_id: str,
         max_steps: int,
     ) -> TaskUnderstandingOutcome:
         """Produce a frozen contract while preserving trusted tenant and policy fields."""
         context = LLMCallContext(
-            task_id=trusted_contract.task_id,
+            task_id=trusted_context.task_id,
             trace_id=trace_id,
             node_name="understand_task",
             attempt=1,
@@ -95,11 +100,20 @@ class LLMPlanningService:
                 request=request,
                 trusted_context={
                     "reference_time_utc": request.created_at.isoformat(),
-                    "tenant_id": trusted_contract.constraints.tenant_id,
-                    "authorized_data_scope": list(trusted_contract.constraints.data_scope),
-                    "authorized_supplier_scope": list(trusted_contract.constraints.supplier_ids),
+                    "tenant_id": trusted_context.tenant_id,
+                    "authorized_data_scope": list(trusted_context.data_scope),
+                    "authorized_supplier_scope": list(trusted_context.authorized_supplier_ids),
                     "system_max_steps": max_steps,
-                    "read_only": True,
+                    "read_only": trusted_context.read_only,
+                    "output_format": (
+                        trusted_context.output_format.value
+                        if trusted_context.output_format is not None
+                        else None
+                    ),
+                    "supported_output_formats": [
+                        ArtifactType.QUALITY_ANALYSIS_REPORT_PDF.value,
+                        ArtifactType.QUALITY_ANALYSIS_REPORT_JSON.value,
+                    ],
                 },
                 output_schema=TaskUnderstandingOutput,
             ),
@@ -118,27 +132,25 @@ class LLMPlanningService:
             )
         assert candidate.time_range.year is not None
         assert candidate.time_range.quarter is not None
-        constraints = trusted_contract.constraints
-        if (
-            candidate.time_range.year != constraints.year
-            or candidate.time_range.quarter != constraints.quarter
-        ):
-            raise LLMSchemaValidationError(
-                "LLM time range conflicts with the deterministically validated request scope"
-            )
         if (
             candidate.entities.supplier_ids
-            and constraints.supplier_ids
-            and not set(candidate.entities.supplier_ids).issubset(constraints.supplier_ids)
+            and trusted_context.authorized_supplier_ids
+            and not set(candidate.entities.supplier_ids).issubset(
+                trusted_context.authorized_supplier_ids
+            )
         ):
             raise LLMSchemaValidationError(
                 "LLM supplier entities exceed the trusted authorized request scope"
             )
-        if candidate.constraints.max_steps > max_steps or not candidate.constraints.read_only:
+        if (
+            candidate.constraints.max_steps > max_steps
+            or not candidate.constraints.read_only
+            or not trusted_context.read_only
+        ):
             raise LLMSchemaValidationError("LLM output attempted to relax trusted execution limits")
         if (
-            candidate.deliverable.artifact_type != trusted_contract.expected_output.artifact_type
-            or candidate.deliverable.language != trusted_contract.expected_output.language
+            trusted_context.output_format is not None
+            and candidate.deliverable.artifact_type != trusted_context.output_format
         ):
             raise LLMSchemaValidationError(
                 "LLM deliverable conflicts with the validated interface request"
@@ -146,26 +158,47 @@ class LLMPlanningService:
         start_date, end_date = _quarter_dates(
             candidate.time_range.year, candidate.time_range.quarter
         )
+        supplier_ids = (
+            candidate.entities.supplier_ids
+            if candidate.entities.supplier_ids
+            else trusted_context.authorized_supplier_ids
+        )
         updated_constraints = TaskConstraints(
-            **{
-                **constraints.model_dump(),
-                "start_date": start_date,
-                "end_date": end_date,
-                "metrics": candidate.constraints.metrics,
-            }
+            year=candidate.time_range.year,
+            quarter=candidate.time_range.quarter,
+            start_date=start_date,
+            end_date=end_date,
+            supplier_ids=supplier_ids,
+            tenant_id=trusted_context.tenant_id,
+            data_scope=trusted_context.data_scope,
+            metrics=candidate.constraints.metrics,
+            deadline_at=trusted_context.deadline_at,
         )
         contract = TaskContract(
-            **{
-                **trusted_contract.model_dump(),
-                "task_type": candidate.task_type,
-                "expected_output": ExpectedOutput(
-                    artifact_type=candidate.deliverable.artifact_type,
-                    required_sections=candidate.deliverable.required_sections,
-                    language=candidate.deliverable.language,
-                    citations_required=True,
+            task_id=trusted_context.task_id,
+            contract_version=1,
+            task_type=TaskType.SUPPLIER_QUALITY_ANALYSIS_V1,
+            required_capabilities=tuple(CapabilityName),
+            expected_output=ExpectedOutput(
+                artifact_type=(
+                    trusted_context.output_format or candidate.deliverable.artifact_type
                 ),
-                "constraints": updated_constraints,
-            }
+                required_sections=candidate.deliverable.required_sections,
+                language=candidate.deliverable.language,
+                citations_required=True,
+            ),
+            constraints=updated_constraints,
+            approval_requirement=ApprovalRequirement(
+                required=trusted_context.require_approval,
+                policy_id=("task-intake-approval-v1" if trusted_context.require_approval else None),
+                approver_role=(
+                    "quality_data_approver" if trusted_context.require_approval else None
+                ),
+                controlled_scope=(
+                    trusted_context.data_scope if trusted_context.require_approval else ()
+                ),
+            ),
+            created_at=request.created_at,
         )
         return TaskUnderstandingOutcome(contract=contract)
 

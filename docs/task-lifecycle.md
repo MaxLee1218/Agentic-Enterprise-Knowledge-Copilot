@@ -6,6 +6,15 @@ The frozen Supplier Quality v1.0 state machine in
 The current deterministic workflow follows:
 
 ```text
+Natural-language API / CLI submission
+  -> Task Intake validation and trusted constraint merge
+  -> TaskRequest + CREATED persisted
+  -> TASK_SUBMITTED audit
+  -> validate_request
+  -> understand_task (original TaskRequest.raw_input)
+  -> TaskContract
+  -> create_plan
+  -> TaskPlan
 CREATED
   -> UNDERSTANDING
   -> PLANNING
@@ -41,5 +50,12 @@ eligible verification failure uses the frozen
 `VERIFYING -> REPLANNING -> EXECUTING` transitions and a separate replan counter.
 
 The frozen machine has no clarification state. Required missing information therefore records a
-recoverable `TASK_INFORMATION_MISSING` error but transitions `UNDERSTANDING -> FAILED`; a corrected
-request starts a new Task. The frozen database-empty path remains Success and never replans.
+recoverable `TASK_INFORMATION_MISSING` error and `TASK_CLARIFICATION_REQUIRED` audit event, but
+transitions `UNDERSTANDING -> FAILED`; the API/CLI exposes the missing-information message and a
+corrected request starts a new Task. The frozen database-empty path remains Success and never
+replans.
+
+The initial persisted row may temporarily contain no Contract or Plan. Understanding commits the
+Contract before planning; planning commits the Plan before deterministic validation or any
+business tool call. Existing checkpoint records with pre-populated Contract/Plan remain readable,
+and internal prepared execution remains available for deterministic compatibility tests.

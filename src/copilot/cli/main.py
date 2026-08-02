@@ -1,18 +1,26 @@
-"""Thin command-line interface for dry-run and deterministic workflow execution."""
+"""Thin CLI for the same natural-language application service used by HTTP."""
 
 from collections.abc import Callable
 from typing import Annotated
 
 import typer
+from pydantic import ValidationError
 
+from copilot.agent.graph import WorkflowInterrupted
 from copilot.contracts import TaskStatus
-from copilot.services.workflows.models import SupplierQualityCommand, WorkflowExecution
+from copilot.services.task_intake import (
+    NaturalLanguageTaskCommand,
+    RequestSource,
+    TaskIntakeValidationError,
+    TaskOutputFormat,
+)
+from copilot.services.workflows.models import WorkflowExecution
 
-WorkflowHandler = Callable[[SupplierQualityCommand], WorkflowExecution]
+WorkflowHandler = Callable[[NaturalLanguageTaskCommand], WorkflowExecution]
 
 
 def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
-    """Create a CLI app with an injected application handler."""
+    """Create a CLI app with an injected application-service adapter."""
     cli = typer.Typer(
         add_completion=False,
         no_args_is_help=True,
@@ -22,72 +30,92 @@ def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
 
     @cli.command()
     def main(
-        task: Annotated[
+        task_text: Annotated[
             str | None,
-            typer.Option("--task", help="Task description or supplier-quality-analysis."),
+            typer.Argument(help="Natural-language enterprise task."),
         ] = None,
-        supplier_id: Annotated[
-            str | None, typer.Option("--supplier-id", help="Authorized supplier identifier.")
+        task_option: Annotated[
+            str | None,
+            typer.Option("--task", help="Natural-language enterprise task."),
         ] = None,
-        material_id: Annotated[
-            str | None, typer.Option("--material-id", help="Requested material identifier.")
+        output_format: Annotated[
+            TaskOutputFormat | None,
+            typer.Option("--output-format", help="Frozen report format: pdf or json."),
         ] = None,
-        time_range: Annotated[
-            str | None, typer.Option("--time-range", help="Explicit period in YYYY-QN form.")
+        max_steps: Annotated[
+            int | None,
+            typer.Option("--max-steps", min=1, help="Tighten the server step limit."),
         ] = None,
-        report_format: Annotated[
-            str,
-            typer.Option("--report-format", help="Frozen report format: JSON or PDF."),
-        ] = "JSON",
+        read_only: Annotated[
+            bool,
+            typer.Option("--read-only", help="Explicitly request read-only execution."),
+        ] = False,
+        require_approval: Annotated[
+            bool,
+            typer.Option("--require-approval", help="Require approval even if policy does not."),
+        ] = False,
+        session_id: Annotated[
+            str | None,
+            typer.Option("--session-id", help="Non-authoritative session correlation ID."),
+        ] = None,
         dry_run: Annotated[
-            bool, typer.Option("--dry-run", help="Validate input without executing a task.")
+            bool,
+            typer.Option("--dry-run", help="Parse the command without executing a task."),
         ] = False,
     ) -> None:
-        """Run the offline deterministic Supplier Quality workflow."""
-        if task is not None:
-            typer.echo(f"Task received:\n\n{task}")
-        if dry_run:
-            typer.echo("Dry run enabled.\nNo execution performed.")
-            return
-        if task != "supplier-quality-analysis":
-            typer.echo("Unsupported task. Use supplier-quality-analysis.", err=True)
+        """Submit one natural-language task to the governed workflow."""
+        if task_text is not None and task_option is not None:
+            typer.echo(
+                "Invalid input: provide either the positional task or --task, not both.",
+                err=True,
+            )
             raise typer.Exit(code=2)
+        task = task_text if task_text is not None else task_option
+        if task is None or not task.strip():
+            typer.echo("Invalid input: task text must not be empty.", err=True)
+            raise typer.Exit(code=2)
+        try:
+            command = NaturalLanguageTaskCommand(
+                task=task,
+                output_format=output_format,
+                max_steps=max_steps,
+                read_only=True if read_only else None,
+                require_approval=True if require_approval else None,
+                session_id=session_id,
+                source=RequestSource.CLI,
+            )
+        except ValidationError as exc:
+            typer.echo(f"Invalid input: {exc.errors()[0]['msg']}", err=True)
+            raise typer.Exit(code=2) from exc
+        if dry_run:
+            typer.echo("Task input is syntactically valid.\nNo execution performed.")
+            return
         if handler is None:
             typer.echo("Workflow runtime is not composed at this entry point.", err=True)
             raise typer.Exit(code=2)
-        if supplier_id is None or material_id is None or time_range is None:
-            typer.echo("--supplier-id, --material-id, and --time-range are required.", err=True)
-            raise typer.Exit(code=2)
         try:
-            execution = handler(
-                SupplierQualityCommand(
-                    supplier_id=supplier_id,
-                    material_id=material_id,
-                    time_range=time_range,
-                    report_format=report_format,
-                )
-            )
-        except ValueError as exc:
-            typer.echo(f"Invalid input: {exc}", err=True)
+            execution = handler(command)
+        except TaskIntakeValidationError as exc:
+            typer.echo(f"{exc.code}: {exc}", err=True)
             raise typer.Exit(code=2) from exc
+        except WorkflowInterrupted as interrupted:
+            typer.echo(f"Task ID: {interrupted.task_id}")
+            typer.echo(f"Trace ID: {interrupted.trace_id}")
+            typer.echo(f"Task status: {interrupted.status}")
+            typer.echo(f"Summary: {interrupted}")
+            return
         typer.echo(f"Task ID: {execution.task_result.task_id}")
-        typer.echo(f"Trace ID: {execution.task_result.task_id}")
+        typer.echo(f"Trace ID: {execution.trace_id}")
         typer.echo(f"Task status: {execution.task_result.final_status.value}")
-        typer.echo("Step summary:")
-        for result, record in zip(execution.step_results, execution.step_executions, strict=True):
-            typer.echo(
-                f"- {result.step_id}: {result.status.value}; "
-                f"attempts={record.attempt_count}; duration_ms={record.duration_ms}"
-            )
+        typer.echo(f"Summary: {execution.task_result.summary}")
+        for error in execution.errors:
+            typer.echo(f"Error: {error.error_code}: {error.message}")
+            if error.error_code == "TASK_INFORMATION_MISSING":
+                typer.echo(f"Missing information: {error.message}")
         artifact_path = execution.artifacts[0].location if execution.artifacts else "none"
         typer.echo(f"Artifact path: {artifact_path}")
-        if execution.artifacts:
-            artifact = execution.artifacts[0]
-            typer.echo(f"Artifact ID: {artifact.artifact_id}")
-            typer.echo(f"Artifact type: {artifact.type.value}")
-            typer.echo(f"Artifact checksum: {artifact.checksum}")
-            typer.echo(f"Artifact size: {artifact.size_bytes} bytes")
-        typer.echo(f"Total duration: {execution.duration_ms} ms")
+        if execution.verification_result is not None:
+            typer.echo(f"Verification status: {execution.verification_result.status.value}")
         if execution.task_result.final_status is not TaskStatus.COMPLETED:
             raise typer.Exit(code=1)
 
@@ -95,3 +123,5 @@ def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
 
 
 app = create_app()
+
+__all__ = ["WorkflowHandler", "app", "create_app"]

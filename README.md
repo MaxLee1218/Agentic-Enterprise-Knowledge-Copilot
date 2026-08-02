@@ -36,16 +36,47 @@ Application code reads configuration only through
 
 ```bash
 enterprise-copilot --help
-python scripts/run_task.py --task "Analyze supplier quality issue" --dry-run
 python scripts/run_task.py \
-  --task supplier-quality-analysis \
-  --supplier-id SUP-001 \
-  --material-id MAT-001 \
-  --time-range 2026-Q1
-uvicorn copilot.api.app:app
+  "Analyze Q2 2026 supplier quality deviations, identify the highest-risk suppliers, compare them with the Supplier Quality Manual, and generate a JSON management report."
+uvicorn copilot.bootstrap.api:app
 ```
 
-The service health endpoint is available at `GET /health`.
+The positional task and `--task` form are equivalent:
+
+```bash
+python scripts/run_task.py \
+  --task "Analysiere die Lieferantenqualität im 2. Quartal 2026 und erstelle einen JSON-Bericht."
+```
+
+Only the natural-language task is required. Optional `--output-format`, `--max-steps`,
+`--read-only`, `--require-approval`, and `--session-id` values can select an already-supported
+format or tighten server constraints; they cannot expand policy, permission, approval, tool, or
+step limits.
+
+The HTTP task endpoint uses the same application service and LangGraph:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task": "Analyze Q2 2026 supplier quality deviations, identify the highest-risk suppliers, compare them with the Supplier Quality Manual, and generate a JSON management report.",
+    "output_format": "json",
+    "read_only": true
+  }'
+```
+
+`POST /v1/tasks` requires only `task`; the caller does not supply a goal, entities, time range
+object, deliverables, plan, tool names, SQL, or tool arguments. Task Understanding creates the
+`TaskContract`, the Planner creates the `TaskPlan`, deterministic Plan Validator checks it, and
+Policy/Approval plus ToolExecutor remain mandatory. The original trimmed task text is persisted
+before model execution and is passed unchanged to Task Understanding.
+
+The service health endpoint remains available at `GET /health`.
+
+The frozen Supplier Quality v1.0 Artifact contract supports PDF and JSON, not Markdown. An
+explicit year and quarter remain mandatory. When they are missing, Task Understanding records
+the missing information and the frozen state machine terminates the Task as `FAILED`; a corrected
+request starts a new Task because v1.0 has no multi-turn clarification-resume state.
 
 The standalone Enterprise RAG checks use the real HTTP adapter without starting the complete
 workflow:
@@ -74,8 +105,9 @@ The Database Tool accepts only the frozen query-template contract, never caller-
 See [Database Tool](docs/database-tool.md) for the schema, read-only boundary, Evidence model, and
 PostgreSQL migration notes.
 
-The default development/test LangGraph workflow runs without an LLM, network, or external
-service. It writes a verified `QUALITY_ANALYSIS_REPORT_JSON` file beneath `ARTIFACT_DIR`
+The composed development/test API and CLI use the bounded offline structured mock provider and
+run without a network or external model service. They write a verified
+`QUALITY_ANALYSIS_REPORT_JSON` file beneath `ARTIFACT_DIR`
 (default `data/artifacts`) and prints its ID, path, checksum, and size. Pass
 `--report-format PDF` to generate and independently verify the frozen PDF alternative. Markdown
 and HTML are intentionally not emitted because the frozen Supplier Quality v1.0 Artifact contract
@@ -94,7 +126,7 @@ task/tenant-scoped resume. Domain facts, Evidence, Artifact metadata, leases, an
 separate business tables rather than using checkpoints as the source of truth. See
 [Deterministic LangGraph Workflow](docs/langgraph-workflow.md).
 
-An LLM planning service can be injected at composition time. It produces only candidate
+An LLM planning service is injected by the API/CLI composition root. It produces only candidate
 understanding and plans; deterministic Contract binding, PlanValidator, policy, approval,
 ToolExecutor, Evidence, and verification remain mandatory. See
 [Structured LLM Architecture](docs/llm-architecture.md) and

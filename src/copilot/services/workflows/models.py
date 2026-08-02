@@ -11,6 +11,7 @@ from copilot.contracts import (
     JsonObject,
     StepResult,
     TaskContract,
+    TaskError,
     TaskPlan,
     TaskRequest,
     TaskResult,
@@ -132,3 +133,5 @@ class WorkflowExecution:
     started_at: datetime
     completed_at: datetime
     duration_ms: int
+    trace_id: str = ""
+    errors: tuple[TaskError, ...] = ()

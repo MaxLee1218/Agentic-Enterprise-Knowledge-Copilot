@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from datetime import datetime
-from typing import Annotated, TypedDict, TypeVar
+from typing import Annotated, TypedDict, TypeVar, cast
 
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
@@ -40,6 +41,7 @@ from copilot.contracts import (
     VerificationSeverity,
     VerificationStatus,
 )
+from copilot.services.task_intake import RequestSource, TrustedTaskContext
 from copilot.services.workflows.models import StepExecutionRecord, ToolAttemptSummary
 
 T = TypeVar("T")
@@ -69,6 +71,7 @@ _CHECKPOINT_ALLOWED_TYPES = (
     TaskStep,
     TaskType,
     ToolAttemptSummary,
+    TrustedTaskContext,
     ToolCall,
     ToolResult,
     ToolResultStatus,
@@ -174,6 +177,7 @@ class AgentGraphState(TypedDict):
 
     task_id: str
     trace_id: str
+    intake_context: TrustedTaskContext
     request: TaskRequest
     contract: TaskContract
     plan: TaskPlan
@@ -207,21 +211,43 @@ class AgentGraphState(TypedDict):
 def initial_graph_state(
     *,
     request: TaskRequest,
-    contract: TaskContract,
-    plan: TaskPlan,
     domain_state: TaskState,
     started_at: datetime,
+    intake_context: TrustedTaskContext | None = None,
+    contract: TaskContract | None = None,
+    plan: TaskPlan | None = None,
 ) -> AgentGraphState:
     """Create a complete, stable checkpoint input without duplicating large source payloads."""
+    if intake_context is None:
+        if contract is None:
+            raise ValueError("intake_context is required when no prepared contract is supplied")
+        intake_context = TrustedTaskContext(
+            task_id=contract.task_id,
+            trace_id=contract.task_id,
+            session_id=contract.task_id,
+            user_id=request.user_id,
+            tenant_id=contract.constraints.tenant_id,
+            data_scope=contract.constraints.data_scope,
+            authorized_supplier_ids=contract.constraints.supplier_ids,
+            output_format=contract.expected_output.artifact_type,
+            max_steps=max(1, len(plan.steps)) if plan is not None else 1,
+            read_only=True,
+            require_approval=contract.approval_requirement.required,
+            deadline_at=contract.constraints.deadline_at,
+            request_source=RequestSource.INTERNAL,
+            task_text_hash=hashlib.sha256(request.raw_input.encode("utf-8")).hexdigest(),
+            task_text_length=len(request.raw_input),
+        )
     return AgentGraphState(
-        task_id=contract.task_id,
-        trace_id=contract.task_id,
+        task_id=intake_context.task_id,
+        trace_id=intake_context.trace_id,
+        intake_context=intake_context,
         request=request,
-        contract=contract,
-        plan=plan,
+        contract=cast(TaskContract, contract),
+        plan=cast(TaskPlan, plan),
         domain_state=domain_state,
         started_at=started_at,
-        deadline_at=contract.constraints.deadline_at,
+        deadline_at=intake_context.deadline_at,
         current_step_id=None,
         route="start",
         route_reason="New governed task",
