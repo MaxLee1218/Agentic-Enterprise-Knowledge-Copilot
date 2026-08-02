@@ -1,4 +1,4 @@
-# Domain Contracts v1.0
+# Domain Contracts v1.1
 
 ## Why the domain layer exists
 
@@ -8,9 +8,9 @@ stable typed boundary for that lifecycle. They reject undeclared fields, validat
 preserve enum semantics, and round-trip through JSON without relying on model prompts or runtime
 implementation details.
 
-The implementation follows the frozen Supplier Quality Analysis v1.0 design. It is not a generic
-agent contract and does not claim that the Agent Runtime, tools, persistence, or APIs are
-implemented.
+The implementation follows the frozen Supplier Quality Analysis v1.1 design. It is not a generic
+agent contract. v1.1 adds only ApprovalRequest `EDIT` resolution; the task type, state set, four
+tools, Evidence types, Artifacts, and business scope are unchanged.
 
 ## Contract chain
 
@@ -21,6 +21,7 @@ flowchart LR
     P --> S["TaskStep"]
     S --> TC["ToolCall"]
     TC --> TR["ToolResult"]
+    AP["ApprovalRequest"] --> TC
     TR --> SR["StepResult"]
     TR --> E["EvidenceItem"]
     E --> V["VerificationResult"]
@@ -35,6 +36,9 @@ flowchart LR
 - `TaskPlan` is versioned and validates that all `TaskStep` dependencies form a DAG.
 - `ToolCall` binds an invocation to a task, step, tenant, user, deadline, idempotency key, and any
   required approval.
+- `ApprovalRequest` binds one pending human decision to the plan, step, tool/schema, controlled
+  scope, original/final complete arguments, action fingerprints, role, validity, and immutable
+  resolution history. `EDIT` resolves to `APPROVED`; it is not a TaskStatus or ApprovalStatus.
 - `ToolResult` distinguishes business, technical, timeout, and permission outcomes. Tool success
   never means that the task is complete.
 - `EvidenceItem` records minimized content, source references, checksums, and lineage. Calculation

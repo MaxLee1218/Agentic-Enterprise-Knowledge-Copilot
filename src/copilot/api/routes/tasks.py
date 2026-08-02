@@ -55,6 +55,7 @@ def submit_task(
             status=interrupted.status,
             created_at=interrupted.created_at or datetime.now(UTC),
             summary=str(interrupted),
+            pending_approval_id=interrupted.approval_id,
         )
     missing = tuple(
         error.message

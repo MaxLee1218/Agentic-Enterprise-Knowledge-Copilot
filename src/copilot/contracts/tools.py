@@ -32,6 +32,10 @@ class ToolApprovalPolicy(ImmutableContractModel):
         default_factory=tuple, description="Conditions requiring human approval"
     )
     approver_role: str | None = Field(default=None, description="Role authorized to approve")
+    editable_fields: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Top-level input fields that a v1.1 EDIT decision may narrow",
+    )
 
 
 class ToolIdempotency(ImmutableContractModel):

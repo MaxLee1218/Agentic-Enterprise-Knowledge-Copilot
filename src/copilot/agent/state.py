@@ -1,4 +1,4 @@
-"""Serializable LangGraph state envelope for the frozen v1.0 domain objects."""
+"""Serializable LangGraph state envelope for the frozen v1.1 domain objects."""
 
 from __future__ import annotations
 
@@ -55,6 +55,7 @@ _CHECKPOINT_ALLOWED_TYPES = (
     ExpectedOutput,
     JsonObject,
     ReportLanguage,
+    RequestSource,
     RetryPolicy,
     StepExecutionRecord,
     StepResult,
@@ -189,6 +190,8 @@ class AgentGraphState(TypedDict):
     route_reason: str
     last_tool_result: ToolResult | None
     last_arguments: JsonObject | None
+    approval_id: str | None
+    approval_step_id: str | None
     step_results: Annotated[list[StepResult], merge_step_results]
     step_executions: Annotated[list[StepExecutionRecord], merge_step_executions]
     tool_calls: Annotated[list[ToolCall], merge_tool_calls]
@@ -253,6 +256,8 @@ def initial_graph_state(
         route_reason="New governed task",
         last_tool_result=None,
         last_arguments=None,
+        approval_id=None,
+        approval_step_id=None,
         step_results=[],
         step_executions=[],
         tool_calls=[],

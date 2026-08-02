@@ -17,6 +17,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     """Own and close the composed runtime for the API process lifetime."""
     with build_application(settings) as container:
         application.state.task_service = container.task_service
+        application.state.approval_service = container.approval_service
         application.state.settings = settings
         yield
 

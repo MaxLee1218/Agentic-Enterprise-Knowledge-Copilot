@@ -1,9 +1,11 @@
 """Safe uniform HTTP error translation."""
 
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from copilot.api.schemas.tasks import TaskErrorResponse
+from copilot.services.approval_service import ApprovalServiceError
 from copilot.services.task_intake import TaskIntakeValidationError
 
 
@@ -13,15 +15,52 @@ def _trace_id(request: Request) -> str:
 
 async def request_validation_handler(
     request: Request,
-    _error: Exception,
+    error: Exception,
 ) -> JSONResponse:
     """Return a stable error without reflecting unsafe request content."""
+    if "/approvals/" in request.url.path:
+        validation = error if isinstance(error, RequestValidationError) else None
+        invalid_action = validation is not None and any(
+            tuple(item.get("loc", ())) == ("body", "action") for item in validation.errors()
+        )
+        payload = TaskErrorResponse(
+            error_code=(
+                "INVALID_APPROVAL_ACTION" if invalid_action else "INVALID_APPROVAL_REQUEST"
+            ),
+            message="Approval request failed validation.",
+            trace_id=_trace_id(request),
+        )
+        return JSONResponse(
+            status_code=400 if invalid_action else 422,
+            content=payload.model_dump(mode="json"),
+        )
     payload = TaskErrorResponse(
         error_code="INVALID_TASK_INPUT",
         message="Task submission failed validation.",
         trace_id=_trace_id(request),
     )
     return JSONResponse(status_code=422, content=payload.model_dump(mode="json"))
+
+
+async def approval_service_error_handler(
+    request: Request,
+    error: Exception,
+) -> JSONResponse:
+    """Map safe typed approval failures without exposing arguments or internals."""
+    approval_error = (
+        error
+        if isinstance(error, ApprovalServiceError)
+        else ApprovalServiceError("Approval could not be processed")
+    )
+    payload = TaskErrorResponse(
+        error_code=approval_error.code,
+        message=str(approval_error),
+        trace_id=_trace_id(request),
+    )
+    return JSONResponse(
+        status_code=approval_error.status_code,
+        content=payload.model_dump(mode="json"),
+    )
 
 
 async def task_intake_validation_handler(
@@ -53,6 +92,7 @@ async def internal_error_handler(request: Request, _error: Exception) -> JSONRes
 
 
 __all__ = [
+    "approval_service_error_handler",
     "internal_error_handler",
     "request_validation_handler",
     "task_intake_validation_handler",

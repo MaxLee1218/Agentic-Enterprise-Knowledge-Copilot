@@ -132,6 +132,11 @@ def _definition(
             policy_id=f"{name}-v1-policy",
             trigger_conditions=("restricted_scope",),
             approver_role="quality_data_approver",
+            editable_fields=(
+                ("top_k",)
+                if name == "knowledge_search"
+                else (("row_limit",) if name == "database_query" else ())
+            ),
         ),
         idempotency=ToolIdempotency(
             idempotent=True,

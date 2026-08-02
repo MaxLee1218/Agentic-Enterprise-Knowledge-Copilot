@@ -1,6 +1,6 @@
-# Implemented verification lifecycle
+# Implemented v1.1 task and approval lifecycle
 
-The frozen Supplier Quality v1.0 state machine in
+The frozen Supplier Quality v1.1 state machine in
 [`docs/design/state_machine.md`](design/state_machine.md) is authoritative.
 
 The current deterministic workflow follows:
@@ -19,6 +19,8 @@ CREATED
   -> UNDERSTANDING
   -> PLANNING
   -> EXECUTING
+  -> WAITING_APPROVAL (when the exact controlled action requires a human)
+  -> EXECUTING (APPROVAL_GRANTED or APPROVAL_EDITED)
   -> Report Model and render consistency validated
   -> report Artifact atomically generated
   -> VERIFYING
@@ -42,6 +44,18 @@ graph steps, while separate SQLite business tables remain authoritative for Task
 Evidence, Artifact metadata, audit, and leases. Resume uses the tenant/task checkpoint key and
 continues the next safe node without repeating committed successful steps. See
 [`langgraph-workflow.md`](langgraph-workflow.md).
+
+For the implemented Stage 12 path, Knowledge can complete before the exact database input exists.
+The next `policy_check` persists a bound ApprovalRequest before applying
+`EXECUTING -> WAITING_APPROVAL`. `APPROVE` preserves proposed arguments; `EDIT` requires a complete
+replacement and may only lower the frozen allowlisted limit; both resume from the policy
+Checkpoint. `REJECT`, `EXPIRED`, and `REVOKED` transition to `CANCELLED` without invoking the
+controlled tool. Approval history is append-only and a compare-and-swap permits one decision.
+
+The approved final input is placed back at the `policy_check` boundary and then follows the normal
+ToolExecutor path. Previously committed StepResults and Evidence remain in Graph/business storage,
+so restart recovery executes the database and downstream steps without replaying Knowledge. See
+[`stage-12/human-in-the-loop.md`](stage-12/human-in-the-loop.md).
 
 When an LLM planning service is injected, `understand_task` and `create_plan` call that service and
 checkpoint only schema-valid results. `validate_plan` remains deterministic. A repairable initial

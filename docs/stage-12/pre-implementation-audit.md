@@ -1,8 +1,45 @@
-# 阶段 12 Human-in-the-loop 实施前审计
+# 阶段 12 Human-in-the-loop 实施前审计与 v1.1 复核
+
+## v1.1 复核结论（当前结论）
+
+复核日期：2026-08-02
+
+事实来源：`AGENTS.md`、`docs/design/` 冻结 v1.1、ADR-004 和本文件保留的 v1.0
+首次审计证据。
+
+结论：**PASS，可以实施且已按 v1.1 边界实施。**
+
+下方“FAIL / BLOCKED”是设计仍为 v1.0 时形成的历史结论，保留它是为了证明先审计、后变更，
+不能再作为当前实施状态使用。v1.1 已在
+`docs/design/design_baseline.md`、`domain_model.md`、`state_machine.md`、`tool_contract.md`、
+`walkthrough.md`、`design_review.md` 和 `docs/adr/ADR-004-approval-edit-resolution.md` 中只批准
+一个变化：ApprovalRequest 增加 `EDIT` resolution action。v1.1 明确不批准附件建议的
+`create_capa_draft`，也不新增 CapabilityName、StepType、ArtifactType、TaskStatus、数据写入或外部
+副作用。因此阶段 12 使用已有 `database_query.row_limit` 作为合法编辑动作，不实现 CAPA 草稿。
+
+复核后的真实边界与证据：
+
+| 范围 | 当前判断 | 代码与测试证据 |
+|---|---|---|
+| 分层与依赖方向 | PASS | API 只调用 `ApprovalService`；Graph 只经 `ToolExecutor`；`scripts/check_architecture.py` |
+| 自然语言入口 | PASS | `api/routes/tasks.py`、`cli/main.py` 共用 `NaturalLanguageTaskService`；`tests/contract/test_tasks_api_contract.py` |
+| Approval Contract | PASS | `contracts/approvals.py` 保存原始/最终参数、双指纹、租户、计划、Schema 和并发版本 |
+| Policy 三态 | PASS | `policies/approval.py::PolicyOutcome` 与 `SupplierQualityApprovalPolicy.evaluate()` |
+| 暂停与恢复 | PASS | `agent/runtime.py::policy_check()`、`agent/graph.py::resume_approval()`；已完成 Knowledge 步骤不重放 |
+| 持久化与并发 | PASS | `persistence/approval_repository.py`、`migrations/0001_approval_requests.sql`；CAS 单赢家测试 |
+| API 与权限 | PASS | `GET/POST /v1/tasks/{task_id}/approvals/{approval_id}`；tenant + role 来自可信调用者上下文 |
+| Audit 与验证 | PASS | 审批事件记录参数哈希而非完整 payload；Executor 和 Verifier 重新验证 resolved binding |
+| 范围控制 | PASS | Registry 仍只有四个 v1.1 工具；没有 `create_capa_draft` 或业务写操作 |
+
+最初 Gap `S12-04` 至 `S12-11` 已由以上实现关闭。`S12-01`/`S12-02` 不是待实现项，而是
+v1.1 明确禁止的范围扩展；`S12-03` 已由 ADR-004 和 v1.1 冻结语义解决。完整实施说明见
+[`human-in-the-loop.md`](human-in-the-loop.md)。
+
+## v1.0 首次审计（历史记录）
 
 审计日期：2026-08-02  
 审计范围：当前工作树、Supplier Quality Analysis v1.0 冻结设计、阶段 10/11 实现、自然语言入口和阶段 12 附件要求。  
-结论：**FAIL / BLOCKED（禁止进入生产代码实施）**。
+结论：**FAIL / BLOCKED（当时禁止进入生产代码实施，已由上方 v1.1 复核取代）**。
 
 ## 1. 执行摘要
 

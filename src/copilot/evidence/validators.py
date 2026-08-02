@@ -34,6 +34,7 @@ from copilot.contracts import (
 from copilot.contracts.base import JsonMapping
 from copilot.contracts.validators import utc_now
 from copilot.evidence.lineage import contains_source_type
+from copilot.policies.approval import action_fingerprint, schema_fingerprint
 from copilot.tools.analytics.precision import DECIMAL_PLACES
 
 
@@ -514,6 +515,24 @@ class SafetyVerifier:
         }
         approvals = {approval.approval_id: approval for approval in verification_context.approvals}
         now = self._clock()
+        requirement = task_contract.approval_requirement
+        if requirement.required and not any(
+            approval.task_id == task_id
+            and approval.tenant_id == task_contract.constraints.tenant_id
+            and approval.planning_version == task_plan.planning_version
+            and approval.status is ApprovalStatus.APPROVED
+            and approval.expires_at > now
+            and set(requirement.controlled_scope).issubset(approval.controlled_scope)
+            for approval in approvals.values()
+        ):
+            issues.append(
+                _safety_issue(
+                    "APPROVAL_REQUIRED",
+                    "The task has no valid approval covering its controlled scope",
+                    task_id,
+                    None,
+                )
+            )
         for result in verification_context.tool_results:
             definition = definitions.get(result.tool_name)
             step = planned.get(result.step_id)
@@ -590,9 +609,7 @@ class SafetyVerifier:
                         result.step_id,
                     )
                 )
-            if call is not None and (
-                task_contract.approval_requirement.required or call.approval_id is not None
-            ):
+            if call is not None and call.approval_id is not None:
                 approval = approvals.get(call.approval_id or "")
                 if approval is None:
                     issues.append(
@@ -603,24 +620,49 @@ class SafetyVerifier:
                             result.step_id,
                         )
                     )
-                elif (
-                    approval.task_id != task_id
-                    or approval.planning_version != task_plan.planning_version
-                    or approval.status is not ApprovalStatus.APPROVED
-                    or approval.expires_at <= now
-                    or approval.action_fingerprint != call.idempotency_key
-                    or not set(task_contract.approval_requirement.controlled_scope).issubset(
-                        approval.controlled_scope
-                    )
-                ):
-                    issues.append(
-                        _safety_issue(
-                            "APPROVAL_SCOPE_INVALID",
-                            "Approval does not match the task, plan, action, scope, or validity",
-                            task_id,
-                            result.step_id,
+                else:
+                    definition = definitions.get(call.tool_name)
+                    expected_fingerprint = (
+                        action_fingerprint(
+                            task_id=approval.task_id,
+                            planning_version=approval.planning_version,
+                            step_id=approval.step_id,
+                            tool_name=approval.tool_name,
+                            tool_version=approval.tool_version,
+                            input_schema_fingerprint=approval.input_schema_fingerprint,
+                            controlled_scope=approval.controlled_scope,
+                            arguments=call.input,
                         )
+                        if definition is not None
+                        else ""
                     )
+                    invalid = (
+                        definition is None
+                        or approval.task_id != task_id
+                        or approval.tenant_id != call.tenant_id
+                        or approval.step_id != call.step_id
+                        or approval.tool_name != call.tool_name
+                        or approval.tool_version != call.tool_version
+                        or approval.planning_version != task_plan.planning_version
+                        or approval.status is not ApprovalStatus.APPROVED
+                        or approval.expires_at <= now
+                        or approval.resolved_arguments != call.input
+                        or approval.input_schema_fingerprint != schema_fingerprint(definition)
+                        or approval.resolved_action_fingerprint != expected_fingerprint
+                        or not set(requirement.controlled_scope).issubset(approval.controlled_scope)
+                    )
+                    if invalid:
+                        issues.append(
+                            _safety_issue(
+                                "APPROVAL_SCOPE_INVALID",
+                                (
+                                    "Approval does not match the task, plan, action, scope, "
+                                    "or validity"
+                                ),
+                                task_id,
+                                result.step_id,
+                            )
+                        )
 
         allowed_tables = set(verification_context.allowed_tables)
         allowed_columns = set(verification_context.allowed_columns)

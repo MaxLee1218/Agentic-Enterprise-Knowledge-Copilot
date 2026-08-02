@@ -160,7 +160,7 @@ def test_terminal_task_cannot_be_resumed(tmp_path: Path) -> None:
             container.engine.resume(execution.task_result.task_id, "TENANT-DEMO")
 
 
-def test_approval_required_stops_before_any_tool_execution(tmp_path: Path) -> None:
+def test_approval_required_stops_before_controlled_database_execution(tmp_path: Path) -> None:
     with build_test_container(
         tmp_path / "seed" / "artifacts",
         interrupt_after=("validate_plan",),
@@ -186,9 +186,14 @@ def test_approval_required_stops_before_any_tool_execution(tmp_path: Path) -> No
 
         assert state["route"] == "interrupted"
         assert state["domain_state"].state is TaskStatus.WAITING_APPROVAL
-        assert gated.knowledge_tool.call_count == 0
+        assert gated.knowledge_tool.call_count == 1
         assert gated.database_tool.call_count == 0
-        assert gated.repository.tool_results() == ()
+        assert tuple(result.tool_name for result in gated.repository.tool_results()) == (
+            "knowledge_search",
+        )
+        pending = gated.approval_repository.get_pending_for_task("T-0001")
+        assert len(pending) == 1
+        assert pending[0].tool_name == "database_query"
 
 
 def test_missing_information_stops_and_checkpoints_without_defaults(tmp_path: Path) -> None:

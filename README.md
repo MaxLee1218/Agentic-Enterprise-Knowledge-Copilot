@@ -1,7 +1,7 @@
 # Agentic Enterprise Knowledge Copilot
 
 Production-oriented Python foundation for a governed, evidence-backed enterprise task completion
-system. This milestone provides configuration, CLI, API health checks, frozen v1.0 domain
+system. This milestone provides configuration, CLI, API health checks, frozen v1.1 domain
 contracts, a governed tool-runtime foundation, HTTP Enterprise RAG and read-only SQLite database
 adapters, and one
 deterministic offline Supplier Quality workflow with evidence, audit, retries, verification, and
@@ -9,6 +9,10 @@ production deterministic PDF/JSON report generation, and a LangGraph workflow wi
 checkpoint/restart recovery. Stage 11 adds optional structured LLM task understanding and planning
 with DeepSeek and deterministic MockLLM providers, bounded plan repair/replan, and an unchanged
 policy/Registry/Executor execution boundary.
+
+Stage 12 implements v1.1 Human-in-the-loop approval with durable `APPROVE`, bounded `EDIT`, and
+`REJECT` decisions plus checkpoint resume. It intentionally does not add CAPA creation or any
+business write operation; the frozen four-tool scope remains unchanged.
 
 The typed Supplier Quality Analysis contracts and lifecycle are documented in
 [Domain Contracts](docs/domain-contracts.md).
@@ -68,15 +72,31 @@ curl -X POST http://127.0.0.1:8000/v1/tasks \
 `POST /v1/tasks` requires only `task`; the caller does not supply a goal, entities, time range
 object, deliverables, plan, tool names, SQL, or tool arguments. Task Understanding creates the
 `TaskContract`, the Planner creates the `TaskPlan`, deterministic Plan Validator checks it, and
-Policy/Approval plus ToolExecutor remain mandatory. The original trimmed task text is persisted
+Policy/Approval plus ToolExecutor remain mandatory. The original task text is persisted
 before model execution and is passed unchanged to Task Understanding.
+
+When a submission returns 202, use `pending_approval_id` with the approval API. The authorized
+GET endpoint returns the complete proposed tool input. `edit` must send that complete object and
+may only reduce `knowledge_search.top_k` or `database_query.row_limit`; a valid edit creates a new
+resolved action fingerprint and resumes without replaying successful prerequisites.
+
+```bash
+curl http://127.0.0.1:8000/v1/tasks/TASK_ID/approvals/APPROVAL_ID
+
+curl -X POST http://127.0.0.1:8000/v1/tasks/TASK_ID/approvals/APPROVAL_ID \
+  -H "Content-Type: application/json" \
+  -d '{"action":"approve","reason":"Reviewed and approved"}'
+```
+
+See [Stage 12 Human-in-the-loop](docs/stage-12/human-in-the-loop.md) and the
+[HTTP API](docs/api.md) for edit/reject payloads, permissions, persistence, recovery, and errors.
 
 The service health endpoint remains available at `GET /health`.
 
-The frozen Supplier Quality v1.0 Artifact contract supports PDF and JSON, not Markdown. An
+The frozen Supplier Quality v1.1 Artifact contract supports PDF and JSON, not Markdown. An
 explicit year and quarter remain mandatory. When they are missing, Task Understanding records
 the missing information and the frozen state machine terminates the Task as `FAILED`; a corrected
-request starts a new Task because v1.0 has no multi-turn clarification-resume state.
+request starts a new Task because v1.1 has no multi-turn clarification-resume state.
 
 The standalone Enterprise RAG checks use the real HTTP adapter without starting the complete
 workflow:
@@ -92,7 +112,7 @@ See the Chinese
 [Knowledge Tool Verification Guide](docs/knowledge_tool_verification_guide.md) for macOS,
 Windows PowerShell, live integration tests, exit codes, and troubleshooting. The composed
 workflow keeps its deterministic mock in development and test environments; `APP_ENV=production`
-registers the HTTP Knowledge Tool and SQLAlchemy Database Tool while preserving the frozen v1.0
+registers the HTTP Knowledge Tool and SQLAlchemy Database Tool while preserving the frozen v1.1
 input/output contracts.
 
 Create or reset the deterministic SQLite demo database before running a real database workflow:
@@ -110,7 +130,7 @@ run without a network or external model service. They write a verified
 `QUALITY_ANALYSIS_REPORT_JSON` file beneath `ARTIFACT_DIR`
 (default `data/artifacts`) and prints its ID, path, checksum, and size. Pass
 `--report-format PDF` to generate and independently verify the frozen PDF alternative. Markdown
-and HTML are intentionally not emitted because the frozen Supplier Quality v1.0 Artifact contract
+and HTML are intentionally not emitted because the frozen Supplier Quality v1.1 Artifact contract
 supports only PDF and JSON. See the
 [Deterministic Workflow](docs/deterministic-workflow.md) for execution, retry, Evidence, failure,
 and compatibility details, and [Deterministic Report Tool](docs/report-tool.md) for report model,

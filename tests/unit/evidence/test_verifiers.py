@@ -12,6 +12,7 @@ import pytest
 from copilot.contracts import (
     ApprovalRequest,
     ApprovalRequirement,
+    ApprovalResolutionAction,
     ApprovalStatus,
     CandidateResult,
     CitationClaim,
@@ -40,6 +41,7 @@ from copilot.evidence.validators import (
     NumericVerifier,
     SafetyVerifier,
 )
+from copilot.policies.approval import action_fingerprint, schema_fingerprint
 from tests.unit.evidence.helpers import (
     CALC_ID,
     DB_ID,
@@ -384,16 +386,16 @@ def test_safety_detects_missing_approval_and_parameter_mismatch() -> None:
 
 
 @pytest.mark.parametrize(
-    ("status", "fingerprint", "expires_delta"),
+    ("status", "fingerprint_valid", "expires_delta"),
     [
-        (ApprovalStatus.REJECTED, "action-1", timedelta(hours=1)),
-        (ApprovalStatus.APPROVED, "wrong-action", timedelta(hours=1)),
-        (ApprovalStatus.APPROVED, "action-1", timedelta(minutes=-1)),
+        (ApprovalStatus.REJECTED, True, timedelta(hours=1)),
+        (ApprovalStatus.APPROVED, False, timedelta(hours=1)),
+        (ApprovalStatus.APPROVED, True, timedelta(minutes=-1)),
     ],
 )
 def test_rejected_mismatched_and_expired_approvals_fail(
     status: ApprovalStatus,
-    fingerprint: str,
+    fingerprint_valid: bool,
     expires_delta: timedelta,
 ) -> None:
     arguments = verifier_arguments()
@@ -409,19 +411,46 @@ def test_rejected_mismatched_and_expired_approvals_fail(
     )
     base = valid_verification_context()
     call = base.tool_calls[0].model_copy(update={"approval_id": "AP-001"})
+    definition = base.registered_tools[0]
+    schema_digest = schema_fingerprint(definition)
+    expected_fingerprint = action_fingerprint(
+        task_id=TASK_ID,
+        planning_version=1,
+        step_id=call.step_id,
+        tool_name=call.tool_name,
+        tool_version=call.tool_version,
+        input_schema_fingerprint=schema_digest,
+        controlled_scope=("quality.v1",),
+        arguments=call.input,
+    )
+    fingerprint = expected_fingerprint if fingerprint_valid else "wrong-action"
     expires_at = NOW + expires_delta
     created_at = min(NOW - timedelta(hours=1), expires_at - timedelta(hours=1))
     approval = ApprovalRequest(
         approval_id="AP-001",
         task_id=TASK_ID,
+        tenant_id="TENANT-A",
+        step_id=call.step_id,
         planning_version=1,
-        action_fingerprint=fingerprint,
+        tool_name=call.tool_name,
+        tool_version=call.tool_version,
+        input_schema_fingerprint=schema_digest,
+        original_action_fingerprint=fingerprint,
+        resolved_action_fingerprint=(fingerprint if status is ApprovalStatus.APPROVED else None),
         controlled_scope=("quality.v1",),
+        proposed_arguments=call.input,
+        resolved_arguments=call.input if status is ApprovalStatus.APPROVED else None,
         reason="Controlled supplier quality data access",
         requester="U-001",
         approver="A-001",
         required_role="quality_data_approver",
         status=status,
+        resolution_action=(
+            ApprovalResolutionAction.APPROVE
+            if status is ApprovalStatus.APPROVED
+            else ApprovalResolutionAction.REJECT
+        ),
+        resolution_reason=("Rejected for test" if status is ApprovalStatus.REJECTED else None),
         policy_version="quality-policy.v1",
         created_at=created_at,
         decided_at=created_at + timedelta(minutes=1),

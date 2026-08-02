@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     task_require_approval_by_default: bool = False
     demo_user_id: str = Field(default="U-DEMO", min_length=1, max_length=200)
     demo_tenant_id: str = Field(default="TENANT-DEMO", min_length=1, max_length=200)
+    demo_approval_roles: tuple[str, ...] = ("quality_data_approver",)
+    approval_ttl_seconds: int = Field(default=86_400, ge=60, le=604_800)
     workflow_max_retries: int = Field(default=2, ge=0, le=2)
     workflow_retry_delay_seconds: float = Field(default=0, ge=0)
     workflow_engine: Literal["langgraph"] = "langgraph"

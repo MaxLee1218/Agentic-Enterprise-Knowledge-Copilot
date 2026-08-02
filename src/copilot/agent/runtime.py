@@ -25,6 +25,8 @@ from copilot.contracts import (
     ToolResultStatus,
     VerificationStatus,
 )
+from copilot.policies.approval import PolicyOutcome, SupplierQualityApprovalPolicy
+from copilot.services.approval_service import ApprovalGateService, ApprovalRepositoryPort
 from copilot.services.llm import LLMErrorCode, LLMProviderError
 from copilot.services.workflows.dependency import DependencyChecker
 from copilot.services.workflows.errors import StepInputError
@@ -87,6 +89,9 @@ class GraphNodeRuntime:
         ids: IdentifierFactory,
         clock: Callable[[], datetime],
         sleeper: Callable[[float], None],
+        approval_gate: ApprovalGateService,
+        approval_repository: ApprovalRepositoryPort,
+        approval_policy: SupplierQualityApprovalPolicy,
         max_task_steps: int,
         max_replan_count: int,
         max_plan_repair_attempts: int = 2,
@@ -111,6 +116,9 @@ class GraphNodeRuntime:
         self._max_replan_count = max_replan_count
         self._max_plan_repairs = max_plan_repair_attempts
         self._planning_service = planning_service
+        self._approval_gate = approval_gate
+        self._approval_repository = approval_repository
+        self._approval_policy = approval_policy
 
     def validate_request(self, state: AgentGraphState) -> dict[str, object]:
         """Reject inconsistent, terminal, cancelled, expired, or over-budget input."""
@@ -670,27 +678,11 @@ class GraphNodeRuntime:
                 errors=[error],
             )
         if state["domain_state"].state is TaskStatus.PLANNING:
-            if state["contract"].approval_requirement.required:
-                domain_state = self._transition(
-                    state,
-                    state["domain_state"],
-                    "APPROVAL_REQUIRED",
-                    "Contract requires a bound human approval",
-                )
-                return self._node_result(
-                    state,
-                    "policy_check",
-                    started,
-                    "approval_required",
-                    "Human approval is required before execution",
-                    domain_state=domain_state,
-                    current_step_id=step.step_id,
-                )
             domain_state = self._transition(
                 state,
                 state["domain_state"],
                 "PLAN_APPROVED_BY_POLICY",
-                "Offline v1 scope is pre-authorized",
+                "Plan is valid; exact actions remain subject to pre-execution policy",
             )
         else:
             domain_state = state["domain_state"]
@@ -718,6 +710,104 @@ class GraphNodeRuntime:
                 current_step_id=step.step_id,
                 errors=[error],
             )
+        try:
+            arguments = self._input_builder.build(
+                step,
+                state["request"],
+                state["contract"],
+                {item.step_id: item for item in state["step_results"]},
+                self._load_evidence(state),
+            )
+        except StepInputError as exc:
+            error = self._error(
+                state,
+                "STEP_INPUT_INVALID",
+                ErrorType.VALIDATION,
+                str(exc),
+                step_id=step.step_id,
+            )
+            domain_state = self._fail_from_execution(
+                {**state, "domain_state": domain_state}, error.message
+            )
+            return self._node_result(
+                state,
+                "policy_check",
+                started,
+                "denied",
+                error.message,
+                domain_state=domain_state,
+                current_step_id=step.step_id,
+                errors=[error],
+            )
+        definition = self._registry.get(step.tool_name).definition
+        has_current_plan_approval = any(
+            approval.status.value == "APPROVED"
+            and approval.planning_version == state["plan"].planning_version
+            for approval in self._approval_repository.list_by_task(state["task_id"])
+        )
+        decision = self._approval_policy.evaluate(
+            contract=state["contract"],
+            step=step,
+            definition=definition,
+            arguments=arguments,
+            has_current_plan_approval=has_current_plan_approval,
+        )
+        if decision.outcome is PolicyOutcome.DENY:
+            error = self._error(
+                state,
+                "TOOL_POLICY_DENIED",
+                ErrorType.PERMISSION,
+                decision.reason,
+                step_id=step.step_id,
+            )
+            domain_state = self._fail_from_execution(
+                {**state, "domain_state": domain_state}, error.message
+            )
+            return self._node_result(
+                state,
+                "policy_check",
+                started,
+                "denied",
+                error.message,
+                domain_state=domain_state,
+                current_step_id=step.step_id,
+                last_arguments=arguments,
+                errors=[error],
+            )
+        if decision.outcome is PolicyOutcome.REQUIRE_APPROVAL:
+            approval = self._approval_gate.require(
+                trace_id=state["trace_id"],
+                requester=state["request"].user_id,
+                contract=state["contract"],
+                plan=state["plan"],
+                step=step,
+                definition=definition,
+                arguments=arguments,
+                decision=decision,
+            )
+            event = (
+                "APPROVAL_REQUIRED"
+                if domain_state.state is TaskStatus.PLANNING
+                else "LATE_APPROVAL_REQUIRED"
+            )
+            domain_state = self._transition(
+                state,
+                domain_state,
+                event,
+                "Exact tool action requires bound human approval",
+            )
+            return self._node_result(
+                state,
+                "policy_check",
+                started,
+                "approval_required",
+                "Task is waiting for approval before controlled database access",
+                domain_state=domain_state,
+                current_step_id=step.step_id,
+                last_arguments=arguments,
+                approval_id=approval.approval_id,
+                approval_step_id=step.step_id,
+            )
         return self._node_result(
             state,
             "policy_check",
@@ -726,6 +816,7 @@ class GraphNodeRuntime:
             f"Step {step.step_id} is ready",
             domain_state=domain_state,
             current_step_id=step.step_id,
+            last_arguments=arguments,
         )
 
     def execute_tool(self, state: AgentGraphState) -> dict[str, object]:
@@ -1060,18 +1151,13 @@ class GraphNodeRuntime:
                 domain_state=domain_state,
                 errors=[error],
             )
-        prior = {item.step_id: item for item in state["step_results"]}
-        evidence = self._load_evidence(state)
-        try:
-            arguments = self._input_builder.build(
-                step, state["request"], state["contract"], prior, evidence
-            )
-        except StepInputError as exc:
+        arguments = state["last_arguments"]
+        if arguments is None:
             error = self._error(
                 state,
-                "STEP_INPUT_INVALID",
+                "POLICY_ARGUMENT_BINDING_MISSING",
                 ErrorType.VALIDATION,
-                str(exc),
+                "Tool input was not bound by the policy node",
                 step_id=step.step_id,
             )
             domain_state = self._fail_from_execution(
@@ -1098,7 +1184,9 @@ class GraphNodeRuntime:
             idempotency_key=_idempotency_key(
                 state["task_id"], step, definition.tool_version, arguments
             ),
-            approval_id=None,
+            approval_id=(
+                state["approval_id"] if state["approval_step_id"] == step.step_id else None
+            ),
             deadline_at=state["deadline_at"],
             tenant_id=state["contract"].constraints.tenant_id,
             user_id=state["request"].user_id,
@@ -1227,6 +1315,7 @@ class GraphNodeRuntime:
             retry_counts=dict(state["retry_counts"]),
             metadata={"registered_tools": tuple(self._registry.list())},
             verification_result=state["verification_result"],
+            approvals=self._approval_repository.list_by_task(state["task_id"]),
         )
         for result in state["tool_results"]:
             context.tool_results.setdefault(result.step_id, []).append(result)

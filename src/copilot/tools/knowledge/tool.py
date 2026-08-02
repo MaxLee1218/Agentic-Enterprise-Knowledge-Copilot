@@ -147,6 +147,7 @@ class KnowledgeTool:
             policy_id="knowledge-search-v1-policy",
             trigger_conditions=("restricted_scope",),
             approver_role="quality_data_approver",
+            editable_fields=("top_k",),
         ),
         idempotency=ToolIdempotency(
             idempotent=True,

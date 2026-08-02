@@ -65,7 +65,7 @@ class WorkflowVerifier:
                 for step in context.plan.steps
                 for result in context.tool_results.get(step.step_id, ())
             ),
-            approvals=(),
+            approvals=context.approvals,
             allowed_tables=self._allowed_tables,
             allowed_columns=self._allowed_columns,
             sensitive_fields=self._sensitive_fields,

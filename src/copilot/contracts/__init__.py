@@ -4,6 +4,7 @@ from copilot.contracts.approvals import ApprovalRequest
 from copilot.contracts.artifacts import Artifact
 from copilot.contracts.base import ContractModel, ImmutableContractModel, JsonObject
 from copilot.contracts.enums import (
+    ApprovalResolutionAction,
     ApprovalStatus,
     ArtifactType,
     CapabilityName,
@@ -63,6 +64,7 @@ from copilot.contracts.verification import (
 __all__ = [
     "ApprovalRequest",
     "ApprovalRequirement",
+    "ApprovalResolutionAction",
     "ApprovalStatus",
     "Artifact",
     "ArtifactType",

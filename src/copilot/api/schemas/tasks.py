@@ -73,6 +73,7 @@ class TaskSubmissionResponse(BaseModel):
     errors: tuple[TaskFailureResponse, ...] = ()
     missing_information: tuple[str, ...] = ()
     clarification_questions: tuple[str, ...] = ()
+    pending_approval_id: str | None = None
 
 
 class TaskErrorResponse(BaseModel):

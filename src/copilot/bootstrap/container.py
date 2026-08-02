@@ -24,6 +24,7 @@ from copilot.llm.deepseek import DeepSeekProvider
 from copilot.llm.manifest import PlannerToolManifestBuilder
 from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.llm.planning import LLMPlanningService
+from copilot.persistence.approval_repository import ApprovalRepository
 from copilot.persistence.artifact_repository import LocalArtifactRepository
 from copilot.persistence.audit_repository import (
     InMemoryToolAuditRepository,
@@ -31,7 +32,9 @@ from copilot.persistence.audit_repository import (
 )
 from copilot.persistence.identifiers import UuidIdentifierFactory
 from copilot.persistence.task_repository import InMemoryWorkflowRepository
+from copilot.policies.approval import SupplierQualityApprovalPolicy
 from copilot.policies.offline import OfflineSupplierQualityAuthorizer
+from copilot.services.approval_service import ApprovalGateService, ApprovalService
 from copilot.services.llm import LLMGenerationOptions, LLMProvider
 from copilot.services.task_intake import IntakeLimits
 from copilot.services.task_service import NaturalLanguageTaskService
@@ -72,6 +75,8 @@ class WorkflowContainer:
     repository: InMemoryWorkflowRepository
     tool_audit: InMemoryToolAuditRepository
     workflow_audit: InMemoryWorkflowAuditRepository
+    approval_repository: ApprovalRepository
+    approval_service: ApprovalService
     knowledge_tool: MockKnowledgeTool | KnowledgeTool
     knowledge_client: HttpKnowledgeClient | None
     database_tool: MockDatabaseTool | DatabaseTool
@@ -97,6 +102,7 @@ class WorkflowContainer:
         self.repository.close()
         self.tool_audit.close()
         self.workflow_audit.close()
+        self.approval_repository.close()
         if self.checkpoint_connection is not None:
             self.checkpoint_connection.close()
 
@@ -142,6 +148,10 @@ def build_workflow_container(
     audit_database_path = settings.checkpoint_database_path if settings.checkpoint_enabled else None
     tool_audit = InMemoryToolAuditRepository(audit_database_path)
     workflow_audit = InMemoryWorkflowAuditRepository(audit_database_path)
+    approval_repository = ApprovalRepository(
+        audit_database_path,
+        initialize_schema=settings.app_env != "production",
+    )
     schema_registry = SchemaRegistry()
     knowledge_client: HttpKnowledgeClient | None = None
     if settings.app_env == "production":
@@ -193,9 +203,17 @@ def build_workflow_container(
     registry = ToolRegistry()
     for tool in (knowledge_tool, database_tool, analytics_tool, report_tool):
         registry.register(tool)
+    approval_gate = ApprovalGateService(
+        repository=approval_repository,
+        audit_sink=workflow_audit,
+        ids=identifier_factory,
+        clock=clock,
+        ttl_seconds=settings.approval_ttl_seconds,
+    )
+    approval_policy = SupplierQualityApprovalPolicy()
     executor = ToolExecutor(
         registry=registry,
-        authorizer=OfflineSupplierQualityAuthorizer(),
+        authorizer=OfflineSupplierQualityAuthorizer(approval_repository, clock=clock),
         evidence_recorder=evidence,
         audit_sink=tool_audit,
         clock=clock,
@@ -262,6 +280,9 @@ def build_workflow_container(
         ids=identifier_factory,
         clock=clock,
         sleeper=sleeper or sleep,
+        approval_gate=approval_gate,
+        approval_repository=approval_repository,
+        approval_policy=approval_policy,
         max_task_steps=settings.max_task_steps,
         max_replan_count=settings.max_replan_count,
         max_plan_repair_attempts=settings.max_plan_repair_attempts,
@@ -291,6 +312,14 @@ def build_workflow_container(
         recursion_limit=settings.graph_recursion_limit,
         max_task_steps=settings.max_task_steps,
         interrupt_after=interrupt_after,
+    )
+    approval_service = ApprovalService(
+        repository=approval_repository,
+        engine=engine,
+        registry=registry,
+        audit_sink=workflow_audit,
+        ids=identifier_factory,
+        clock=clock,
     )
     service = SupplierQualityWorkflowService(
         engine=engine,
@@ -324,6 +353,8 @@ def build_workflow_container(
         repository=repository,
         tool_audit=tool_audit,
         workflow_audit=workflow_audit,
+        approval_repository=approval_repository,
+        approval_service=approval_service,
         knowledge_tool=knowledge_tool,
         knowledge_client=knowledge_client,
         database_tool=database_tool,

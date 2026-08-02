@@ -1,4 +1,4 @@
-"""LangGraph builder and stable workflow engine for Supplier Quality Analysis v1.0."""
+"""LangGraph builder and stable workflow engine for Supplier Quality Analysis v1.1."""
 
 from __future__ import annotations
 
@@ -30,7 +30,15 @@ from copilot.agent.routing import (
 )
 from copilot.agent.runtime import GraphNodeRuntime
 from copilot.agent.state import AgentGraphState, initial_graph_state
-from copilot.contracts import TaskContract, TaskPlan, TaskRequest
+from copilot.contracts import (
+    ApprovalRequest,
+    ApprovalResolutionAction,
+    ApprovalStatus,
+    TaskContract,
+    TaskPlan,
+    TaskRequest,
+    TaskStatus,
+)
 from copilot.services.task_intake import RequestSource, TrustedTaskContext
 from copilot.services.workflows.errors import WorkflowRecoveryError
 from copilot.services.workflows.models import WorkflowExecution
@@ -49,12 +57,14 @@ class WorkflowInterrupted(RuntimeError):
         trace_id: str = "",
         status: str = "",
         created_at: datetime | None = None,
+        approval_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.task_id = task_id
         self.trace_id = trace_id
         self.status = status
         self.created_at = created_at
+        self.approval_id = approval_id
 
 
 def build_agent_graph(
@@ -235,6 +245,79 @@ class LangGraphWorkflowEngine:
         finally:
             self._repository.release_execution(task_id, owner_id)
 
+    def approval_state(self, task_id: str, tenant_id: str) -> dict[str, object]:
+        """Return the minimized checkpoint facts needed to validate one decision."""
+        state = self.get_state(task_id, tenant_id)
+        step_id = state["approval_step_id"]
+        return {
+            "task_status": state["domain_state"].state.value,
+            "tenant_id": state["intake_context"].tenant_id,
+            "trace_id": state["trace_id"],
+            "approval_id": state["approval_id"],
+            "step_id": step_id,
+            "planning_version": state["plan"].planning_version,
+            "target_executed": any(call.step_id == step_id for call in state["tool_calls"]),
+        }
+
+    def resume_approval(
+        self,
+        approval: ApprovalRequest,
+        tenant_id: str,
+    ) -> WorkflowExecution | None:
+        """Apply one durable approval decision and resume from the policy checkpoint."""
+        config = self._config(approval.task_id, tenant_id)
+        snapshot = self._graph.get_state(config)
+        if not snapshot.values:
+            raise ValueError("workflow checkpoint was not found")
+        current = cast(AgentGraphState, snapshot.values)
+        if (
+            current["task_id"] != approval.task_id
+            or current["intake_context"].tenant_id != tenant_id
+            or current["approval_id"] != approval.approval_id
+            or current["approval_step_id"] != approval.step_id
+            or current["plan"].planning_version != approval.planning_version
+        ):
+            raise WorkflowRecoveryError("approval does not match the workflow checkpoint")
+        if current["domain_state"] != self._repository.state_for(approval.task_id):
+            raise WorkflowRecoveryError(
+                "workflow checkpoint does not match authoritative domain state"
+            )
+        if current["domain_state"].state is not TaskStatus.WAITING_APPROVAL:
+            raise WorkflowRecoveryError("task is not waiting for approval")
+        if any(call.step_id == approval.step_id for call in current["tool_calls"]):
+            raise WorkflowRecoveryError("approval target tool has already been called")
+        event = _approval_event(approval)
+        owner_id = self._ids.new_id("LEASE")
+        self._repository.acquire_execution(approval.task_id, owner_id)
+        try:
+            domain_state, record = self._state_machine.transition(
+                current["domain_state"],
+                event,
+                reason=f"Approval {approval.approval_id} resolved as {approval.status.value}",
+            )
+            self._repository.commit_transition(current["domain_state"], domain_state, record)
+            approved = approval.status is ApprovalStatus.APPROVED
+            self._graph.update_state(
+                config,
+                {
+                    "domain_state": domain_state,
+                    "route": "allowed" if approved else "approval_rejected",
+                    "route_reason": (
+                        "Approval resolved; execute the bound step"
+                        if approved
+                        else "Approval did not authorize execution"
+                    ),
+                    "last_arguments": approval.resolved_arguments if approved else None,
+                    "resume_count": current["resume_count"] + 1,
+                },
+                as_node="policy_check",
+            )
+            output = self._graph.invoke(None, config)
+            resumed = cast(AgentGraphState, output)
+            return self._execution(resumed)
+        finally:
+            self._repository.release_execution(approval.task_id, owner_id)
+
     def get_state(self, task_id: str, tenant_id: str) -> AgentGraphState:
         """Return the latest checkpoint state after tenant/task validation."""
         snapshot = self._graph.get_state(self._config(task_id, tenant_id))
@@ -259,6 +342,7 @@ class LangGraphWorkflowEngine:
                 trace_id=state["trace_id"],
                 status=state["domain_state"].state.value,
                 created_at=state["request"].created_at,
+                approval_id=state["approval_id"],
             )
         completed_at = self._clock()
         results = {item.step_id: item for item in state["step_results"]}
@@ -291,6 +375,22 @@ class LangGraphWorkflowEngine:
             trace_id=state["trace_id"],
             errors=tuple(state["errors"]),
         )
+
+
+def _approval_event(approval: ApprovalRequest) -> str:
+    if approval.status is ApprovalStatus.APPROVED:
+        return (
+            "APPROVAL_EDITED"
+            if approval.resolution_action is ApprovalResolutionAction.EDIT
+            else "APPROVAL_GRANTED"
+        )
+    if approval.status is ApprovalStatus.REJECTED:
+        return "APPROVAL_REJECTED"
+    if approval.status is ApprovalStatus.EXPIRED:
+        return "APPROVAL_EXPIRED"
+    if approval.status is ApprovalStatus.REVOKED:
+        return "APPROVAL_REVOKED"
+    raise ValueError("pending approval cannot resume a workflow")
 
 
 __all__ = [

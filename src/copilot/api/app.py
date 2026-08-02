@@ -13,12 +13,15 @@ from pydantic import BaseModel
 from starlette.responses import Response
 
 from copilot.api.error_handlers import (
+    approval_service_error_handler,
     internal_error_handler,
     request_validation_handler,
     task_intake_validation_handler,
 )
+from copilot.api.routes.approvals import router as approvals_router
 from copilot.api.routes.tasks import router as tasks_router
 from copilot.config import Settings
+from copilot.services.approval_service import ApprovalService, ApprovalServiceError
 from copilot.services.task_intake import TaskIntakeValidationError
 from copilot.services.task_service import NaturalLanguageTaskService
 
@@ -32,6 +35,7 @@ class HealthResponse(BaseModel):
 def create_app(
     *,
     task_service: NaturalLanguageTaskService | None = None,
+    approval_service: ApprovalService | None = None,
     settings: Settings | None = None,
     lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] | None = None,
 ) -> FastAPI:
@@ -43,6 +47,8 @@ def create_app(
     )
     if task_service is not None:
         application.state.task_service = task_service
+    if approval_service is not None:
+        application.state.approval_service = approval_service
     if settings is not None:
         application.state.settings = settings
 
@@ -59,8 +65,10 @@ def create_app(
         return HealthResponse(status="ok")
 
     application.include_router(tasks_router)
+    application.include_router(approvals_router)
     application.add_exception_handler(RequestValidationError, request_validation_handler)
     application.add_exception_handler(TaskIntakeValidationError, task_intake_validation_handler)
+    application.add_exception_handler(ApprovalServiceError, approval_service_error_handler)
     application.add_exception_handler(Exception, internal_error_handler)
     return application
 

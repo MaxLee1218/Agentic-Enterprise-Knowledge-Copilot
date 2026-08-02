@@ -64,3 +64,15 @@ def test_cancellation_and_approval_waiting_follow_frozen_transitions() -> None:
     state, _ = machine.transition(state, "CANCEL_REQUESTED", reason="test")
 
     assert state.state is TaskStatus.CANCELLED
+
+
+@pytest.mark.parametrize("event", ["APPROVAL_GRANTED", "APPROVAL_EDITED"])
+def test_approved_resolution_actions_resume_execution(event: str) -> None:
+    machine = TaskStateMachine(clock=_clock, ids=SequentialIdentifierFactory())
+    state = machine.initial("T-001")
+    for transition in ("START_UNDERSTANDING", "CONTRACT_VALIDATED", "APPROVAL_REQUIRED"):
+        state, _ = machine.transition(state, transition, reason="test")
+
+    state, _ = machine.transition(state, event, reason="approved")
+
+    assert state.state is TaskStatus.EXECUTING

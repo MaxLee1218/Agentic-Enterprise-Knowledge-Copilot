@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from copilot.contracts import (
+    ApprovalRequest,
     Artifact,
     EvidenceItem,
     JsonObject,
@@ -117,6 +118,7 @@ class WorkflowExecutionContext:
     retry_counts: dict[str, int] = field(default_factory=dict)
     metadata: dict[str, object] = field(default_factory=dict)
     verification_result: VerificationResult | None = None
+    approvals: tuple[ApprovalRequest, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

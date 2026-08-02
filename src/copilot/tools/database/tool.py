@@ -139,6 +139,7 @@ class DatabaseTool:
                 "cross_organization_scope",
             ),
             approver_role="quality_data_approver",
+            editable_fields=("row_limit",),
         ),
         idempotency=ToolIdempotency(
             idempotent=True,

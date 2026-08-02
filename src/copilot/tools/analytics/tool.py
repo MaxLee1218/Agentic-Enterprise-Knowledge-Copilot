@@ -54,6 +54,7 @@ class AnalyticsTool:
             policy_id="analysis-engine-v1-policy",
             trigger_conditions=(),
             approver_role=None,
+            editable_fields=(),
         ),
         idempotency=ToolIdempotency(
             idempotent=True,

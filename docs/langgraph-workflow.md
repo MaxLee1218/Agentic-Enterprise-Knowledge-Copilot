@@ -41,7 +41,8 @@ The default offline composition keeps deterministic task understanding and plan 
 explicitly injected structured LLM service may instead generate the understanding and candidate
 plan, use a separate bounded `repair_plan` node, and use the frozen `REPLANNING` path for eligible
 verification failures. Every candidate still passes the same deterministic PlanValidator before
-policy or execution. There is no multi-agent behavior or approval-resume API.
+policy or execution. There is no multi-agent behavior. Stage 12 adds approval detail/resolution
+API through `ApprovalService`, never as a direct route-to-tool path.
 
 ## State and Persistence
 
@@ -63,6 +64,14 @@ acquires the execution lease, and resumes the next checkpointed node. Successful
 replayed. If a crash occurs after an external call but before its commit, execution is
 at-least-once; the stable idempotency key and unique ToolResult/Evidence/Artifact records reduce
 duplicate effects. Exactly-once execution is not claimed.
+
+When an exact action requires approval, `policy_check` first persists its immutable
+ApprovalRequest, commits `WAITING_APPROVAL`, and leaves a checkpoint containing the approval and
+step IDs plus complete proposed input. A valid approve/edit decision is committed before
+`resume_approval()` uses `graph.update_state(..., as_node="policy_check")` to install the complete
+resolved input and invoke the normal outgoing edge. Reject/expiry route to result persistence and
+`CANCELLED`. The engine verifies that the target tool has not run; reducers and persisted business
+records preserve successful predecessors, so they are not replayed after restart.
 
 ## Limits and Failure Semantics
 

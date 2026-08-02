@@ -63,6 +63,7 @@ class ReportTool:
             policy_id="report-generator-v1-policy",
             trigger_conditions=("task_contract_requires_approval",),
             approver_role="quality_data_approver",
+            editable_fields=(),
         ),
         idempotency=ToolIdempotency(
             idempotent=True,

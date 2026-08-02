@@ -1,4 +1,4 @@
-"""Canonical enums shared by all v1.0 domain contracts."""
+"""Canonical enums shared by all v1.1 domain contracts."""
 
 from enum import StrEnum
 
@@ -90,6 +90,14 @@ class ApprovalStatus(StrEnum):
     REJECTED = "REJECTED"
     EXPIRED = "EXPIRED"
     REVOKED = "REVOKED"
+
+
+class ApprovalResolutionAction(StrEnum):
+    """One-time human action used to resolve a pending approval."""
+
+    APPROVE = "APPROVE"
+    EDIT = "EDIT"
+    REJECT = "REJECT"
 
 
 class ArtifactType(StrEnum):
