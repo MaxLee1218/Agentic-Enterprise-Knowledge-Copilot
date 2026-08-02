@@ -1,4 +1,4 @@
-# Supplier Quality Analysis 桌面演练
+# Supplier Quality Analysis 桌面演练 v1.1
 
 ## 1. 演练前提
 
@@ -47,6 +47,8 @@
 | 输出 | AP-001=`APPROVED` |
 | 状态变化 | `WAITING_APPROVAL → EXECUTING` |
 | 证据 | 审批是授权记录，不作为业务 Evidence |
+
+本成功主路径使用 `resolution_action=APPROVE`，因此 resolved arguments 与原参数完全相同。v1.1 的 `EDIT` 替代路径见 Case 4A；两种动作最终都要求 `status=APPROVED`，但保留不同的 resolution action 和动作指纹。
 
 ### 2.3 企业知识检索
 
@@ -164,6 +166,23 @@ Verifier 执行：
 
 TaskResult 记录审批 ID、`CANCELLED` 和安全的拒绝说明；无业务 Artifact，无数据工具调用。
 
+### Case 4A：Approval edited and resumed
+
+在一个执行期变体中，`S-KB-01` 已成功并提交 Evidence；`S-DB-01` 首次调用前，策略基于实际参数创建工具级 `ApprovalRequest AP-EDIT-001`，原始完整参数中的 `row_limit=10000`，并记录原始动作指纹。任务在工具调用前进入 `WAITING_APPROVAL` 并保存 Checkpoint。
+
+审批人建议缩小本次读取上限，提交 `resolution_action=EDIT`、完整替换参数（唯一差异为 `row_limit=5000`）和 `resolution_reason="Reduce the bounded result size for this review"`。该字段由策略列入 `editable_fields`；替换参数通过同一 `database_query` Input Schema，未改变 tenant、日期、供应商、查询模板、Schema、snapshot、计划版本、工具、权限、risk level 或受控范围。
+
+| 问题 | 结论 |
+|---|---|
+| Approval 状态 | `APPROVED`；`resolution_action=EDIT`；原始参数/指纹和 resolved 参数/指纹均不可变保留 |
+| 状态变化 | `WAITING_APPROVAL → EXECUTING`，事件为 `APPROVAL_EDITED` |
+| 是否重规划 | 否；这是同一 Plan/Step/Tool/Contract 内的 allowlist 参数替换 |
+| 恢复位置 | 从持久化 Checkpoint 恢复；已成功的 `S-KB-01` 不重放 |
+| 实际执行 | `S-DB-01` 仅首次执行一次，ToolCall.input 使用完整 resolved arguments，幂等键和审批校验绑定 resolved action fingerprint |
+| 后续路径 | 使用数据库实际输出继续 Analytics、Report 和 Verification |
+
+若审批人只提交建议文本而没有完整替换参数，或试图改变供应商/日期/租户/工具/模板等非可编辑字段，`EDIT` 校验失败，AP-EDIT-001 保持 `PENDING`，任务继续处于 `WAITING_APPROVAL` 且不调用数据库工具。需要改变 Contract 或 Plan 的建议必须拒绝/撤销当前审批并走版本化重规划或新 Task。
+
 ### Case 5：Report verification failed
 
 演练为报告中的 S-100 缺陷率被渲染为 15%，与 `E-CALC-01` 的 1.5% 不一致。
@@ -180,4 +199,4 @@ TaskResult 记录审批 ID、`CANCELLED` 和安全的拒绝说明；无业务 Ar
 
 ## 4. 演练结论
 
-成功路径覆盖理解、计划、审批、四类工具、三类 Evidence、验证、Artifact 和最终追踪。异常路径分别证明：技术故障有界重试、业务空结果继续、确定性计算不隐式猜测、审批拒绝安全取消、报告缺陷有界重规划。所有路径最终到达 `COMPLETED`、`FAILED` 或 `CANCELLED`，不存在无限等待或无限循环。
+成功路径覆盖理解、计划、审批、四类工具、三类 Evidence、验证、Artifact 和最终追踪。异常与替代路径分别证明：技术故障有界重试、业务空结果继续、确定性计算不隐式猜测、审批拒绝安全取消、审批 EDIT 在不扩大范围时使用完整替换参数恢复且不重放前置步骤、报告缺陷有界重规划。所有路径最终到达 `COMPLETED`、`FAILED` 或 `CANCELLED`，不存在无限等待或无限循环。

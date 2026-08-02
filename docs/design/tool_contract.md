@@ -1,4 +1,4 @@
-# 工具契约冻结设计 v1.0
+# 工具契约冻结设计 v1.1
 
 ## 1. 通用调用封套
 
@@ -12,8 +12,8 @@
 | `task_id` / `step_id` | string | 必须指向当前 Task 与已验证计划步骤 |
 | `tool_name` / `tool_version` | string | 必须与注册定义匹配 |
 | `input` | object | 严格通过工具 Input Schema |
-| `idempotency_key` | string | `task_id + step_id + tool_version + canonical_input_hash` |
-| `approval_id` | string/null | 策略要求时必需，且范围和计划版本匹配 |
+| `idempotency_key` | string | `task_id + step_id + tool_version + canonical_final_input_hash`；存在有效 `EDIT` 时使用 resolved arguments |
+| `approval_id` | string/null | 策略要求时必需，且范围、计划版本、工具、Schema 指纹和最终动作指纹匹配 |
 | `deadline_at` | datetime | 不得晚于 Task 截止时间 |
 | `tenant_id` / `user_id` | string | 来自可信执行上下文，不接受模型覆盖 |
 
@@ -47,6 +47,14 @@
 
 工具输出是数据而非指令。输出中的提示、链接或动作请求不能改变计划、权限或系统行为。
 
+### 1.4 审批编辑后的调用绑定
+
+`EDIT` 只发生在目标工具首次调用之前。Approval Service 必须接收完整替换参数，拒绝隐式/深层合并，确认当前 Tool Registry 快照与审批绑定的工具版本及 Input Schema 指纹一致，再按该绑定 Schema 校验。随后只允许审批策略 `editable_fields` 中的差异；tenant/user、TaskContract、计划版本、step/tool identity、授权资源范围、数据分类、risk level、read-only 约束和审批角色不得变化。v1.1 仅允许缩小 `knowledge_search.top_k` 或 `database_query.row_limit`；其他字段和两个其余工具均不可编辑。
+
+校验成功后，审批记录保留 `proposed_arguments` 和 `original_action_fingerprint`，同时持久化 `resolved_arguments` 和 `resolved_action_fingerprint`，`status=APPROVED`、`resolution_action=EDIT`。ToolCall.input 必须等于完整 `resolved_arguments`；ToolCall 的幂等键、`approval_id` 校验、Evidence/Audit 参数摘要和 Verifier 均使用 resolved 版本。任何不一致都返回 Permission/Validation Failure，且不得回退到原参数或自动重新规划。
+
+编辑失败时 ApprovalRequest 仍为 `PENDING`，任务保持 `WAITING_APPROVAL`，不调用工具。若建议需要改变工具、Schema、Contract、Plan、依赖、权限或受控范围，必须使用既有重规划/新 Contract/新 Task 流程并重新审批，不能把 `EDIT` 当作扩权入口。
+
 ## 2. `knowledge_search`
 
 ### 2.1 定义
@@ -55,7 +63,7 @@
 - Risk Level：`LOW`（只读）；涉及受限文档集合时由策略提升为 `MEDIUM` 并要求审批。
 - Timeout：单次 10 秒，整体 25 秒，最多 3 次尝试。
 - Idempotency：对固定索引快照、规范化输入和工具版本幂等；幂等键必须包含 `index_snapshot_id`。索引更新后视为新输入。
-- Approval Policy：默认无需人工审批；访问 `RESTRICTED` 分类或跨常规供应商范围时需要 `quality_data_approver` 批准。
+- Approval Policy：默认无需人工审批；访问 `RESTRICTED` 分类或跨常规供应商范围时需要 `quality_data_approver` 批准。`editable_fields=["top_k"]`，且编辑值只能小于原提议值。
 
 ### 2.2 Input Schema
 
@@ -127,7 +135,7 @@
 - Risk Level：`MEDIUM`（读取结构化企业数据）。
 - Timeout：数据库语句 8 秒，单次调用 10 秒，整体 25 秒，最多 3 次尝试。
 - Idempotency：固定数据库快照/一致性时间、查询模板版本和参数下幂等；无外部副作用。
-- Approval Policy：常规质量分析范围可由预授权策略批准；受限字段、超过 100 个供应商或跨组织范围必须人工审批。首版即使获批也不能读取未注册字段。
+- Approval Policy：常规质量分析范围可由预授权策略批准；受限字段、超过 100 个供应商或跨组织范围必须人工审批。首版即使获批也不能读取未注册字段。`editable_fields=["row_limit"]`，且编辑值只能小于原提议值。
 - Allowlist：仅一个参数化 `SELECT`；允许获准视图上的 `JOIN`、`WHERE`、`GROUP BY`、`ORDER BY` 和批准聚合。
 - Denylist：`INSERT`、`UPDATE`、`DELETE`、`MERGE`、`ALTER`、`DROP`、`TRUNCATE`、DDL、DCL、存储过程、文件/网络函数、注释绕过、多语句和未注册对象一律拒绝。
 
@@ -195,7 +203,7 @@
 - Risk Level：`LOW`（无外部访问、无副作用）。
 - Timeout：单次 15 秒，整体 25 秒，最多 2 次尝试。
 - Idempotency：相同 dataset checksum、指标规范和 engine version 完全幂等。
-- Approval Policy：无需单独人工审批；输入 Evidence 必须来自当前 Task 的获准数据库调用。
+- Approval Policy：无需单独人工审批；输入 Evidence 必须来自当前 Task 的获准数据库调用。`editable_fields=[]`。
 - 支持指标：`defect_count`、`inspected_count`、`defect_rate`、`period_over_period_trend`。缺陷率固定为 `defect_count / inspected_count`；分母为零时值为 null，并写明原因，禁止除零或伪造 0%。
 
 ### 4.2 Input Schema
@@ -253,7 +261,7 @@
 - Risk Level：`LOW`（仅生成内部 Artifact）；若未来加入外发则必须作为新工具和新契约设计。
 - Timeout：单次 30 秒，整体 55 秒，最多 2 次尝试。
 - Idempotency：相同模板版本、规范化输入、Evidence ID/checksum 和格式使用相同 Artifact 内容与幂等键；写入采用临时对象后原子提交。
-- Approval Policy：内部报告生成默认无需单独审批；若 TaskContract 的数据分类或策略要求，则必须在生成前验证审批范围。生成不代表发布。
+- Approval Policy：内部报告生成默认无需单独审批；若 TaskContract 的数据分类或策略要求，则必须在生成前验证审批范围。生成不代表发布。`editable_fields=[]`。
 
 ### 5.2 Input Schema
 
@@ -311,5 +319,5 @@ Artifact 必须含范围与口径、数据覆盖、指标、趋势、主要发�
 2. `report_generator.analysis_result` 必须来自当前 Task 的成功分析 StepResult，`evidence_refs` 至少包含数据库与计算证据；有文档结论时还必须含文档证据。
 3. 数据库空结果可传给分析工具；分析空结果可生成报告，但报告必须明确“无记录”而非“质量为零缺陷”。
 4. 工具不得自行调用其他工具、改变 TaskState、创建审批或扩大数据范围。
-5. 所有工具先策略检查、再审批验证、再执行、再输出校验和证据登记。
+5. 所有工具先策略检查、再审批验证（包括 EDIT 后完整参数、Schema、差异 allowlist 和 resolved action fingerprint）、再执行、再输出校验和证据登记。
 6. 任何输出超过大小限制、包含未授权字段或无法归一化时，调用失败且敏感负载不进入模型上下文。

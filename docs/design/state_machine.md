@@ -1,4 +1,4 @@
-# Task 状态机冻结设计 v1.0
+# Task 状态机冻结设计 v1.1
 
 ## 1. 状态定义
 
@@ -16,7 +16,7 @@
 | `FAILED` | 终态 | 不可恢复错误或恢复预算耗尽 | 无；恢复需创建新 Task |
 | `CANCELLED` | 终态 | 用户取消、审批拒绝/撤销或等待审批过期 | 无；恢复需创建新 Task |
 
-`WAITING_APPROVAL` 记录 `resume_state`（仅可为 `PLANNING`、`EXECUTING`、`REPLANNING`），批准后回到该阶段的合法后继：规划阶段批准进入 `EXECUTING`，执行阶段批准回到 `EXECUTING`，重规划批准进入 `EXECUTING`。它不是任意跳转机制。
+`WAITING_APPROVAL` 记录 `resume_state`（仅可为 `PLANNING`、`EXECUTING`、`REPLANNING`），原样批准或在同一受控范围内编辑后批准，均回到该阶段的合法后继：规划阶段进入 `EXECUTING`，执行阶段回到 `EXECUTING`，重规划阶段进入 `EXECUTING`。它不是任意跳转机制。
 
 ## 2. 状态不变量
 
@@ -29,6 +29,8 @@
 7. 终态不可退出，晚到的工具结果只记录为忽略事件，不改变 TaskResult。
 8. 取消具有优先级；系统停止调度新调用并尽力取消运行中的调用，然后写入 `CANCELLED`。
 9. 重试与重规划均有预算，不能通过互相切换重置预算。
+10. `EDIT` 只能在目标工具尚未调用时解决待决审批；必须保留原参数，校验完整替换参数并生成新的 resolved action fingerprint，不能改变 Contract、Plan、工具或权限范围。
+11. 审批恢复使用批准后的最终参数；已完成的前置步骤不重放，目标步骤及其后续步骤按现有计划继续。
 
 ## 3. 正常路径
 
@@ -55,7 +57,7 @@ PLANNING -> WAITING_APPROVAL -> EXECUTING
 | Task Understanding | TaskRequest、可信身份与授权范围 | 版本化 TaskContract、分类与约束摘要 | TaskError + `UNDERSTANDING_FAILED` |
 | Planning / Plan Validation | TaskContract、ToolDefinition 快照、预算与策略上下文 | 通过校验的 TaskPlan、计划校验记录 | TaskError + `PLAN_INVALID` |
 | Policy Check | TaskContract、TaskPlan、用户/租户、数据分类 | allow 决定，或范围绑定的 ApprovalRequest | deny 对应 TaskError，或 `APPROVAL_REQUIRED` |
-| Approval | ApprovalRequest、认证审批人、动作指纹、时间 | 不可变审批决定 | `APPROVAL_REJECTED/EXPIRED/REVOKED` |
+| Approval | ApprovalRequest、认证审批人、原始/替换参数、动作指纹、时间 | `APPROVE` 或通过 Schema/范围校验的 `EDIT` 不可变决定 | `APPROVAL_REJECTED/EXPIRED/REVOKED`，或编辑参数校验/范围冲突且保持等待态 |
 | Tool Execution | 可运行 TaskStep、已验证输入、ToolDefinition、策略/审批、幂等键 | ToolResult、StepResult、原始来源的安全引用 | ToolResult + TaskError；按错误触发 retry/replan/fail |
 | Evidence Aggregation | ToolResult、来源引用、Task/Step/Call ID、数据分类 | 不可变 EvidenceItem 与血缘边 | 证据登记错误；必需证据缺失时不允许完成步骤 |
 | Report Composition | 分析 StepResult、Evidence ID、TaskContract 输出要求 | Artifact 元数据、citation map、报告 StepResult | 报告工具的类型化失败 |
@@ -79,6 +81,7 @@ PLANNING -> WAITING_APPROVAL -> EXECUTING
 | `PLANNING` | `PLAN_INVALID` | `FAILED` | 初始计划无法满足 Contract，且没有执行过工具；不消耗重规划预算掩盖设计错误 |
 | `PLANNING` | `CANCEL_REQUESTED` | `CANCELLED` | 取消已授权 |
 | `WAITING_APPROVAL` | `APPROVAL_GRANTED` | `EXECUTING` | 审批人、角色、计划版本、动作范围与有效期均有效 |
+| `WAITING_APPROVAL` | `APPROVAL_EDITED` | `EXECUTING` | 目标工具从未调用；`resolution_action=EDIT`；完整替换参数通过绑定工具 Schema；只按冻结 allowlist 缩小 `top_k` 或 `row_limit`；Contract、计划、工具、权限、风险和受控范围不变；resolved action fingerprint 已持久化 |
 | `WAITING_APPROVAL` | `APPROVAL_REJECTED` | `CANCELLED` | 拒绝代表业务方不授权执行，不归类为系统故障 |
 | `WAITING_APPROVAL` | `APPROVAL_EXPIRED` | `CANCELLED` | 到期后禁止使用旧授权 |
 | `WAITING_APPROVAL` | `APPROVAL_REVOKED` | `CANCELLED` | 尚未进入不可中断提交阶段；首版无外部副作用 |
@@ -110,7 +113,7 @@ PLANNING -> WAITING_APPROVAL -> EXECUTING
 - “尝试次数”包含首次调用。知识检索和数据库查询最多 3 次，分析和报告生成最多 2 次。
 - 仅 `TECHNICAL_FAILURE`、`TIMEOUT` 且错误码列入步骤 RetryPolicy 时重试；`PERMISSION_DENIED`、Schema 校验失败、SQL 禁止项和业务结果不重试。
 - 退避为确定性上限内的指数退避（1 秒、2 秒），不得超过单工具整体截止时间或 Task 截止时间。
-- 重试保持相同幂等键、Contract、计划版本和规范化输入。输入改变必须重规划并产生新 step/tool call。
+- 重试保持相同幂等键、Contract、计划版本和规范化输入。通常输入改变必须重规划并产生新 step/tool call；唯一例外是目标工具首次调用前由有效 `EDIT` 审批确定的 `resolved_arguments`，它成为该步骤的初始规范输入，后续所有重试必须保持该最终参数与 resolved action fingerprint 不变。
 - 每次尝试都有独立 ToolResult；StepResult 指向最终尝试并保留完整历史。
 
 ## 7. 重规划策略与终止保证
@@ -152,4 +155,5 @@ PLANNING -> WAITING_APPROVAL -> EXECUTING
 - 恢复时读取权威状态、计划版本和调用幂等键；已提交但响应丢失的调用先按幂等键查询结果，禁止盲目重复执行。
 - 同一 Task 只允许一个调度租约。租约过期可由新执行器接管，但状态版本冲突者停止。
 - `WAITING_APPROVAL` 可安全跨进程恢复；审批决定必须与当前动作指纹匹配。
+- `EDIT` 恢复同时校验原始和 resolved action fingerprint、Input Schema 指纹、可编辑字段差异以及目标步骤未执行；恢复后不重新执行已成功的前置步骤。
 - 进程崩溃不直接改变业务状态；恢复协调器根据最后检查点重建，超过任务截止时间则以 `TASK_DEADLINE_EXCEEDED` 进入 `FAILED`。

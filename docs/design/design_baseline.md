@@ -2,9 +2,17 @@
 
 ## Version
 
-**v1.0 — Frozen**
+**v1.1 — Frozen**
 
-冻结日期：2026-07-19
+冻结日期：2026-08-02
+
+## v1.1 Change Scope
+
+v1.1 相对 2026-07-19 冻结的 v1.0 只增加一个领域语义：ApprovalRequest 支持 `EDIT` resolution action。审批人可提交修改建议和完整替换参数；参数通过原目标 Schema、字段 allowlist、权限、风险、范围和动作指纹校验后，审批状态为 `APPROVED`，Graph 从 Checkpoint 恢复并使用最终参数执行尚未执行的目标步骤。
+
+本次版本不新增业务场景、工具、CapabilityName、StepType、ArtifactType、TaskStatus、EvidenceType、数据源、指标、外部副作用或 MCP 行为。`task_type` 仍为 `supplier_quality_analysis.v1`；四工具及全部既有输入输出 Schema 不变。
+
+本次冻结只批准设计变更，不声明生产代码已实现 v1.1；实现必须另行按本基线补齐 Contract、持久化、策略、Graph、API、Audit 和测试。
 
 ## Supported Scenario
 
@@ -21,7 +29,7 @@
 5. [桌面演练](walkthrough.md)
 6. [设计冲突审查](design_review.md)
 
-这些文件共同构成 v1.0 冻结设计。摘要与详细文档冲突时，以详细文档中的显式契约为准；详细文档之间的冲突必须先通过设计变更流程解决，不能由实现自行选择。
+这些文件共同构成 v1.1 冻结设计。摘要与详细文档冲突时，以详细文档中的显式契约为准；详细文档之间的冲突必须先通过设计变更流程解决，不能由实现自行选择。
 
 ## Domain Model Summary
 
@@ -37,7 +45,7 @@
 | ToolDefinition | 注册工具的用途、Schema、风险、时限、审批和幂等定义 |
 | ToolResult | 一次工具调用尝试的不可变结果 |
 | EvidenceItem | 文档、数据库或计算证据及来源血缘 |
-| ApprovalRequest | 与计划版本、动作和范围绑定的人类授权 |
+| ApprovalRequest | 与计划版本、step/tool、原始/最终参数动作指纹和范围绑定的人类授权；支持 APPROVE、EDIT、REJECT 解决动作 |
 | Artifact | 受控存储中的不可变质量分析报告元数据 |
 | TaskError | 安全、类型化、带可恢复属性的统一错误 |
 
@@ -57,7 +65,7 @@
 
 `CREATED → UNDERSTANDING → PLANNING → EXECUTING → VERIFYING → COMPLETED`
 
-策略要求时：`PLANNING/EXECUTING/REPLANNING → WAITING_APPROVAL → EXECUTING`。
+策略要求时：`PLANNING/EXECUTING/REPLANNING → WAITING_APPROVAL → EXECUTING`。原样批准使用 `APPROVAL_GRANTED`；同一受控范围内编辑后批准使用 `APPROVAL_EDITED`。两者均不新增 TaskStatus。
 
 恢复规则：瞬时技术失败才进入有界 `RETRYING`；计划或验证问题可进入有界 `REPLANNING`；拒绝/过期审批进入 `CANCELLED`；不可恢复错误或预算耗尽进入 `FAILED`。三个终态不可退出。未列入转换表的事件一律非法。
 
@@ -84,6 +92,7 @@
 8. 不包含 MCP 协议互操作；仓库中的 MCP 路径仍是未来边界。
 9. 不支持数据库写入及任何不可逆或外部可见业务动作。
 10. 重试、重规划、输出行数、供应商数量和运行时间均有固定上限。
+11. 审批 `EDIT` 必须提供完整替换参数；v1.1 仅允许调小 `knowledge_search.top_k` 或 `database_query.row_limit`，不能修改 Contract、Plan、工具、Schema、权限、风险、租户或授权数据范围。
 
 ## Implementation Rules
 
@@ -95,16 +104,16 @@
 6. **Evidence by default**：每次物质事实、查询或计算必须登记 EvidenceItem；计算 Evidence 必须引用输入 Evidence。
 7. **Verify before complete**：只有 verifier 对证据覆盖、数字、范围、政策、引用和 Artifact 完整性全部通过，状态才能为 `COMPLETED`。
 8. **Bounded recovery**：实现必须遵守最大尝试、最大计划版本、相同失败指纹和全局 Task 截止，不得形成无界循环。
-9. **Approval binding**：审批绑定计划版本、动作指纹、参数范围、审批人角色和有效期；范围改变使旧审批失效。
+9. **Approval binding**：审批绑定计划版本、step/tool、Schema 指纹、参数范围、审批人角色和有效期；`EDIT` 必须保留原参数/指纹，使用完整 resolved arguments 生成最终指纹，工具调用、幂等、Audit 和 Verifier 只接受最终绑定；范围改变使当前审批不可编辑或失效。
 10. **Immutable audit**：请求、计划版本、工具尝试、审批决定、证据、验证和状态事件只追加或不可变。
 11. **Safe failure**：错误使用 TaskError；不暴露密钥、内部堆栈、连接信息、原始敏感行或不必要文档全文。
 12. **Recovery correctness**：检查点保存版本和幂等键；恢复先查询已提交结果，不盲目重复调用。
-13. **Proportionate tests**：实现必须覆盖每个状态转换、非法跳转、五类工具结果、空数据、零分母、审批拒绝、重试耗尽、重规划耗尽、取消、恢复和端到端证据链。
-14. **No scope expansion**：任何新业务场景、工具、指标、数据源、外部副作用、MCP 或多 Agent 行为均需新版本设计审查，不得作为 v1.0 的隐式扩展。
+13. **Proportionate tests**：实现必须覆盖每个状态转换、非法跳转、五类工具结果、空数据、零分母、审批原样批准、合法编辑、非法/越权编辑、并发解决、拒绝、Checkpoint 恢复、不重放前置步骤、重试耗尽、重规划耗尽、取消和端到端证据链。
+14. **No scope expansion**：任何新业务场景、工具、指标、数据源、外部副作用、MCP 或多 Agent 行为均需新版本设计审查，不得作为 v1.1 的隐式扩展。
 15. **Documentation parity**：实现行为、类型、错误码或限制改变时，必须先提出设计变更并同步 Contract、测试、评估和 ADR。
 
 ## Freeze Declaration
 
-后续工程实现必须以本 v1.0 设计基线及其六份规范文档为唯一依据。实现不得自行补充隐含行为、放宽边界、跳过策略/审批/证据/验证，也不得把仓库中的空模块或未来 MCP 脚手架描述为已实现能力。
+后续工程实现必须以本 v1.1 设计基线及其六份规范文档为唯一依据。实现不得自行补充隐含行为、放宽边界、跳过策略/审批/证据/验证，也不得把仓库中的空模块或未来 MCP 脚手架描述为已实现能力。
 
 变更冻结内容必须：提出明确用例和成功指标，分析安全与兼容性影响，更新受影响设计文档与版本，完成冲突审查，获得设计批准，然后才能进入代码实现。

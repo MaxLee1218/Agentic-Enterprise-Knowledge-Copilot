@@ -1,4 +1,4 @@
-# 领域模型冻结设计 v1.0
+# 领域模型冻结设计 v1.1
 
 ## 1. 建模约定
 
@@ -122,7 +122,7 @@ Agent 可调用能力的注册定义，不等同于某次调用。
 | `output_schema` | JSON Schema | 是 | 归一化成功/业务结果负载契约 |
 | `risk_level` | enum | 是 | `LOW`、`MEDIUM`、`HIGH`；首版不注册高风险动作工具 |
 | `timeout` | object | 是 | 单次超时秒数及整体截止约束 |
-| `approval_policy` | object | 是 | 策略 ID、触发条件和所需审批角色 |
+| `approval_policy` | object | 是 | 策略 ID、触发条件、所需审批角色和 `editable_fields`；未列字段不可通过 `EDIT` 改变 |
 | `idempotency` | object | 是 | 是否幂等、幂等键构成、结果复用窗口和副作用说明 |
 
 工具定义由 Tool Registry 所有并版本化。计划只能引用已注册且策略允许的定义。
@@ -163,8 +163,27 @@ Agent 可调用能力的注册定义，不等同于某次调用。
 | `requester` | string | 是 | 发起审批的认证主体，通常为任务用户或服务主体 |
 | `approver` | string/null | 是 | 决策前为 null；决策后为认证审批人且符合所需角色 |
 | `status` | enum | 是 | `PENDING`、`APPROVED`、`REJECTED`、`EXPIRED`、`REVOKED` |
+| `resolution_action` | enum/null | 是 | 待决时为 null；人工决定时为 `APPROVE`、`EDIT` 或 `REJECT`；`EDIT` 是动作而不是长期状态 |
+| `proposed_arguments` | object | 是 | 策略冻结的完整原始动作参数；拒绝额外字段，并通过目标动作的注册 Input Schema |
+| `resolved_arguments` | object/null | 是 | `APPROVE` 时等于 `proposed_arguments`；`EDIT` 时为审批人提交并通过校验的完整替换参数；`REJECT` 时为 null |
+| `resolution_reason` | string/null | 是 | `EDIT` 和 `REJECT` 时必需；保存审批建议或拒绝原因，不具有授权以外的指令权 |
 
-持久化封套还必须含 `approval_id`、`task_id`、动作指纹、范围、创建/决定/失效时间和审批策略版本。审批只覆盖绑定的计划版本、工具、参数范围和有效期；计划或范围实质变化后不得复用。
+持久化封套还必须含 `approval_id`、`task_id`、`step_id`、计划版本、工具名/版本、Input Schema 指纹、`original_action_fingerprint`、`resolved_action_fingerprint`、受控范围、可编辑字段集合、创建/决定/失效时间、审批策略版本和并发版本。审批只覆盖绑定的计划版本、工具、最终参数、范围和有效期；计划或范围实质变化后不得复用。
+
+审批解决语义冻结为：
+
+- `APPROVE`：`status=APPROVED`，`resolved_arguments=proposed_arguments`，两个动作指纹相同；
+- `EDIT`：`status=APPROVED`，保留原始参数与原始指纹，使用完整 `resolved_arguments` 计算新的 `resolved_action_fingerprint`；修改建议写入 `resolution_reason`；
+- `REJECT`：`status=REJECTED`，不产生可执行参数，不调用受控工具；
+- `EXPIRED`、`REVOKED` 仍是非人工编辑动作形成的终止状态，`resolution_action=null` 且不能携带可执行参数。
+
+`EDIT` 不执行深层合并、JSON Merge Patch 或“仅覆盖出现字段”的隐式规则。审批人必须提交完整替换参数；服务先确认当前 Tool Registry 快照与审批绑定的工具版本及 Input Schema 指纹一致，再按该绑定 Schema 校验并比较原参数与替换参数。只有审批策略显式列入 `editable_fields` 的字段可以变化，且变化不得改变 TaskContract、plan/step/tool identity、tenant/user、授权数据范围、供应商范围、日期范围、数据分类、risk level、read-only 约束、审批角色或权限。任何未列字段变化、Schema 不兼容、Registry 漂移或范围扩大都返回类型化冲突/校验错误，ApprovalRequest 保持 `PENDING`，不恢复 Graph。
+
+v1.1 冻结 allowlist 只有 `knowledge_search.top_k` 和 `database_query.row_limit`，并且两者只能从原提议值调小。`analysis_engine` 与 `report_generator` 的 `editable_fields=[]`。未来增加字段或允许增大数值属于新的设计变更，不能由实现或配置静默放宽。
+
+动作指纹使用规范化参数、`task_id`、计划版本、`step_id`、工具名/版本、Input Schema 指纹和受控范围确定性计算。工具执行、幂等键、Verifier 和 Audit 必须绑定 `resolved_action_fingerprint` 与 `resolved_arguments`；原始指纹仅用于证明编辑前内容。一个 ApprovalRequest 只能通过比较并交换从 `PENDING` 解决一次；解决产生不可变新版本并保留原始待决版本，重复或并发决定返回 `APPROVAL_ALREADY_RESOLVED` 或 `APPROVAL_STATE_CONFLICT`。
+
+`EDIT` 是审批人对受控参数的显式授权，不是重新规划。批准后从已持久化 Checkpoint 恢复，只执行尚未执行的目标步骤和后续步骤；已成功且输入未变化的前置步骤不得重放。目标工具此前必须尚未调用。若建议需要改变 Contract、Plan、依赖、工具或受控范围，则当前 ApprovalRequest 不能用 `EDIT` 解决，必须拒绝/撤销并按既有版本化规则重新规划、重新审批或创建新 Task。
 
 ### 2.12 Artifact
 

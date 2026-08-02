@@ -3,7 +3,7 @@
 This document states the architecture rules that apply to the current repository. It describes
 the system as it exists and the boundaries that new implementation must preserve. The rationale
 for choosing these boundaries is recorded in
-[ADR-001](adr/ADR-001-package-and-layer-boundary.md). The frozen Supplier Quality Analysis v1.0
+[ADR-001](adr/ADR-001-package-and-layer-boundary.md). The frozen Supplier Quality Analysis v1.1
 documents under [`design/`](design/) remain the sole authority for that scenario's behavior.
 Machine-checked governance covers the dependency matrix and calling direction. It also covers each
 layer boundary, composition root, and transaction boundary where static analysis can enforce it.
@@ -245,7 +245,7 @@ through `build_workflow_container`.
 ### Task consistency boundary
 
 The Task is the lifecycle consistency boundary, but it is not one mutable in-memory object tree.
-The frozen v1.0 model stores related objects according to their own ownership and immutability:
+The frozen v1.1 model stores related objects according to their own ownership and immutability:
 
 ```text
 Task lifecycle boundary
@@ -305,7 +305,7 @@ Every new tool requires:
 8. Documentation and evaluation cases; an ADR when the change affects architecture, contracts,
    security, persistence, or an externally visible boundary.
 
-For Supplier Quality Analysis v1.0, only the four tools and exact behavior in the frozen design are
+For Supplier Quality Analysis v1.1, only the four tools and exact behavior in the frozen design are
 authorized. A broader tool or changed contract requires the documented design-change process
 before implementation.
 
