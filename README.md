@@ -14,6 +14,10 @@ Stage 12 implements v1.1 Human-in-the-loop approval with durable `APPROVE`, boun
 `REJECT` decisions plus checkpoint resume. It intentionally does not add CAPA creation or any
 business write operation; the frozen four-tool scope remains unchanged.
 
+Stage 13 adds stable `/v1` task-management APIs and matching local CLIs for task submission,
+status, steps, Evidence, Artifact metadata/download, and cooperative cancellation. These adapters
+reuse the same application services and do not create a second Graph, Registry, or execution path.
+
 The typed Supplier Quality Analysis contracts and lifecycle are documented in
 [Domain Contracts](docs/domain-contracts.md).
 
@@ -91,6 +95,36 @@ curl -X POST http://127.0.0.1:8000/v1/tasks/TASK_ID/approvals/APPROVAL_ID \
 See [Stage 12 Human-in-the-loop](docs/stage-12/human-in-the-loop.md) and the
 [HTTP API](docs/api.md) for edit/reject payloads, permissions, persistence, recovery, and errors.
 
+Completed or failed submissions execute synchronously inside `POST /v1/tasks` and return
+`201 Created` with the reached state. A durable approval pause returns `202 Accepted` with
+`WAITING_APPROVAL`; it is not a claim that a background task queue exists. Task-management calls:
+
+```bash
+curl http://127.0.0.1:8000/v1/tasks/TASK_ID
+curl http://127.0.0.1:8000/v1/tasks/TASK_ID/steps
+curl http://127.0.0.1:8000/v1/tasks/TASK_ID/evidence
+curl http://127.0.0.1:8000/v1/tasks/TASK_ID/artifacts
+curl -OJ http://127.0.0.1:8000/v1/tasks/TASK_ID/artifacts/ARTIFACT_ID
+curl -X POST http://127.0.0.1:8000/v1/tasks/TASK_ID/cancel
+```
+
+Artifact metadata and task-creation responses expose an Artifact ID and safe filename, never the
+local storage path. Downloads are streamed only after task ownership, Artifact ownership, root
+containment, size, and checksum validation.
+
+Local task inspection and the deterministic Stage 13 smoke test use the same services:
+
+```bash
+python scripts/inspect_task.py TASK_ID
+python scripts/inspect_task.py TASK_ID --json
+python scripts/smoke_agent.py
+```
+
+CLI exit codes are `0` for success or an expected approval pause, `1` for task/operation failure,
+`2` for invalid CLI input, `3` for configuration failure, `4` for an unavailable dependency, and
+`5` for permission/approval denial. The current CLI/API identity is an explicitly local Demo
+Identity and must be replaced by a trusted authentication adapter for deployment.
+
 The service health endpoint remains available at `GET /health`.
 
 The frozen Supplier Quality v1.1 Artifact contract supports PDF and JSON, not Markdown. An
@@ -128,7 +162,7 @@ PostgreSQL migration notes.
 The composed development/test API and CLI use the bounded offline structured mock provider and
 run without a network or external model service. They write a verified
 `QUALITY_ANALYSIS_REPORT_JSON` file beneath `ARTIFACT_DIR`
-(default `data/artifacts`) and prints its ID, path, checksum, and size. Pass
+(default `data/artifacts`) while the CLI prints only its Artifact ID and safe filename. Pass
 `--report-format PDF` to generate and independently verify the frozen PDF alternative. Markdown
 and HTML are intentionally not emitted because the frozen Supplier Quality v1.1 Artifact contract
 supports only PDF and JSON. See the
@@ -219,3 +253,13 @@ python -m build
 
 All current tests run offline. Database integration tests use isolated disposable SQLite files;
 no live enterprise database, LLM, or network service is required.
+
+## Current limitations
+
+- Cancellation is cooperative at persisted state/Graph boundaries; it cannot forcibly interrupt
+  an arbitrary in-flight external HTTP or database call.
+- There is no production task queue, exactly-once external-call guarantee, cross-database atomic
+  transaction, object-store download implementation, or automatic crash recovery for in-memory
+  deployments.
+- CAPA writes, business database writes, email, procurement actions, Web UI, MCP, and Multi-Agent
+  execution remain out of scope.

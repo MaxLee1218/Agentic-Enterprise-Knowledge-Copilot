@@ -7,13 +7,16 @@ import typer
 from pydantic import ValidationError
 
 from copilot.agent.graph import WorkflowInterrupted
+from copilot.config import ConfigurationError
 from copilot.contracts import TaskStatus
+from copilot.services.artifact_service import safe_artifact_filename
 from copilot.services.task_intake import (
     NaturalLanguageTaskCommand,
     RequestSource,
     TaskIntakeValidationError,
     TaskOutputFormat,
 )
+from copilot.services.task_service import TaskPermissionDeniedError, TaskServiceError
 from copilot.services.workflows.models import WorkflowExecution
 
 WorkflowHandler = Callable[[NaturalLanguageTaskCommand], WorkflowExecution]
@@ -98,6 +101,18 @@ def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
         except TaskIntakeValidationError as exc:
             typer.echo(f"{exc.code}: {exc}", err=True)
             raise typer.Exit(code=2) from exc
+        except ConfigurationError as exc:
+            typer.echo(f"CONFIGURATION_ERROR: {exc}", err=True)
+            raise typer.Exit(code=3) from exc
+        except TaskPermissionDeniedError as exc:
+            typer.echo(f"{exc.code}: {exc}", err=True)
+            raise typer.Exit(code=5) from exc
+        except TaskServiceError as exc:
+            typer.echo(f"{exc.code}: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        except (ConnectionError, TimeoutError) as exc:
+            typer.echo(f"DEPENDENCY_UNAVAILABLE: {exc}", err=True)
+            raise typer.Exit(code=4) from exc
         except WorkflowInterrupted as interrupted:
             typer.echo(f"Task ID: {interrupted.task_id}")
             typer.echo(f"Trace ID: {interrupted.trace_id}")
@@ -109,11 +124,18 @@ def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
         typer.echo(f"Task status: {execution.task_result.final_status.value}")
         typer.echo(f"Summary: {execution.task_result.summary}")
         for error in execution.errors:
-            typer.echo(f"Error: {error.error_code}: {error.message}")
+            typer.echo(f"Error: {error.error_code}: {error.message}", err=True)
             if error.error_code == "TASK_INFORMATION_MISSING":
-                typer.echo(f"Missing information: {error.message}")
-        artifact_path = execution.artifacts[0].location if execution.artifacts else "none"
-        typer.echo(f"Artifact path: {artifact_path}")
+                typer.echo(f"Missing information: {error.message}", err=True)
+        if execution.artifacts:
+            artifact = execution.artifacts[0]
+            filename = safe_artifact_filename(
+                artifact.location.rsplit("/", maxsplit=1)[-1], artifact
+            )
+            typer.echo(f"Artifact ID: {artifact.artifact_id}")
+            typer.echo(f"Artifact filename: {filename}")
+        else:
+            typer.echo("Artifact ID: none")
         if execution.verification_result is not None:
             typer.echo(f"Verification status: {execution.verification_result.status.value}")
         if execution.task_result.final_status is not TaskStatus.COMPLETED:

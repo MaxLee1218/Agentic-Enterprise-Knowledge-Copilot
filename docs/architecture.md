@@ -55,7 +55,7 @@ renderer implementation directly.
 | Governed capability runtime | `copilot.tools.base`, `registry`, `executor`, `runner`, `schema` | Implemented application-facing port, registration, authorization, execution, evidence, and audit sequence |
 | Capability adapters | `copilot.tools.knowledge`, `database`, `analytics`, `reporting`, offline mock module | HTTP knowledge, SQLAlchemy SQLite database, deterministic analytics, and deterministic PDF/JSON reporting adapters are implemented |
 | Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | DeepSeek/Mock structured LLM adapters, Evidence Ledger, deterministic verification, SQLite workflow/checkpoint/approval/audit storage, execution leases, and local atomic Artifact storage support this stage |
-| Interfaces | `copilot.api`, `copilot.cli` | Natural-language Task API/CLI, health, and approval detail/resolution API are implemented |
+| Interfaces | `copilot.api`, `copilot.cli` | Natural-language submission, task/step/Evidence/Artifact query, controlled Artifact download, cooperative cancellation, health, and approval detail/resolution API/CLI are implemented |
 | Protocol boundary | `copilot.mcp` | Future Phase 5 boundary; scaffold only |
 | Bootstrap | `copilot.bootstrap` | Composition root uses offline adapters by default and registers the real read-only Database Tool in production or when explicitly enabled |
 | Configuration | `copilot.config` | Typed environment configuration consumed at startup and infrastructure edges |

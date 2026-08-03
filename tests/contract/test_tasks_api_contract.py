@@ -83,6 +83,44 @@ def test_openapi_exposes_no_task_contract_or_plan_input_fields(tmp_path: Path) -
         container.close()
 
 
+def test_openapi_exposes_all_stage13_routes_and_no_internal_storage_fields(
+    tmp_path: Path,
+) -> None:
+    client, container = _client(tmp_path)
+    try:
+        schema = cast(FastAPI, client.app).openapi()
+        expected = {
+            "/v1/tasks": {"post"},
+            "/v1/tasks/{task_id}": {"get"},
+            "/v1/tasks/{task_id}/steps": {"get"},
+            "/v1/tasks/{task_id}/evidence": {"get"},
+            "/v1/tasks/{task_id}/artifacts": {"get"},
+            "/v1/tasks/{task_id}/artifacts/{artifact_id}": {"get"},
+            "/v1/tasks/{task_id}/cancel": {"post"},
+        }
+        for path, methods in expected.items():
+            assert path in schema["paths"]
+            assert methods.issubset(schema["paths"][path])
+        schemas = schema["components"]["schemas"]
+        assert "TaskState" not in schemas
+        assert "AgentGraphState" not in schemas
+        assert "HTTPValidationError" not in schemas
+        for name, component in schemas.items():
+            properties = component.get("properties", {})
+            assert "location" not in properties, name
+            assert "path" not in properties, name
+        task_operation = schema["paths"]["/v1/tasks/{task_id}"]["get"]
+        assert task_operation["operationId"] == "get_task"
+        assert {"200", "403", "404", "500"}.issubset(task_operation["responses"])
+        assert task_operation["responses"]["422"]["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/TaskErrorResponse"
+        }
+        download = schema["paths"]["/v1/tasks/{task_id}/artifacts/{artifact_id}"]["get"]
+        assert "application/octet-stream" in download["responses"]["200"]["content"]
+    finally:
+        container.close()
+
+
 def test_invalid_task_and_format_use_uniform_error_shape(tmp_path: Path) -> None:
     client, container = _client(tmp_path)
     try:

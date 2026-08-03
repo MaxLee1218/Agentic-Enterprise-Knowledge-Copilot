@@ -9,21 +9,26 @@ from typing import Literal
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from starlette.responses import Response
 
 from copilot.api.error_handlers import (
     approval_service_error_handler,
+    artifact_service_error_handler,
     internal_error_handler,
+    pydantic_validation_handler,
     request_validation_handler,
     task_intake_validation_handler,
+    task_service_error_handler,
 )
 from copilot.api.routes.approvals import router as approvals_router
+from copilot.api.routes.artifacts import router as artifacts_router
 from copilot.api.routes.tasks import router as tasks_router
 from copilot.config import Settings
 from copilot.services.approval_service import ApprovalService, ApprovalServiceError
+from copilot.services.artifact_service import ArtifactService, ArtifactServiceError
 from copilot.services.task_intake import TaskIntakeValidationError
-from copilot.services.task_service import NaturalLanguageTaskService
+from copilot.services.task_service import NaturalLanguageTaskService, TaskServiceError
 
 
 class HealthResponse(BaseModel):
@@ -36,6 +41,7 @@ def create_app(
     *,
     task_service: NaturalLanguageTaskService | None = None,
     approval_service: ApprovalService | None = None,
+    artifact_service: ArtifactService | None = None,
     settings: Settings | None = None,
     lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] | None = None,
 ) -> FastAPI:
@@ -49,6 +55,8 @@ def create_app(
         application.state.task_service = task_service
     if approval_service is not None:
         application.state.approval_service = approval_service
+    if artifact_service is not None:
+        application.state.artifact_service = artifact_service
     if settings is not None:
         application.state.settings = settings
 
@@ -65,10 +73,14 @@ def create_app(
         return HealthResponse(status="ok")
 
     application.include_router(tasks_router)
+    application.include_router(artifacts_router)
     application.include_router(approvals_router)
     application.add_exception_handler(RequestValidationError, request_validation_handler)
+    application.add_exception_handler(ValidationError, pydantic_validation_handler)
     application.add_exception_handler(TaskIntakeValidationError, task_intake_validation_handler)
     application.add_exception_handler(ApprovalServiceError, approval_service_error_handler)
+    application.add_exception_handler(TaskServiceError, task_service_error_handler)
+    application.add_exception_handler(ArtifactServiceError, artifact_service_error_handler)
     application.add_exception_handler(Exception, internal_error_handler)
     return application
 

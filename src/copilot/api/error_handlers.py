@@ -6,7 +6,9 @@ from fastapi.responses import JSONResponse
 
 from copilot.api.schemas.tasks import TaskErrorResponse
 from copilot.services.approval_service import ApprovalServiceError
+from copilot.services.artifact_service import ArtifactServiceError
 from copilot.services.task_intake import TaskIntakeValidationError
+from copilot.services.task_service import TaskServiceError
 
 
 def _trace_id(request: Request) -> str:
@@ -81,6 +83,64 @@ async def task_intake_validation_handler(
     return JSONResponse(status_code=422, content=payload.model_dump(mode="json"))
 
 
+async def pydantic_validation_handler(request: Request, _error: Exception) -> JSONResponse:
+    """Normalize boundary model validation without reflecting rejected values."""
+    payload = TaskErrorResponse(
+        error_code="INVALID_REQUEST_MODEL",
+        message="Request model validation failed.",
+        trace_id=_trace_id(request),
+    )
+    return JSONResponse(status_code=422, content=payload.model_dump(mode="json"))
+
+
+async def task_service_error_handler(request: Request, error: Exception) -> JSONResponse:
+    """Map authorized task-management failures to the uniform response."""
+    task_error = (
+        error
+        if isinstance(error, TaskServiceError)
+        else TaskServiceError(
+            "TASK_SERVICE_ERROR",
+            "Task operation failed.",
+            status_code=500,
+            task_id=None,
+        )
+    )
+    payload = TaskErrorResponse(
+        error_code=task_error.code,
+        message=str(task_error),
+        task_id=task_error.task_id,
+        trace_id=_trace_id(request),
+    )
+    return JSONResponse(
+        status_code=task_error.status_code,
+        content=payload.model_dump(mode="json"),
+    )
+
+
+async def artifact_service_error_handler(request: Request, error: Exception) -> JSONResponse:
+    """Map controlled Artifact lookup and availability failures."""
+    artifact_error = (
+        error
+        if isinstance(error, ArtifactServiceError)
+        else ArtifactServiceError(
+            "ARTIFACT_SERVICE_ERROR",
+            "Artifact operation failed.",
+            status_code=500,
+            task_id="unknown",
+        )
+    )
+    payload = TaskErrorResponse(
+        error_code=artifact_error.code,
+        message=str(artifact_error),
+        task_id=artifact_error.task_id,
+        trace_id=_trace_id(request),
+    )
+    return JSONResponse(
+        status_code=artifact_error.status_code,
+        content=payload.model_dump(mode="json"),
+    )
+
+
 async def internal_error_handler(request: Request, _error: Exception) -> JSONResponse:
     """Prevent stack traces, paths, prompts, and secrets from crossing the API boundary."""
     payload = TaskErrorResponse(
@@ -93,7 +153,10 @@ async def internal_error_handler(request: Request, _error: Exception) -> JSONRes
 
 __all__ = [
     "approval_service_error_handler",
+    "artifact_service_error_handler",
     "internal_error_handler",
+    "pydantic_validation_handler",
     "request_validation_handler",
+    "task_service_error_handler",
     "task_intake_validation_handler",
 ]

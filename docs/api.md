@@ -66,3 +66,68 @@ curl -X POST http://127.0.0.1:8000/v1/tasks \
 `APPROVAL_NOT_FOUND`；409 `APPROVAL_ALREADY_RESOLVED`、`APPROVAL_STATE_CONFLICT` 或
 `APPROVAL_EXPIRED`；422 `INVALID_APPROVAL_REQUEST` 或 `APPROVAL_ARGUMENTS_INVALID`；500
 `INTERNAL_ERROR`。错误响应不包含堆栈或完整业务参数。
+
+## 阶段 13 任务管理接口
+
+API 与 CLI 都调用同一个 `NaturalLanguageTaskService` / `ArtifactService`。Route 不直接调用
+LangGraph、Tool、Repository 或文件路径。当前执行模型为请求内同步：普通提交到达终态后返回
+`201 Created`；Graph 已持久化并进入 `WAITING_APPROVAL` 时返回 `202 Accepted`。仓库没有后台
+任务队列，因此不会对普通提交返回虚假的异步接受语义。
+
+| Method | Path | Request | Response | Success |
+|---|---|---|---|---:|
+| POST | `/v1/tasks` | `NaturalLanguageTaskSubmission` | `TaskSubmissionResponse` | 201/202 |
+| GET | `/v1/tasks/{task_id}` | — | `TaskResponse` | 200 |
+| GET | `/v1/tasks/{task_id}/steps` | — | `TaskStepsResponse` | 200 |
+| GET | `/v1/tasks/{task_id}/evidence` | — | `TaskEvidenceListResponse` | 200 |
+| GET | `/v1/tasks/{task_id}/artifacts` | — | `ArtifactListResponse` | 200 |
+| GET | `/v1/tasks/{task_id}/artifacts/{artifact_id}` | — | streamed bytes | 200 |
+| POST | `/v1/tasks/{task_id}/cancel` | — | `TaskResponse` | 200 |
+
+查询示例：
+
+```bash
+curl http://127.0.0.1:8000/v1/tasks/TASK_ID
+curl http://127.0.0.1:8000/v1/tasks/TASK_ID/steps
+curl http://127.0.0.1:8000/v1/tasks/TASK_ID/evidence
+curl http://127.0.0.1:8000/v1/tasks/TASK_ID/artifacts
+```
+
+Artifact 列表只包含 `artifact_id`、安全文件名、格式、媒体类型、checksum、大小和创建时间。
+下载接口验证当前 Demo Identity 对 Task 的访问权、Artifact 与 Task 归属、受控根目录、文件大小和
+checksum，然后使用流式响应及安全 `Content-Disposition` 返回；不会暴露本地路径。Metadata 存在但
+文件缺失或损坏时返回 `410 ARTIFACT_UNAVAILABLE`。
+
+```bash
+curl -OJ http://127.0.0.1:8000/v1/tasks/TASK_ID/artifacts/ARTIFACT_ID
+```
+
+取消使用冻结状态机的 `CANCEL_REQUESTED` 事件。等待审批、执行、重试、重规划和验证状态可取消；
+`CANCELLED` 重复取消幂等；`COMPLETED`/`FAILED` 返回 `409 TASK_NOT_CANCELLABLE`。取消会撤销待决
+审批，使旧审批不能恢复 Graph。取消是 cooperative cancellation，不承诺强制中断已经进行中的外部
+调用。
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/tasks/TASK_ID/cancel
+```
+
+## 统一错误响应
+
+请求校验、任务、Artifact、审批和未预期错误都使用同一 Schema；FastAPI 默认 422 格式不会直接
+暴露：
+
+```json
+{
+  "error_code": "TASK_NOT_FOUND",
+  "message": "Task was not found.",
+  "task_id": "T-UNKNOWN",
+  "trace_id": "TRACE-...",
+  "details": {}
+}
+```
+
+主要映射：400 非法业务请求；401 未认证；403 权限拒绝；404 Task/Artifact 不存在；409 状态冲突；
+410 Artifact Metadata 存在但文件不可用；422 请求 Schema 校验失败；500 未预期错误；503 依赖不可用；
+504 依赖超时。响应不包含 Stack Trace、本地路径、完整 SQL、Token、Prompt 或未过滤第三方响应。
+
+当前身份适配器是本地 Demo Identity，仅用于开发和测试；生产部署必须替换为可信认证适配器。

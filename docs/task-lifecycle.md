@@ -73,3 +73,22 @@ The initial persisted row may temporarily contain no Contract or Plan. Understan
 Contract before planning; planning commits the Plan before deterministic validation or any
 business tool call. Existing checkpoint records with pre-populated Contract/Plan remain readable,
 and internal prepared execution remains available for deterministic compatibility tests.
+
+## Stage 13 query and cancellation semantics
+
+The external task-management API reads the authoritative task, plan, StepResult, Evidence, and
+Artifact repositories through `NaturalLanguageTaskService` and `ArtifactService`. It never returns
+Checkpoint payloads or a serialized `TaskState`.
+
+`POST /v1/tasks` remains request-synchronous: ordinary terminal results return `201 Created`.
+When the Graph has durably checkpointed a `WAITING_APPROVAL` interruption, the existing API returns
+`202 Accepted` with the pending approval ID; this does not represent background queue execution.
+
+Cancellation is the frozen `CANCEL_REQUESTED` domain event. It is valid from `CREATED`,
+`UNDERSTANDING`, `PLANNING`, `WAITING_APPROVAL`, `EXECUTING`, `RETRYING`, `REPLANNING`, and
+`VERIFYING`. The service atomically compare-and-swaps the state to `CANCELLED`, stops future
+resumption by revoking pending approvals, preserves committed StepResults and Evidence, and writes
+the cancellation audit/result records. Repeating cancellation on `CANCELLED` is idempotent;
+`COMPLETED` and `FAILED` return `TASK_NOT_CANCELLABLE` with HTTP 409. Cancellation is cooperative:
+an already-running non-interruptible external call may finish, but its late result cannot move the
+terminal task or authorize downstream steps.

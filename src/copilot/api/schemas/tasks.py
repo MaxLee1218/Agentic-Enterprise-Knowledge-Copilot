@@ -4,10 +4,24 @@ from __future__ import annotations
 
 import unicodedata
 from datetime import datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
+from copilot.contracts import ArtifactType, EvidenceType, TaskStatus, TaskType
 from copilot.services.task_intake import TaskOutputFormat
+
+
+class PublicStepStatus(StrEnum):
+    """Stable public status for planned steps with or without a StepResult."""
+
+    PENDING = "PENDING"
+    SUCCESS = "SUCCESS"
+    BUSINESS_FAILURE = "BUSINESS_FAILURE"
+    TECHNICAL_FAILURE = "TECHNICAL_FAILURE"
+    TIMEOUT = "TIMEOUT"
+    PERMISSION_DENIED = "PERMISSION_DENIED"
+    CANCELLED = "CANCELLED"
 
 
 class NaturalLanguageTaskSubmission(BaseModel):
@@ -43,10 +57,12 @@ class TaskArtifactResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     artifact_id: str
-    type: str
-    location: str
+    type: ArtifactType
+    filename: str
+    media_type: str
     checksum: str
     size_bytes: int
+    created_at: datetime
 
 
 class TaskFailureResponse(BaseModel):
@@ -66,8 +82,10 @@ class TaskSubmissionResponse(BaseModel):
 
     task_id: str
     trace_id: str
-    status: str
+    status: TaskStatus
     created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     summary: str
     artifacts: tuple[TaskArtifactResponse, ...] = ()
     errors: tuple[TaskFailureResponse, ...] = ()
@@ -88,10 +106,96 @@ class TaskErrorResponse(BaseModel):
     details: dict[str, JsonValue] = Field(default_factory=dict)
 
 
+class TaskResponse(BaseModel):
+    """Stable public task-management summary."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str
+    trace_id: str
+    status: TaskStatus
+    task_type: TaskType | None
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+    cancelled_at: datetime | None
+    current_step: str | None
+    task_summary: str
+    pending_approval_id: str | None
+    step_count: int
+    evidence_count: int
+    artifact_count: int
+    error_summary: str | None
+
+
+class TaskStepResponse(BaseModel):
+    """Public planned-step and persisted-result view."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    step_id: str
+    tool_name: str
+    purpose: str
+    status: PublicStepStatus
+    depends_on: tuple[str, ...]
+    attempt_count: int
+    retry_count: int
+    started_at: datetime | None
+    completed_at: datetime | None
+    latency_ms: int | None
+    evidence_ids: tuple[str, ...]
+    error_code: str | None
+    error_message: str | None
+
+
+class TaskStepsResponse(BaseModel):
+    """Deterministically ordered step collection."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str
+    steps: tuple[TaskStepResponse, ...]
+
+
+class TaskEvidenceResponse(BaseModel):
+    """Minimized Evidence metadata with retained lineage."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    evidence_id: str
+    type: EvidenceType
+    source: str
+    produced_by: str
+    step_id: str
+    lineage: tuple[str, ...]
+    confidence: float | None
+    created_at: datetime
+    query_id: str | None
+    document_source: str | None
+    formula: str | None
+    input_evidence_ids: tuple[str, ...]
+    content_summary: str
+
+
+class TaskEvidenceListResponse(BaseModel):
+    """Deterministically ordered task Evidence collection."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str
+    evidence: tuple[TaskEvidenceResponse, ...]
+
+
 __all__ = [
     "NaturalLanguageTaskSubmission",
+    "PublicStepStatus",
     "TaskArtifactResponse",
+    "TaskEvidenceListResponse",
+    "TaskEvidenceResponse",
     "TaskErrorResponse",
     "TaskFailureResponse",
+    "TaskResponse",
+    "TaskStepResponse",
+    "TaskStepsResponse",
     "TaskSubmissionResponse",
 ]

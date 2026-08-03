@@ -35,6 +35,7 @@ from copilot.persistence.task_repository import InMemoryWorkflowRepository
 from copilot.policies.approval import SupplierQualityApprovalPolicy
 from copilot.policies.offline import OfflineSupplierQualityAuthorizer
 from copilot.services.approval_service import ApprovalGateService, ApprovalService
+from copilot.services.artifact_service import ArtifactService
 from copilot.services.llm import LLMGenerationOptions, LLMProvider
 from copilot.services.task_intake import IntakeLimits
 from copilot.services.task_service import NaturalLanguageTaskService
@@ -77,6 +78,7 @@ class WorkflowContainer:
     workflow_audit: InMemoryWorkflowAuditRepository
     approval_repository: ApprovalRepository
     approval_service: ApprovalService
+    artifact_service: ArtifactService
     knowledge_tool: MockKnowledgeTool | KnowledgeTool
     knowledge_client: HttpKnowledgeClient | None
     database_tool: MockDatabaseTool | DatabaseTool
@@ -342,6 +344,19 @@ def build_workflow_container(
             force_read_only=settings.task_force_read_only,
             require_approval=settings.task_require_approval_by_default,
         ),
+        repository=repository,
+        evidence=evidence,
+        artifacts=artifacts,
+        approvals=approval_repository,
+        state_machine=state_machine,
+        audit_sink=workflow_audit,
+    )
+    artifact_service = ArtifactService(
+        repository=artifacts,
+        tasks=task_service,
+        audit_sink=workflow_audit,
+        ids=identifier_factory,
+        clock=clock,
     )
     return WorkflowContainer(
         service=service,
@@ -355,6 +370,7 @@ def build_workflow_container(
         workflow_audit=workflow_audit,
         approval_repository=approval_repository,
         approval_service=approval_service,
+        artifact_service=artifact_service,
         knowledge_tool=knowledge_tool,
         knowledge_client=knowledge_client,
         database_tool=database_tool,

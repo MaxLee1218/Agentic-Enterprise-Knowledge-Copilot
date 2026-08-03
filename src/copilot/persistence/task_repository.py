@@ -307,6 +307,48 @@ class InMemoryWorkflowRepository:
         with self._lock:
             return self._requests[task_id]
 
+    def contract_for(self, task_id: str) -> TaskContract | None:
+        """Return the latest persisted contract, if understanding completed."""
+        with self._lock:
+            return self._contracts.get(task_id)
+
+    def plan_for(self, task_id: str) -> TaskPlan | None:
+        """Return the latest persisted plan, if planning completed."""
+        with self._lock:
+            return self._plans.get(task_id)
+
+    def task_result_for(self, task_id: str) -> TaskResult | None:
+        """Return the terminal result when one has been committed."""
+        with self._lock:
+            return self._task_results.get(task_id)
+
+    def step_results_for(self, task_id: str) -> tuple[StepResult, ...]:
+        """Return task-owned step results in deterministic plan order."""
+        with self._lock:
+            plan = self._plans.get(task_id)
+            if plan is None:
+                return ()
+            return tuple(
+                result
+                for step in plan.steps
+                if (result := self._step_results.get(step.step_id)) is not None
+            )
+
+    def step_execution_for(self, step_id: str) -> StepExecutionRecord | None:
+        """Return the operational envelope for one completed step."""
+        with self._lock:
+            return self._step_executions.get(step_id)
+
+    def tool_results_for(self, task_id: str) -> tuple[ToolResult, ...]:
+        """Return task-owned tool attempts in append order."""
+        with self._lock:
+            return tuple(result for result in self._tool_results if result.task_id == task_id)
+
+    def state_events_for(self, task_id: str) -> tuple[TaskStateEvent, ...]:
+        """Return task-owned state events in transition order."""
+        with self._lock:
+            return tuple(event for event in self._state_events if event.task_id == task_id)
+
     def step_results(self) -> tuple[StepResult, ...]:
         """Return step results in persistence order."""
         with self._lock:

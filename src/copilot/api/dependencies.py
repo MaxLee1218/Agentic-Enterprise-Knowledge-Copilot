@@ -6,6 +6,7 @@ from fastapi import Request
 
 from copilot.config import Settings
 from copilot.services.approval_service import ApprovalService
+from copilot.services.artifact_service import ArtifactService
 from copilot.services.task_intake import TrustedCallerContext
 from copilot.services.task_service import NaturalLanguageTaskService
 
@@ -18,6 +19,11 @@ def get_task_service(request: Request) -> NaturalLanguageTaskService:
 def get_approval_service(request: Request) -> ApprovalService:
     """Return the application approval service installed by the composition root."""
     return cast(ApprovalService, request.app.state.approval_service)
+
+
+def get_artifact_service(request: Request) -> ArtifactService:
+    """Return the application Artifact service installed by the composition root."""
+    return cast(ArtifactService, request.app.state.artifact_service)
 
 
 def get_caller_context(request: Request) -> TrustedCallerContext:
@@ -33,4 +39,9 @@ def get_caller_context(request: Request) -> TrustedCallerContext:
     )
 
 
-__all__ = ["get_approval_service", "get_caller_context", "get_task_service"]
+__all__ = [
+    "get_approval_service",
+    "get_artifact_service",
+    "get_caller_context",
+    "get_task_service",
+]

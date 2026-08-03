@@ -10,6 +10,7 @@ from copilot.api.schemas.approvals import (
     ApprovalResolutionRequest,
     ApprovalResolutionResponse,
 )
+from copilot.api.schemas.tasks import TaskErrorResponse
 from copilot.contracts import ApprovalResolutionAction, JsonObject
 from copilot.services.approval_service import ApprovalResolutionCommand, ApprovalService
 from copilot.services.task_intake import TrustedCallerContext
@@ -21,6 +22,13 @@ router = APIRouter(prefix="/v1/tasks", tags=["approvals"])
     "/{task_id}/approvals/{approval_id}",
     response_model=ApprovalDetailResponse,
     status_code=200,
+    responses={
+        403: {"model": TaskErrorResponse},
+        404: {"model": TaskErrorResponse},
+        409: {"model": TaskErrorResponse},
+        422: {"model": TaskErrorResponse},
+        500: {"model": TaskErrorResponse},
+    },
 )
 def get_approval(
     task_id: str,
@@ -67,6 +75,14 @@ def get_approval(
     "/{task_id}/approvals/{approval_id}",
     response_model=ApprovalResolutionResponse,
     status_code=200,
+    responses={
+        400: {"model": TaskErrorResponse},
+        403: {"model": TaskErrorResponse},
+        404: {"model": TaskErrorResponse},
+        409: {"model": TaskErrorResponse},
+        422: {"model": TaskErrorResponse},
+        500: {"model": TaskErrorResponse},
+    },
 )
 def resolve_approval(
     task_id: str,
