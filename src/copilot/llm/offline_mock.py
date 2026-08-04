@@ -143,11 +143,18 @@ class OfflineMockLLM:
         tools = {
             str(item["name"]): item for item in cast(list[dict[str, object]], manifest_raw["tools"])
         }
+        raw_version = payload.get("trusted_next_version", contract_raw.get("contract_version", 1))
+        if not isinstance(raw_version, int):
+            raise LLMSchemaValidationError("Offline mock received an invalid plan version")
+        version = raw_version
+        if node_name in {"create_plan", "repair_plan"}:
+            version = 1
+        report_suffix = f"-v{version}" if node_name == "replan" else ""
         identifiers = {
             "knowledge_search": f"{task_id}:retrieve-quality-policy",
             "database_query": f"{task_id}:query-supplier-quality-data",
             "analysis_engine": f"{task_id}:analyze-supplier-quality",
-            "report_generator": f"{task_id}:generate-supplier-quality-report",
+            "report_generator": (f"{task_id}:generate-supplier-quality-report{report_suffix}"),
         }
         retry = {
             "knowledge_search": RetryPolicy(
@@ -204,12 +211,6 @@ class OfflineMockLLM:
                 "report_generator",
             )
         )
-        raw_version = payload.get("trusted_next_version", contract_raw.get("contract_version", 1))
-        if not isinstance(raw_version, int):
-            raise LLMSchemaValidationError("Offline mock received an invalid plan version")
-        version = raw_version
-        if node_name in {"create_plan", "repair_plan"}:
-            version = 1
         return TaskPlan(task_id=task_id, steps=steps, planning_version=version)
 
 

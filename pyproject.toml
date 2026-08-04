@@ -45,7 +45,7 @@ include = ["copilot*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 addopts = "--strict-config --strict-markers"
 markers = [
     "integration: exercises boundaries between composed local components",

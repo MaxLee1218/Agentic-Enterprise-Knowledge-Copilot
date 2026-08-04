@@ -50,10 +50,20 @@ jobs:
       - name: Run test suite
         run: pytest
 
-      - name: Run offline evaluation smoke test
+      - name: Run offline Agent evaluation regression gate
         run: >-
-          python evaluation/run_eval.py --smoke
-          --output "${RUNNER_TEMP}/evaluation-smoke-report.json"
+          python evaluation/run_eval.py
+          --mode mock
+          --seed 42
+          --baseline evaluation/baselines/supplier_quality_v1.json
+          --fail-on-regression
+
+      - name: Upload offline Agent evaluation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-evaluation-reports
+          path: evaluation/reports/
 
       - name: Check documentation governance
         run: python scripts/check_docs.py

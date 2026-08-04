@@ -53,12 +53,19 @@ class MockBehavior:
     failure_kind: MockFailureKind | None = None
     fail_first_n_attempts: int = 0
     always_fail: bool = False
+    empty_result: bool = False
+    zero_denominator: bool = False
+    corrupt_report_first_n_attempts: int = 0
 
     def __post_init__(self) -> None:
         if self.fail_first_n_attempts < 0:
             raise ValueError("fail_first_n_attempts must be non-negative")
         if (self.fail_first_n_attempts or self.always_fail) and self.failure_kind is None:
             raise ValueError("failure_kind is required when failures are configured")
+        if self.empty_result and self.zero_denominator:
+            raise ValueError("empty_result and zero_denominator are mutually exclusive")
+        if self.corrupt_report_first_n_attempts < 0:
+            raise ValueError("corrupt_report_first_n_attempts must be non-negative")
 
     def should_fail(self, call_count: int) -> bool:
         """Return whether this deterministic invocation should fail."""
@@ -219,6 +226,17 @@ class MockKnowledgeTool(_MockToolBase):
     def execute(self, arguments: JsonObject, context: ToolExecutionContext) -> ToolExecutionOutput:
         self._before_execute()
         snapshot = str(arguments.root["index_snapshot_id"])
+        if self.behavior.empty_result:
+            return ToolExecutionOutput(
+                output=_json_object(
+                    {
+                        "matches": [],
+                        "match_count": 0,
+                        "index_snapshot_id": snapshot,
+                        "empty_result": True,
+                    }
+                )
+            )
         excerpts = (
             (
                 "quality-policy",
@@ -359,16 +377,30 @@ class MockDatabaseTool(_MockToolBase):
         parameters = cast(dict[str, JsonValue], arguments.root["parameters"])
         raw_supplier_ids = parameters["supplier_ids"] or ["SUP-001"]
         supplier_ids = [str(item) for item in cast(list[JsonValue], raw_supplier_ids)]
-        rows: list[JsonMapping] = [
-            {
-                "supplier_id": supplier_id,
-                "period": period,
-                "inspected_count": 1000,
-                "defect_count": defect_count,
-            }
-            for supplier_id in supplier_ids
-            for period, defect_count in (("P1", 10), ("P2", 15), ("P3", 20))
-        ]
+        rows: list[JsonMapping]
+        if self.behavior.empty_result:
+            rows = []
+        elif self.behavior.zero_denominator:
+            rows = [
+                {
+                    "supplier_id": supplier_id,
+                    "period": "P1",
+                    "inspected_count": 0,
+                    "defect_count": 0,
+                }
+                for supplier_id in supplier_ids
+            ]
+        else:
+            rows = [
+                {
+                    "supplier_id": supplier_id,
+                    "period": period,
+                    "inspected_count": 1000,
+                    "defect_count": defect_count,
+                }
+                for supplier_id in supplier_ids
+                for period, defect_count in (("P1", 10), ("P2", 15), ("P3", 20))
+            ]
         dataset_bytes = json.dumps(rows, sort_keys=True, separators=(",", ":")).encode()
         dataset_checksum = _checksum(dataset_bytes)
         fingerprint = _checksum(
@@ -684,14 +716,28 @@ class MockReportTool(_MockToolBase):
                 message="Report evidence does not belong to the current task",
             )
         report = self._build_report(arguments, evidence)
+        if self.call_count <= self.behavior.corrupt_report_first_n_attempts:
+            analysis = cast(dict[str, JsonValue], report["analysis_results"])
+            metrics = cast(list[JsonValue], analysis["metrics"])
+            numeric = next(
+                (
+                    item
+                    for item in metrics
+                    if isinstance(item, dict) and item.get("metric") == "defect_rate"
+                ),
+                None,
+            )
+            if isinstance(numeric, dict):
+                numeric["value"] = 0.5
         content = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8")
         artifact_id = self._ids.new_id("A")
         safe_task = _safe_filename_component(task_id)
+        safe_artifact = _safe_filename_component(artifact_id)
         artifact = self._artifact_store.write(
             artifact_id=artifact_id,
             task_id=task_id,
             artifact_type=ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
-            filename=f"supplier-quality-analysis-{safe_task}.json",
+            filename=f"supplier-quality-analysis-{safe_task}-{safe_artifact}.json",
             media_type="application/json",
             content=content,
             generator_version="supplier_quality_report.v1-mock",

@@ -254,6 +254,47 @@ python -m build
 All current tests run offline. Database integration tests use isolated disposable SQLite files;
 no live enterprise database, LLM, or network service is required.
 
+## Agent Evaluation
+
+Stage 14 provides a reproducible offline evaluation system that executes 15 Supplier Quality cases
+through the same Task Service, LangGraph, policy, Registry/Executor, Evidence, approval, reporting,
+and verification path used by the API and CLI:
+
+```bash
+python evaluation/run_eval.py
+python evaluation/run_eval.py --tag smoke
+python evaluation/run_eval.py \
+  --baseline evaluation/baselines/supplier_quality_v1.json \
+  --fail-on-regression
+```
+
+Reports are written to `evaluation/reports/latest.json`, `latest.md`, and an immutable run
+directory. Dataset authoring, metric formulas, exit codes, baseline updates, and reproducibility
+rules are documented in [Offline Agent Evaluation](docs/evaluation.md).
+
+The checked-in fixed Mock baseline was generated on 2026-08-03 at commit
+`5b4d403a9b1138a39cdd470cdd92908ecc06023b`, using dataset `1.0.0` with hash
+`sha256:9c31d359cc2b8e3d178dbe9d4bde11b96df056dd1ca4adb432b85d75a798dc92`, mode
+`mock`, and seed `42`.
+
+| Baseline metric | Result |
+|---|---:|
+| Cases satisfying their oracle | 100.00% (15/15) |
+| Initial / final plan validity | 100.00% (10/10) / 100.00% (10/10) |
+| Tool selection accuracy | 100.00% (15/15) |
+| Tool execution success | 97.14% (34/35; one expected transient failure) |
+| Evidence coverage / citation correctness | 100.00% (28/28) / 100.00% (32/32) |
+| Numeric accuracy | 100.00% (4/4) |
+| Safety violation rate | 0.00% (0/6) |
+| Replan recovery | 100.00% (1/1) |
+| Average steps / measured wall latency | 2.73 / 38.73 ms |
+| Fixed Mock token usage / estimated cost | 5,400 / USD 0.00 |
+
+Known failures: none. Controlled `FAILED`, `CANCELLED`, and `WAITING_APPROVAL` outcomes count as
+successful only when required by the case oracle. This Mock baseline validates deterministic
+regression behavior; it is not a claim about live-model, live-RAG, production-data, latency,
+token, cost, or security performance.
+
 ## Current limitations
 
 - Cancellation is cooperative at persisted state/Graph boundaries; it cannot forcibly interrupt
