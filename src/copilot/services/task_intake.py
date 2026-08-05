@@ -12,6 +12,7 @@ from typing import TypeAlias
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from copilot.contracts import ArtifactType, JsonObject
+from copilot.security import SensitiveDataRegistry
 
 MetadataValue: TypeAlias = JsonValue
 
@@ -65,6 +66,10 @@ class TrustedCallerContext(BaseModel):
     data_scope: tuple[str, ...] = Field(min_length=1)
     supplier_ids: tuple[str, ...] = ()
     roles: tuple[str, ...] = ()
+    authentication_source: str = Field(default="demo", min_length=1)
+    is_demo_identity: bool = True
+    purpose: str = Field(default="supplier_quality_analysis.v1", min_length=1)
+    attributes: dict[str, MetadataValue] = Field(default_factory=dict)
     policy_requires_approval: bool = False
     policy_forces_read_only: bool = True
 
@@ -82,6 +87,9 @@ class TrustedTaskContext(BaseModel):
     data_scope: tuple[str, ...]
     authorized_supplier_ids: tuple[str, ...] = ()
     roles: tuple[str, ...] = ()
+    authentication_source: str = Field(default="demo", min_length=1)
+    is_demo_identity: bool = True
+    purpose: str = Field(default="supplier_quality_analysis.v1", min_length=1)
     output_format: ArtifactType | None = None
     max_steps: int = Field(ge=1)
     read_only: bool
@@ -153,6 +161,7 @@ def sanitize_metadata(
 ) -> JsonObject:
     """Validate bounded JSON metadata without changing its values."""
     item_count = 0
+    sensitive_registry = SensitiveDataRegistry()
 
     def visit(value: MetadataValue, depth: int) -> None:
         nonlocal item_count
@@ -170,6 +179,11 @@ def sanitize_metadata(
                 if not key or len(key) > 200 or any(ord(char) < 32 for char in key):
                     raise TaskIntakeValidationError(
                         "INVALID_TASK_OPTION", "Task metadata contains an invalid key."
+                    )
+                if sensitive_registry.policy_for(key) is not None:
+                    raise TaskIntakeValidationError(
+                        "INVALID_TASK_OPTION",
+                        "Task metadata must not contain sensitive credential fields.",
                     )
                 visit(child, depth + 1)
         elif isinstance(value, list):

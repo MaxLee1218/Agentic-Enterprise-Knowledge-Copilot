@@ -93,5 +93,16 @@ def test_constraint_merge_only_tightens_policy() -> None:
     assert bounded.require_approval is True
 
 
+@pytest.mark.parametrize("key", ("access_token", "Authorization", "password_hash"))
+def test_sensitive_or_authority_metadata_is_rejected(key: str) -> None:
+    with pytest.raises(TaskIntakeValidationError, match="sensitive credential"):
+        sanitize_metadata(
+            {"nested": {key: "fixed-stage15-value"}},
+            max_bytes=100,
+            max_depth=3,
+            max_items=10,
+        )
+
+
 def test_datetime_fixture_is_timezone_aware() -> None:
     assert datetime(2026, 7, 31, tzinfo=UTC).utcoffset() is not None

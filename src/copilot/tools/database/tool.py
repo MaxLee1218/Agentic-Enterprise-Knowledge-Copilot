@@ -23,6 +23,7 @@ from copilot.contracts import (
     ToolTimeout,
 )
 from copilot.contracts.base import JsonMapping
+from copilot.policies.data_access import DataAccessPolicy, DataAccessRequest
 from copilot.tools.base import EvidenceDraft, ToolExecutionContext, ToolExecutionOutput
 from copilot.tools.database.connection import DatabaseConnection
 from copilot.tools.database.errors import (
@@ -161,11 +162,13 @@ class DatabaseTool:
         *,
         statement_timeout_seconds: float = 8,
         schema_registry: SchemaRegistry | None = None,
+        data_access_policy: DataAccessPolicy | None = None,
     ) -> None:
         self._connection = connection
         self._schema_registry = schema_registry or SchemaRegistry()
         self._templates = QueryTemplateRegistry(self._schema_registry)
         self._validator = SQLValidator(self._schema_registry)
+        self._data_access_policy = data_access_policy or DataAccessPolicy()
         self._statement_timeout_seconds = statement_timeout_seconds
         self.call_count = 0
 
@@ -205,6 +208,30 @@ class DatabaseTool:
                 filter_supplier_ids=bool(supplier_ids),
             )
             validated = self._validator.validate(template.statement)
+            raw_roles = context.metadata.root.get("roles", [])
+            roles = (
+                tuple(item for item in raw_roles if isinstance(item, str))
+                if isinstance(raw_roles, list)
+                else ()
+            )
+            raw_purpose = context.metadata.root.get("purpose")
+            purpose = (
+                raw_purpose if isinstance(raw_purpose, str) else "supplier_quality_analysis.v1"
+            )
+            decision = self._data_access_policy.evaluate(
+                DataAccessRequest(
+                    roles=roles,
+                    table_names=validated.table_names,
+                    field_names=validated.column_names,
+                    purpose=purpose,
+                    is_demo_identity=context.metadata.root.get("is_demo_identity") is not False,
+                )
+            )
+            if not decision.allowed:
+                raise ToolPermissionError(
+                    error_code=decision.reason_code,
+                    message=decision.reason,
+                )
             self._connection.require_tables(validated.table_names)
             execution_parameters: dict[str, object] = {
                 "tenant_id": tenant_id,

@@ -26,7 +26,9 @@ from copilot.persistence.identifiers import SequentialIdentifierFactory
 from copilot.services.approval_service import (
     ApprovalResolutionCommand,
     ApprovalResolutionResult,
+    ApprovalServiceError,
 )
+from copilot.services.artifact_service import ArtifactServiceError
 from copilot.services.llm import (
     LLMCallContext,
     LLMGenerationOptions,
@@ -82,9 +84,9 @@ class RecordingEvaluationLLM(LLMProvider):
                 raise LLMSchemaValidationError(
                     "LLM output failed TaskPlan DAG validation: cyclic dependency"
                 )
-            if self._plan_fault == "unregistered_tool":
+            if self._plan_fault in {"unregistered_tool", "database_write"}:
                 plan = cast(TaskPlan, result.parsed_output)
-                invalid_step = plan.steps[0].model_copy(update={"tool_name": "unregistered_tool"})
+                invalid_step = plan.steps[0].model_copy(update={"tool_name": self._plan_fault})
                 invalid_plan = plan.model_copy(update={"steps": (invalid_step, *plan.steps[1:])})
                 result = result.model_copy(update={"parsed_output": invalid_plan})
         usage = LLMUsage(input_tokens=120, output_tokens=80, total_tokens=200)
@@ -156,15 +158,20 @@ class EvaluationHarness:
                 task_id = exc.task_id
                 action = case.execution_config.approval_action
                 if action and action != "pause" and exc.approval_id:
-                    resolution = self._resolve_approval(
-                        container,
-                        case,
-                        caller,
-                        task_id,
-                        exc.approval_id,
-                    )
-                    execution = resolution.execution
-                    interrupted = execution is None
+                    try:
+                        resolution = self._resolve_approval(
+                            container,
+                            case,
+                            caller,
+                            task_id,
+                            exc.approval_id,
+                        )
+                        execution = resolution.execution
+                        interrupted = execution is None
+                    except ApprovalServiceError:
+                        # Expected authorization denials remain Agent outcomes, not harness errors.
+                        execution = None
+                        interrupted = True
         except (
             Exception
         ) as exc:  # captured as harness/evaluator data, never treated as Agent success
@@ -224,6 +231,7 @@ class EvaluationHarness:
         )
         tool_results = container.repository.tool_results_for(task_id) if task_id else ()
         approvals = container.approval_repository.list_by_task(task_id) if task_id else ()
+        artifact_probe = self._artifact_authorization_probe(container, case, task_id)
         events = _workflow_events(container, task_id)
         errors = (
             execution.errors
@@ -268,6 +276,8 @@ class EvaluationHarness:
             errors=errors,
             warnings=_warnings(step_results),
             workflow_events=events,
+            tool_audit_events=_tool_audit_events(container, task_id),
+            artifact_authorization_probe=artifact_probe,
             llm_usage=tuple(provider.records),
             retry_count=retries,
             replan_count=int(state["replan_count"] if state is not None else 0),
@@ -275,6 +285,37 @@ class EvaluationHarness:
             interrupted=interrupted,
             harness_error=harness_error,
         )
+
+    @staticmethod
+    def _artifact_authorization_probe(
+        container: WorkflowContainer,
+        case: EvaluationCase,
+        task_id: str | None,
+    ) -> str | None:
+        if "artifact_authorization" not in case.tags:
+            return None
+        artifacts = container.artifacts.list_by_task(task_id) if task_id else ()
+        if task_id is None or not artifacts:
+            return "NO_ARTIFACT"
+        attacker = TrustedCallerContext(
+            user_id="U-EVAL-OTHER",
+            tenant_id=case.actor_context.tenant_id,
+            data_scope=case.actor_context.data_scope,
+            roles=("quality_analyst",),
+            authentication_source="evaluation_fixture",
+            is_demo_identity=False,
+            purpose="supplier_quality_analysis.v1",
+        )
+        try:
+            container.artifact_service.get_task_artifact(
+                task_id,
+                artifacts[0].artifact_id,
+                attacker,
+                trace_id="TRACE-ARTIFACT-PROBE",
+            )
+        except (ArtifactServiceError, RuntimeError):
+            return "DENIED"
+        return "ALLOWED"
 
     def _resolve_approval(
         self,
@@ -319,6 +360,9 @@ class EvaluationHarness:
             data_scope=actor.data_scope,
             supplier_ids=actor.supplier_ids,
             roles=roles,
+            authentication_source="evaluation_fixture",
+            is_demo_identity=True,
+            purpose="supplier_quality_analysis.v1",
             policy_requires_approval=case.task_input.require_approval,
             policy_forces_read_only=True,
         )
@@ -377,7 +421,11 @@ class EvaluationHarness:
     def _report_behavior(
         case: EvaluationCase, fixtures: tuple[dict[str, object], ...]
     ) -> MockBehavior | None:
-        del case
+        fault = next(
+            (item for item in case.fault_injection if item.target == "report_generator"), None
+        )
+        if fault is not None:
+            return _mock_behavior(fault)
         corrupt_once = any(item.get("report_result") == "corrupt_numeric_once" for item in fixtures)
         return MockBehavior(corrupt_report_first_n_attempts=1) if corrupt_once else None
 
@@ -391,6 +439,20 @@ def _mock_behavior(
     if fault is None:
         return MockBehavior(empty_result=empty_result, zero_denominator=zero_denominator)
     failure_type = str(fault.failure_type)
+    if failure_type in {
+        "knowledge_prompt_injection",
+        "tool_output_prompt_injection",
+        "tool_output_secret",
+        "sensitive_field_output",
+        "report_secret",
+        "report_stack_trace",
+        "unsafe_error",
+    }:
+        return MockBehavior(
+            empty_result=empty_result,
+            zero_denominator=zero_denominator,
+            security_fault=failure_type,
+        )
     kind = {
         "temporary_failure": MockFailureKind.TRANSIENT,
         "permanent_failure": MockFailureKind.PERMANENT,
@@ -451,6 +513,27 @@ def _workflow_events(
                 "attempt": record.attempt,
                 "duration_ms": record.duration_ms,
                 "error_type": record.error_type,
+                "metadata": record.metadata.root,
+            }
+        )
+    return tuple(events)
+
+
+def _tool_audit_events(
+    container: WorkflowContainer, task_id: str | None
+) -> tuple[dict[str, JsonValue], ...]:
+    events: list[dict[str, JsonValue]] = []
+    for record in container.tool_audit.list():
+        if task_id is not None and record.task_id != task_id:
+            continue
+        events.append(
+            {
+                "tool_name": record.tool_name,
+                "status": record.status.value,
+                "principal_id": record.principal_id,
+                "policy_decision": record.policy_decision,
+                "reason_code": record.reason_code,
+                "security_finding_codes": list(record.security_finding_codes),
             }
         )
     return tuple(events)

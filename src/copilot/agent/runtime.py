@@ -26,6 +26,7 @@ from copilot.contracts import (
     VerificationStatus,
 )
 from copilot.policies.approval import PolicyOutcome, SupplierQualityApprovalPolicy
+from copilot.policies.permissions import AuthorizationRequest, Permission, PermissionMatrix
 from copilot.services.approval_service import ApprovalGateService, ApprovalRepositoryPort
 from copilot.services.llm import LLMErrorCode, LLMProviderError
 from copilot.services.workflows.dependency import DependencyChecker
@@ -96,6 +97,7 @@ class GraphNodeRuntime:
         max_replan_count: int,
         max_plan_repair_attempts: int = 2,
         planning_service: PlanningService | None = None,
+        permission_matrix: PermissionMatrix | None = None,
     ) -> None:
         self._tool_executor = tool_executor
         self._registry = registry
@@ -119,6 +121,7 @@ class GraphNodeRuntime:
         self._approval_gate = approval_gate
         self._approval_repository = approval_repository
         self._approval_policy = approval_policy
+        self._permission_matrix = permission_matrix or PermissionMatrix()
 
     def validate_request(self, state: AgentGraphState) -> dict[str, object]:
         """Reject inconsistent, terminal, cancelled, expired, or over-budget input."""
@@ -448,6 +451,52 @@ class GraphNodeRuntime:
                     for issue in validation.errors
                 ],
             )
+        plan_permissions = (
+            self._permission_matrix.evaluate(
+                AuthorizationRequest(
+                    action=Permission.EXECUTE_TOOL,
+                    roles=state["intake_context"].roles,
+                    resource_type="tool",
+                    resource_name=step.tool_name,
+                    tool_name=step.tool_name,
+                    task_id=state["task_id"],
+                    purpose=state["intake_context"].purpose,
+                    is_demo_identity=state["intake_context"].is_demo_identity,
+                )
+            )
+            for step in state["plan"].steps
+        )
+        permission_denial = next(
+            (decision for decision in plan_permissions if not decision.allowed), None
+        )
+        if permission_denial is not None and not permission_denial.allowed:
+            error = self._error(
+                state,
+                permission_denial.reason_code,
+                ErrorType.PERMISSION,
+                permission_denial.reason,
+            )
+            event = (
+                "REPLAN_FAILED"
+                if state["domain_state"].state is TaskStatus.REPLANNING
+                else "PLAN_INVALID"
+            )
+            domain_state = self._transition(state, state["domain_state"], event, error.message)
+            self._emit(
+                state,
+                "permission_denied",
+                status=permission_denial.reason_code,
+                metadata=JsonObject({"reason_code": permission_denial.reason_code}),
+            )
+            return self._node_result(
+                state,
+                "validate_plan",
+                started,
+                "invalid_plan",
+                error.message,
+                domain_state=domain_state,
+                errors=[error],
+            )
         domain_state = state["domain_state"]
         if domain_state.state is TaskStatus.REPLANNING:
             domain_state = self._transition(
@@ -740,6 +789,48 @@ class GraphNodeRuntime:
                 errors=[error],
             )
         definition = self._registry.get(step.tool_name).definition
+        tool_permission = self._permission_matrix.evaluate(
+            AuthorizationRequest(
+                action=Permission.EXECUTE_TOOL,
+                roles=state["intake_context"].roles,
+                resource_type="tool",
+                resource_name=step.tool_name,
+                tool_name=step.tool_name,
+                task_id=state["task_id"],
+                purpose=state["intake_context"].purpose,
+                is_demo_identity=state["intake_context"].is_demo_identity,
+            )
+        )
+        if not tool_permission.allowed:
+            error = self._error(
+                state,
+                tool_permission.reason_code,
+                ErrorType.PERMISSION,
+                tool_permission.reason,
+                step_id=step.step_id,
+            )
+            domain_state = self._fail_from_execution(
+                {**state, "domain_state": domain_state}, error.message
+            )
+            self._emit(
+                state,
+                "permission_denied",
+                status=tool_permission.reason_code,
+                metadata=JsonObject(
+                    {"reason_code": tool_permission.reason_code, "tool_name": step.tool_name}
+                ),
+            )
+            return self._node_result(
+                state,
+                "policy_check",
+                started,
+                "denied",
+                error.message,
+                domain_state=domain_state,
+                current_step_id=step.step_id,
+                last_arguments=arguments,
+                errors=[error],
+            )
         has_current_plan_approval = any(
             approval.status.value == "APPROVED"
             and approval.planning_version == state["plan"].planning_version
@@ -1192,7 +1283,11 @@ class GraphNodeRuntime:
             user_id=state["request"].user_id,
         )
         try:
-            result = self._tool_executor.execute(call, attempt=attempt)
+            result = self._tool_executor.execute(
+                call,
+                attempt=attempt,
+                security_context=state["intake_context"],
+            )
         except (ToolValidationError, ToolRuntimeError) as exc:
             result = self._exception_result(call, attempt, exc)
         self._repository.save_tool_result(result)
@@ -1260,6 +1355,25 @@ class GraphNodeRuntime:
         record = self._execution_record(state, step, arguments, attempts, result)
         self._repository.save_step_result(step_result, record)
         reason = result.error.message if result.error is not None else "Tool execution failed"
+        error_code = (
+            result.error.error_code if result.error is not None else "TOOL_EXECUTION_FAILED"
+        )
+        if result.status is ToolResultStatus.PERMISSION_DENIED:
+            self._emit(
+                state,
+                "permission_denied",
+                status=error_code,
+                metadata=JsonObject({"reason_code": error_code, "tool_name": result.tool_name}),
+            )
+        if error_code in {"SENSITIVE_OUTPUT_BLOCKED", "SECRET_DETECTED", "UNSAFE_TOOL_OUTPUT"}:
+            self._emit(
+                state,
+                "artifact_creation_blocked"
+                if step.tool_name == "report_generator"
+                else "output_blocked",
+                status=error_code,
+                metadata=JsonObject({"reason_code": error_code}),
+            )
         domain_state = self._fail_from_execution({**state, "domain_state": domain_state}, reason)
         return self._node_result(
             state,

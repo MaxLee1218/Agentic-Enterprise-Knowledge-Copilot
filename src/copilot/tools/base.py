@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from copilot.contracts import (
     EvidenceContent,
@@ -21,6 +21,9 @@ from copilot.contracts import (
     ToolDefinition,
     ToolResultStatus,
 )
+
+if TYPE_CHECKING:
+    from copilot.services.task_intake import TrustedTaskContext
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +65,10 @@ class ToolAuditRecord:
     timestamp: datetime
     attempt: int = 1
     error_code: str | None = None
+    principal_id: str | None = None
+    policy_decision: str | None = None
+    reason_code: str | None = None
+    security_finding_codes: tuple[str, ...] = ()
 
 
 class Tool(Protocol):
@@ -93,6 +100,19 @@ class ToolAuthorizer(Protocol):
 
     def authorize(self, call: ToolCall, definition: ToolDefinition) -> None:
         """Return only when policy and any required approval cover the exact call."""
+        ...
+
+
+class ContextualToolAuthorizer(Protocol):
+    """Optional stronger authorizer that consumes the explicit trusted task context."""
+
+    def authorize_with_context(
+        self,
+        call: ToolCall,
+        definition: ToolDefinition,
+        security_context: TrustedTaskContext,
+    ) -> None:
+        """Return only when current identity, purpose, policy, and scope authorize the call."""
         ...
 
 

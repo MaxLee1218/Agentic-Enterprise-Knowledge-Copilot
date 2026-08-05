@@ -199,6 +199,7 @@ class EvaluationRunner:
         return EvaluationCaseResult(
             case_id=case.case_id,
             category=case.category,
+            tags=case.tags,
             status=status,
             task_id=execution.task_id,
             trace_id=execution.trace_id,
@@ -206,6 +207,7 @@ class EvaluationRunner:
             completed_at=execution.completed_at,
             latency_ms=execution.latency_ms,
             terminal_task_status=execution.terminal_task_status,
+            task_request_text=execution.task_request_text,
             task_contract=execution.task_contract,
             plan_snapshot=execution.plan_snapshot,
             tool_calls=execution.tool_calls,
@@ -222,6 +224,8 @@ class EvaluationRunner:
             errors=execution.errors,
             warnings=execution.warnings,
             workflow_events=execution.workflow_events,
+            tool_audit_events=execution.tool_audit_events,
+            artifact_authorization_probe=execution.artifact_authorization_probe,
             metric_results=tuple(metrics),
             primary_failure_category=primary,
             failure_categories=categories,
@@ -251,6 +255,56 @@ def _aggregate_metrics(
         ("safety_violation_rate", "safety_violation_rate", MetricDirection.LOWER_IS_BETTER),
         ("attack_block_rate", "attack_block_rate", MetricDirection.HIGHER_IS_BETTER),
         ("authorization_block_rate", "authorization_block_rate", MetricDirection.HIGHER_IS_BETTER),
+        (
+            "unauthorized_tool_execution_rate",
+            "unauthorized_tool_execution_rate",
+            MetricDirection.LOWER_IS_BETTER,
+        ),
+        (
+            "unauthorized_table_access_rate",
+            "unauthorized_table_access_rate",
+            MetricDirection.LOWER_IS_BETTER,
+        ),
+        (
+            "unauthorized_field_access_rate",
+            "unauthorized_field_access_rate",
+            MetricDirection.LOWER_IS_BETTER,
+        ),
+        (
+            "sensitive_data_leakage_rate",
+            "sensitive_data_leakage_rate",
+            MetricDirection.LOWER_IS_BETTER,
+        ),
+        (
+            "secret_leakage_rate",
+            "secret_leakage_rate",
+            MetricDirection.LOWER_IS_BETTER,
+        ),
+        (
+            "prompt_injection_success_rate",
+            "prompt_injection_success_rate",
+            MetricDirection.LOWER_IS_BETTER,
+        ),
+        (
+            "artifact_authorization_failure_rate",
+            "artifact_authorization_failure_rate",
+            MetricDirection.LOWER_IS_BETTER,
+        ),
+        (
+            "missing_audit_event_rate",
+            "missing_audit_event_rate",
+            MetricDirection.LOWER_IS_BETTER,
+        ),
+        (
+            "unsafe_error_exposure_rate",
+            "unsafe_error_exposure_rate",
+            MetricDirection.LOWER_IS_BETTER,
+        ),
+        (
+            "legitimate_task_false_rejection_rate",
+            "legitimate_task_false_rejection_rate",
+            MetricDirection.LOWER_IS_BETTER,
+        ),
         ("replan_recovery_rate", "replan_recovery", MetricDirection.HIGHER_IS_BETTER),
     ):
         results.append(_aggregate_ratio(output_name, cases, source_name, direction=direction))

@@ -25,6 +25,7 @@ from copilot.policies.approval import (
     changed_top_level_fields,
     schema_fingerprint,
 )
+from copilot.policies.permissions import AuthorizationRequest, Permission, PermissionMatrix
 from copilot.services.task_intake import TrustedCallerContext
 from copilot.services.workflows.fixed_plan import SUPPLIER_QUALITY_PLAN_ID
 from copilot.services.workflows.models import WorkflowAuditRecord, WorkflowExecution
@@ -249,6 +250,7 @@ class ApprovalService:
         audit_sink: WorkflowAuditSink,
         ids: IdentifierFactory,
         clock: Callable[[], datetime],
+        permission_matrix: PermissionMatrix | None = None,
     ) -> None:
         self._repository = repository
         self._engine = engine
@@ -256,6 +258,7 @@ class ApprovalService:
         self._audit_sink = audit_sink
         self._ids = ids
         self._clock = clock
+        self._permission_matrix = permission_matrix or PermissionMatrix()
 
     def get(
         self,
@@ -272,6 +275,7 @@ class ApprovalService:
         if approval.tenant_id != caller.tenant_id:
             self._append_audit(approval, "APPROVAL_PERMISSION_DENIED", trace_id=trace_id)
             raise ApprovalPermissionDeniedError("Approval tenant does not match caller")
+        self._authorize_approval_permission(approval, caller, trace_id=trace_id)
         if approval.required_role not in caller.roles:
             self._append_audit(approval, "APPROVAL_PERMISSION_DENIED", trace_id=trace_id)
             raise ApprovalPermissionDeniedError("Caller lacks the required approval role")
@@ -290,6 +294,7 @@ class ApprovalService:
         if pending.tenant_id != caller.tenant_id:
             self._append_audit(pending, "APPROVAL_PERMISSION_DENIED", trace_id=trace_id)
             raise ApprovalPermissionDeniedError("Approval tenant does not match caller")
+        self._authorize_approval_permission(pending, caller, trace_id=trace_id)
         try:
             state = self._engine.approval_state(command.task_id, caller.tenant_id)
             trace_id = str(state["trace_id"])
@@ -348,6 +353,28 @@ class ApprovalService:
             trace_id=str(latest["trace_id"]),
             execution=execution,
         )
+
+    def _authorize_approval_permission(
+        self,
+        approval: ApprovalRequest,
+        caller: TrustedCallerContext,
+        *,
+        trace_id: str,
+    ) -> None:
+        decision = self._permission_matrix.evaluate(
+            AuthorizationRequest(
+                action=Permission.APPROVE_ACTION,
+                roles=caller.roles,
+                resource_type="approval",
+                resource_name=approval.approval_id,
+                task_id=approval.task_id,
+                purpose=caller.purpose,
+                is_demo_identity=caller.is_demo_identity,
+            )
+        )
+        if not decision.allowed:
+            self._append_audit(approval, decision.reason_code, trace_id=trace_id)
+            raise ApprovalPermissionDeniedError("Caller lacks approval permission")
 
     def _load(self, approval_id: str) -> ApprovalRequest:
         try:

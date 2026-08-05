@@ -7,6 +7,8 @@ from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 from typing import Protocol
 
+from pydantic import JsonValue
+
 from copilot.contracts import (
     ApprovalRequest,
     ApprovalStatus,
@@ -22,6 +24,14 @@ from copilot.contracts import (
     TaskStatus,
     ToolResult,
 )
+from copilot.policies.permissions import AuthorizationRequest, Permission, PermissionMatrix
+from copilot.security import (
+    ContentSourceType,
+    OutputDisposition,
+    OutputGuard,
+    PromptInjectionDetector,
+)
+from copilot.security.redaction import redact_text
 from copilot.services.task_intake import (
     IntakeLimits,
     NaturalLanguageTaskCommand,
@@ -166,6 +176,9 @@ class NaturalLanguageTaskService:
         approvals: TaskApprovalRepository | None = None,
         state_machine: TaskStateMachine | None = None,
         audit_sink: WorkflowAuditSink | None = None,
+        injection_detector: PromptInjectionDetector | None = None,
+        output_guard: OutputGuard | None = None,
+        permission_matrix: PermissionMatrix | None = None,
     ) -> None:
         self._engine = engine
         self._ids = ids
@@ -177,6 +190,9 @@ class NaturalLanguageTaskService:
         self._approvals = approvals
         self._state_machine = state_machine
         self._audit_sink = audit_sink
+        self._injection_detector = injection_detector or PromptInjectionDetector()
+        self._output_guard = output_guard or OutputGuard()
+        self._permission_matrix = permission_matrix or PermissionMatrix()
 
     def submit(
         self,
@@ -185,6 +201,9 @@ class NaturalLanguageTaskService:
     ) -> WorkflowExecution:
         """Create TaskRequest and trusted context, then enter the existing LangGraph."""
         request, context = self.prepare(command, caller)
+        security = request.metadata.root.get("security")
+        if isinstance(security, dict) and security.get("finding_count"):
+            self._audit_security_finding(request, context, caller, security)
         return self._engine.submit(request, context)
 
     def prepare(
@@ -215,6 +234,11 @@ class NaturalLanguageTaskService:
         trace_id = command.trace_id or self._ids.new_id("TRACE")
         session_id = command.session_id or self._ids.new_id("SESSION")
         task_hash = hashlib.sha256(task_text.encode("utf-8")).hexdigest()
+        injection_scan = self._injection_detector.scan(
+            task_text,
+            source_type=ContentSourceType.USER_INPUT,
+            source_id=task_id,
+        )
         request_metadata = dict(metadata.root)
         request_metadata["intake"] = {
             "request_source": command.source.value,
@@ -228,6 +252,17 @@ class NaturalLanguageTaskService:
             "effective_max_steps": effective.max_steps,
             "effective_read_only": effective.read_only,
             "effective_require_approval": effective.require_approval,
+        }
+        request_metadata["security"] = {
+            "finding_count": len(injection_scan.findings),
+            "finding_ids": [finding.finding_id for finding in injection_scan.findings],
+            "categories": list(
+                dict.fromkeys(finding.category for finding in injection_scan.findings)
+            ),
+            "maximum_severity": self._injection_detector.maximum_severity(
+                injection_scan.findings
+            ).value,
+            "content_hash": task_hash,
         }
         request = TaskRequest(
             id=self._ids.new_id("R"),
@@ -245,6 +280,9 @@ class NaturalLanguageTaskService:
             data_scope=caller.data_scope,
             authorized_supplier_ids=caller.supplier_ids,
             roles=caller.roles,
+            authentication_source=caller.authentication_source,
+            is_demo_identity=caller.is_demo_identity,
+            purpose=caller.purpose,
             output_format=(
                 command.output_format.artifact_type if command.output_format is not None else None
             ),
@@ -266,7 +304,9 @@ class NaturalLanguageTaskService:
         trace_id: str = "",
     ) -> TaskSummaryView:
         """Return one authorized, stable task summary."""
-        request, state, contract, plan = self._load_authorized(task_id, caller, trace_id=trace_id)
+        request, state, contract, plan = self._load_authorized(
+            task_id, caller, trace_id=trace_id, permission=Permission.READ_TASK
+        )
         return self._task_view(request, state, contract, plan)
 
     def list_task_steps(
@@ -278,7 +318,7 @@ class NaturalLanguageTaskService:
     ) -> tuple[TaskStepView, ...]:
         """Combine plan steps with persisted results without exposing tool inputs."""
         _request, _state, _contract, plan = self._load_authorized(
-            task_id, caller, trace_id=trace_id
+            task_id, caller, trace_id=trace_id, permission=Permission.READ_TASK
         )
         if plan is None:
             return ()
@@ -319,7 +359,7 @@ class NaturalLanguageTaskService:
     ) -> tuple[TaskEvidenceView, ...]:
         """Return persisted Evidence metadata and lineage without regenerating content."""
         _request, _state, _contract, plan = self._load_authorized(
-            task_id, caller, trace_id=trace_id
+            task_id, caller, trace_id=trace_id, permission=Permission.READ_EVIDENCE
         )
         if self._evidence is None:
             return ()
@@ -343,7 +383,9 @@ class NaturalLanguageTaskService:
         trace_id: str = "",
     ) -> TaskSummaryView:
         """Apply the frozen CANCEL_REQUESTED transition and invalidate old approvals."""
-        request, state, contract, plan = self._load_authorized(task_id, caller, trace_id=trace_id)
+        request, state, contract, plan = self._load_authorized(
+            task_id, caller, trace_id=trace_id, permission=Permission.CANCEL_TASK
+        )
         if state.state is TaskStatus.CANCELLED:
             return self._task_view(request, state, contract, plan)
         if state.state in {TaskStatus.COMPLETED, TaskStatus.FAILED}:
@@ -396,6 +438,7 @@ class NaturalLanguageTaskService:
         caller: TrustedCallerContext,
         *,
         trace_id: str,
+        permission: Permission,
     ) -> tuple[TaskRequest, TaskState, TaskContract | None, TaskPlan | None]:
         repository = self._require_repository()
         try:
@@ -405,12 +448,33 @@ class NaturalLanguageTaskService:
             raise TaskNotFoundError(task_id) from exc
         contract = repository.contract_for(task_id)
         tenant_matches = contract is None or contract.constraints.tenant_id == caller.tenant_id
-        if request.user_id != caller.user_id or not tenant_matches:
+        decision = self._permission_matrix.evaluate(
+            AuthorizationRequest(
+                action=permission,
+                roles=caller.roles,
+                resource_type="task",
+                resource_name=task_id,
+                task_id=task_id,
+                purpose=caller.purpose,
+                is_demo_identity=caller.is_demo_identity,
+            )
+        )
+        if request.user_id != caller.user_id or not tenant_matches or not decision.allowed:
             self._audit(
                 "permission_denied", task_id, repository.plan_for(task_id), caller, trace_id
             )
             raise TaskPermissionDeniedError(task_id)
         return request, state, contract, repository.plan_for(task_id)
+
+    def is_artifact_published(self, task_id: str, artifact_id: str) -> bool:
+        """Return whether finalization explicitly published an Artifact for a completed Task."""
+        repository = self._require_repository()
+        result = repository.task_result_for(task_id)
+        return (
+            result is not None
+            and result.final_status is TaskStatus.COMPLETED
+            and artifact_id in result.artifacts
+        )
 
     def _task_view(
         self,
@@ -448,7 +512,7 @@ class NaturalLanguageTaskService:
             completed_at=completed_at,
             cancelled_at=state.updated_at if state.state is TaskStatus.CANCELLED else None,
             current_step=current_step,
-            task_summary=_task_summary(request.raw_input),
+            task_summary=_task_summary(request.raw_input, self._output_guard),
             pending_approval_id=pending[0].approval_id if pending else None,
             step_count=len(plan.steps) if plan is not None else 0,
             evidence_count=(
@@ -457,7 +521,7 @@ class NaturalLanguageTaskService:
             artifact_count=(
                 len(self._artifacts.list_by_task(task_id)) if self._artifacts is not None else 0
             ),
-            error_summary=error_summary,
+            error_summary=(redact_text(error_summary) if error_summary is not None else None),
         )
 
     def _require_repository(self) -> TaskManagementRepository:
@@ -493,6 +557,40 @@ class NaturalLanguageTaskService:
             )
         )
 
+    def _audit_security_finding(
+        self,
+        request: TaskRequest,
+        context: TrustedTaskContext,
+        caller: TrustedCallerContext,
+        security: Mapping[str, JsonValue],
+    ) -> None:
+        if self._audit_sink is None:
+            return
+        self._audit_sink.append(
+            WorkflowAuditRecord(
+                event_id=self._ids.new_id("AUD"),
+                event="prompt_injection_finding",
+                task_id=context.task_id,
+                plan_id="supplier-quality-analysis",
+                plan_version=0,
+                timestamp=self._clock(),
+                status=str(security.get("maximum_severity", "NONE")),
+                metadata=JsonObject(
+                    {
+                        "actor_id": caller.user_id,
+                        "tenant_id": caller.tenant_id,
+                        "trace_id": context.trace_id,
+                        "source_type": ContentSourceType.USER_INPUT.value,
+                        "finding_count": security.get("finding_count", 0),
+                        "finding_ids": security.get("finding_ids", []),
+                        "categories": security.get("categories", []),
+                        "content_hash": security.get("content_hash", ""),
+                        "request_id": request.id,
+                    }
+                ),
+            )
+        )
+
 
 _TERMINAL_STATES = {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
 
@@ -513,8 +611,17 @@ def _trace_id(request: TaskRequest) -> str:
     return request.id
 
 
-def _task_summary(raw_input: str) -> str:
+def _task_summary(raw_input: str, output_guard: OutputGuard) -> str:
     normalized = " ".join(raw_input.split())
+    guarded = output_guard.guard(
+        normalized,
+        source_type=ContentSourceType.USER_INPUT,
+        source_id="task-summary",
+        target="api",
+    )
+    if guarded.disposition is OutputDisposition.BLOCKED or not isinstance(guarded.content, str):
+        return "Task input was withheld by the output safety policy."
+    normalized = guarded.content
     return normalized if len(normalized) <= 240 else f"{normalized[:237]}..."
 
 

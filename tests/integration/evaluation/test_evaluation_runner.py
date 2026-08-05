@@ -12,8 +12,8 @@ def test_all_required_supplier_quality_cases_pass_their_oracles(tmp_path) -> Non
 
     run = EvaluationRunner(EvaluationConfig(output_dir=tmp_path)).run(dataset)
 
-    assert run.total_cases == 15
-    assert run.passed_cases == 15
+    assert run.total_cases == 30
+    assert run.passed_cases == 30
     recovery = next(
         item for item in run.case_results if item.case_id == "report-verification-replan"
     )

@@ -35,6 +35,12 @@ from copilot.contracts.base import JsonMapping
 from copilot.contracts.validators import utc_now
 from copilot.evidence.lineage import contains_source_type
 from copilot.policies.approval import action_fingerprint, schema_fingerprint
+from copilot.security import (
+    ContentSourceType,
+    OutputDisposition,
+    OutputGuard,
+    SensitiveDataRegistry,
+)
 from copilot.tools.analytics.precision import DECIMAL_PLACES
 
 
@@ -666,14 +672,43 @@ class SafetyVerifier:
 
         allowed_tables = set(verification_context.allowed_tables)
         allowed_columns = set(verification_context.allowed_columns)
-        sensitive_fields = set(verification_context.sensitive_fields)
+        sensitive_fields = set(verification_context.sensitive_fields) | set(
+            SensitiveDataRegistry().sensitive_names()
+        )
         sensitive_names = sensitive_fields | {
             field.rsplit(".", 1)[-1] for field in sensitive_fields
         }
+        output_guard = OutputGuard()
         for item in evidence_ledger.list(task_id):
+            reference = item.source_reference.reference.root
+            if reference.get("quarantined") is True:
+                issues.append(
+                    _safety_issue(
+                        "QUARANTINED_EVIDENCE",
+                        "Quarantined untrusted content cannot support the final result",
+                        task_id,
+                        item.step_id,
+                        (item.evidence_id,),
+                    )
+                )
+            guarded_evidence = output_guard.guard(
+                item.content.data.root,
+                source_type=ContentSourceType.TOOL_OUTPUT,
+                source_id=item.evidence_id,
+                target="verification",
+            )
+            if guarded_evidence.disposition is OutputDisposition.BLOCKED:
+                issues.append(
+                    _safety_issue(
+                        "UNSAFE_EVIDENCE_CONTENT",
+                        "Evidence contains content blocked by the safety policy",
+                        task_id,
+                        item.step_id,
+                        (item.evidence_id,),
+                    )
+                )
             if item.source_type is not EvidenceType.DATABASE:
                 continue
-            reference = item.source_reference.reference.root
             query_id = reference.get("query_id") or reference.get("query_fingerprint")
             if not isinstance(query_id, str) or not query_id.strip():
                 issues.append(

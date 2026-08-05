@@ -15,6 +15,9 @@ def build_demo_caller() -> TrustedCallerContext:
         tenant_id=settings.demo_tenant_id,
         data_scope=("quality.v1", "supplier-quality-policy-v1"),
         roles=settings.demo_approval_roles,
+        authentication_source="configured_demo_adapter",
+        is_demo_identity=True,
+        purpose="supplier_quality_analysis.v1",
         policy_forces_read_only=settings.task_force_read_only,
         policy_requires_approval=settings.task_require_approval_by_default,
     )

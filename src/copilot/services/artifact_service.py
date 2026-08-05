@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Protocol
 
 from copilot.contracts import Artifact, JsonObject
+from copilot.policies.permissions import AuthorizationRequest, Permission, PermissionMatrix
 from copilot.services.task_intake import TrustedCallerContext
 from copilot.services.task_views import TaskArtifactView, TaskSummaryView
 from copilot.services.workflows.models import WorkflowAuditRecord
@@ -96,12 +97,14 @@ class ArtifactService:
         audit_sink: WorkflowAuditSink | None = None,
         ids: IdentifierFactory | None = None,
         clock: Callable[[], datetime] | None = None,
+        permission_matrix: PermissionMatrix | None = None,
     ) -> None:
         self._repository = repository
         self._tasks = tasks
         self._audit_sink = audit_sink
         self._ids = ids
         self._clock = clock
+        self._permission_matrix = permission_matrix or PermissionMatrix()
 
     def list_task_artifacts(
         self,
@@ -111,8 +114,18 @@ class ArtifactService:
         trace_id: str = "",
     ) -> tuple[TaskArtifactView, ...]:
         """Return authorized Artifact metadata in stable order without locations."""
-        task = self._tasks.get_task(task_id, caller, trace_id=trace_id)
+        self._authorize_read(task_id, caller, trace_id=trace_id)
+        try:
+            task = self._tasks.get_task(task_id, caller, trace_id=trace_id)
+        except RuntimeError:
+            self._audit_denied(task_id, caller, trace_id)
+            raise
         artifacts = self._repository.list_by_task(task_id)
+        published = getattr(self._tasks, "is_artifact_published", None)
+        if callable(published):
+            artifacts = tuple(
+                artifact for artifact in artifacts if published(task_id, artifact.artifact_id)
+            )
         self._audit("artifact_listed", task, caller, trace_id)
         return tuple(_artifact_view(artifact) for artifact in artifacts)
 
@@ -125,22 +138,36 @@ class ArtifactService:
         trace_id: str = "",
     ) -> ArtifactDownload:
         """Return a stream descriptor after task ownership and path containment checks."""
-        task = self._tasks.get_task(task_id, caller, trace_id=trace_id)
+        self._authorize_read(task_id, caller, trace_id=trace_id)
+        try:
+            task = self._tasks.get_task(task_id, caller, trace_id=trace_id)
+        except RuntimeError:
+            self._audit_denied(task_id, caller, trace_id, artifact_id=artifact_id)
+            raise
         try:
             artifact = self._repository.get_by_id(artifact_id)
         except KeyError as exc:
+            self._audit_denied(task_id, caller, trace_id, artifact_id=artifact_id)
             raise ArtifactNotFoundError(task_id) from exc
         if artifact.task_id != task_id:
+            self._audit_denied(task_id, caller, trace_id, artifact_id=artifact_id)
+            raise ArtifactNotFoundError(task_id)
+        published = getattr(self._tasks, "is_artifact_published", None)
+        if callable(published) and not published(task_id, artifact_id):
+            self._audit_denied(task_id, caller, trace_id, artifact_id=artifact_id)
             raise ArtifactNotFoundError(task_id)
         try:
             path = self._repository.path_for(artifact)
         except (OSError, ValueError) as exc:
+            self._audit_denied(task_id, caller, trace_id, artifact_id=artifact_id)
             raise ArtifactUnavailableError(task_id) from exc
         try:
             stat = path.stat()
         except OSError as exc:
+            self._audit_denied(task_id, caller, trace_id, artifact_id=artifact_id)
             raise ArtifactUnavailableError(task_id) from exc
         if not path.is_file() or stat.st_size != artifact.size_bytes:
+            self._audit_denied(task_id, caller, trace_id, artifact_id=artifact_id)
             raise ArtifactUnavailableError(task_id)
         digest = hashlib.sha256()
         try:
@@ -148,8 +175,10 @@ class ArtifactService:
                 for chunk in iter(lambda: stream.read(64 * 1024), b""):
                     digest.update(chunk)
         except OSError as exc:
+            self._audit_denied(task_id, caller, trace_id, artifact_id=artifact_id)
             raise ArtifactUnavailableError(task_id) from exc
         if f"sha256:{digest.hexdigest()}" != artifact.checksum:
+            self._audit_denied(task_id, caller, trace_id, artifact_id=artifact_id)
             raise ArtifactUnavailableError(task_id)
         self._audit("artifact_downloaded", task, caller, trace_id, artifact_id=artifact_id)
         return ArtifactDownload(
@@ -159,6 +188,58 @@ class ArtifactService:
             media_type=artifact.media_type,
             checksum=artifact.checksum,
             size_bytes=artifact.size_bytes,
+        )
+
+    def _authorize_read(
+        self,
+        task_id: str,
+        caller: TrustedCallerContext,
+        *,
+        trace_id: str,
+    ) -> None:
+        decision = self._permission_matrix.evaluate(
+            AuthorizationRequest(
+                action=Permission.READ_ARTIFACT,
+                roles=caller.roles,
+                resource_type="artifact",
+                task_id=task_id,
+                purpose=caller.purpose,
+                is_demo_identity=caller.is_demo_identity,
+            )
+        )
+        if not decision.allowed:
+            self._audit_denied(task_id, caller, trace_id)
+            raise ArtifactNotFoundError(task_id)
+
+    def _audit_denied(
+        self,
+        task_id: str,
+        caller: TrustedCallerContext,
+        trace_id: str,
+        *,
+        artifact_id: str | None = None,
+    ) -> None:
+        if self._audit_sink is None or self._ids is None or self._clock is None:
+            return
+        self._audit_sink.append(
+            WorkflowAuditRecord(
+                event_id=self._ids.new_id("AUD"),
+                event="artifact_read_denied",
+                task_id=task_id,
+                plan_id="supplier-quality-analysis",
+                plan_version=0,
+                timestamp=self._clock(),
+                artifact_id=artifact_id,
+                status="DENIED",
+                metadata=JsonObject(
+                    {
+                        "actor_id": caller.user_id,
+                        "tenant_id": caller.tenant_id,
+                        "trace_id": trace_id,
+                        "reason_code": "ARTIFACT_ACCESS_DENIED",
+                    }
+                ),
+            )
         )
 
     def _audit(

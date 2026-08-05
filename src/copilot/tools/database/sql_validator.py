@@ -48,11 +48,20 @@ class SQLValidator:
                 self._validate_table(element.name)
                 table_names.add(element.name)
             if isinstance(element, Column):
-                table_name = element.table.name
-                self._validate_table(table_name)
-                self._validate_column(table_name, element.name)
-                table_names.add(table_name)
-                column_names.add(f"{table_name}.{element.name}")
+                physical_columns = {
+                    (base.table.name, base.name)
+                    for base in element.base_columns
+                    if isinstance(base, Column) and isinstance(base.table, Table)
+                }
+                if not physical_columns:
+                    raise DatabaseQueryValidationError(
+                        "Column alias has no registered physical source"
+                    )
+                for table_name, column_name in physical_columns:
+                    self._validate_table(table_name)
+                    self._validate_column(table_name, column_name)
+                    table_names.add(table_name)
+                    column_names.add(f"{table_name}.{column_name}")
             elif isinstance(element, ColumnClause):
                 if element.name == "*":
                     raise DatabaseQueryValidationError("Wildcard column access is not allowed")

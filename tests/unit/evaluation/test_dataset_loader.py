@@ -13,7 +13,7 @@ def test_supplier_dataset_loads_with_stable_hash_and_unique_cases() -> None:
     first = load_dataset(DEFAULT_DATASET)
     second = load_dataset(DEFAULT_DATASET)
 
-    assert len(first.cases) == 15
+    assert len(first.cases) == 30
     assert first.dataset_hash == second.dataset_hash
     assert first.fixture_hash == second.fixture_hash
     assert len({case.case_id for case in first.cases}) == len(first.cases)

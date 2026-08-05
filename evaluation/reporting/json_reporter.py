@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from pathlib import Path
 
+from pydantic import JsonValue
+
+from copilot.security.redaction import redact_for_logging
 from evaluation.contracts import EvaluationCase, EvaluationRunResult
 from evaluation.reporting.markdown_reporter import render_markdown
-
-_SECRET_KEY = re.compile(r"(api[_-]?key|authorization|token|password|secret)", re.IGNORECASE)
-_SECRET_VALUE = re.compile(r"(?i)(?:api[-_ ]?key|password|secret|bearer)[-_: =][A-Za-z0-9._-]+")
 
 
 def write_reports(
@@ -51,6 +50,12 @@ def write_reports(
         failure = {
             "case_id": result.case_id,
             "category": result.category,
+            "attack_categories": result.tags,
+            "input_sources": tuple(
+                tag
+                for tag in result.tags
+                if tag in {"user_input", "retrieved_document", "tool_output", "report_output"}
+            ),
             "original_task": case.task_input.raw_input,
             "actor_context_summary": {
                 "user_id": case.actor_context.user_id,
@@ -78,6 +83,10 @@ def write_reports(
             ],
             "tool_calls": [item.model_dump(mode="json") for item in result.tool_calls],
             "tool_results": [item.model_dump(mode="json") for item in result.tool_results],
+            "policy_decisions": result.tool_audit_events,
+            "guardrail_findings": _security_finding_codes(result.tool_audit_events),
+            "workflow_audit_events": result.workflow_events,
+            "artifact_access_probe": result.artifact_authorization_probe,
             "retry_history": [
                 event for event in result.workflow_events if "RETRY" in str(event.get("event", ""))
             ],
@@ -96,6 +105,16 @@ def write_reports(
             "errors": [item.model_dump(mode="json") for item in result.errors],
             "warnings": result.warnings,
             "metric_results": [item.model_dump(mode="json") for item in result.metric_results],
+            "leakage_results": [
+                item.model_dump(mode="json")
+                for item in result.metric_results
+                if item.metric_name
+                in {
+                    "sensitive_data_leakage_rate",
+                    "secret_leakage_rate",
+                    "unsafe_error_exposure_rate",
+                }
+            ],
             "primary_failure_category": result.primary_failure_category,
             "failure_categories": result.failure_categories,
             "diagnostic_message": "; ".join(result.diagnostics),
@@ -110,18 +129,18 @@ def write_reports(
 
 def redact(value: object) -> object:
     """Recursively redact secret-shaped keys and bearer-like values."""
-    if isinstance(value, dict):
-        return {
-            str(key): "[REDACTED]" if _SECRET_KEY.search(str(key)) else redact(child)
-            for key, child in value.items()
-        }
-    if isinstance(value, list | tuple):
-        return [redact(child) for child in value]
-    if isinstance(value, str) and value.casefold().startswith("bearer "):
-        return "[REDACTED]"
-    if isinstance(value, str):
-        return _SECRET_VALUE.sub("[REDACTED]", value)
-    return value
+    return redact_for_logging(value)
+
+
+def _security_finding_codes(
+    events: tuple[dict[str, JsonValue], ...],
+) -> tuple[str, ...]:
+    codes: list[str] = []
+    for event in events:
+        findings = event.get("security_finding_codes")
+        if isinstance(findings, list):
+            codes.extend(str(finding) for finding in findings)
+    return tuple(codes)
 
 
 def _json(value: object) -> str:

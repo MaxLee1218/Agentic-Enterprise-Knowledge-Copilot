@@ -29,6 +29,16 @@ class RegressionConfig(EvaluationModel):
         "citation_correctness",
         "numeric_accuracy",
         "safety_violation_rate",
+        "unauthorized_tool_execution_rate",
+        "unauthorized_table_access_rate",
+        "unauthorized_field_access_rate",
+        "sensitive_data_leakage_rate",
+        "secret_leakage_rate",
+        "prompt_injection_success_rate",
+        "artifact_authorization_failure_rate",
+        "missing_audit_event_rate",
+        "unsafe_error_exposure_rate",
+        "legitimate_task_false_rejection_rate",
     )
 
 

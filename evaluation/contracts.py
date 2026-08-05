@@ -200,6 +200,7 @@ class ExpectedSafety(EvaluationModel):
     expected_policy_decision: str | None = None
     allowed_error_codes: tuple[str, ...] = ()
     forbidden_content: tuple[str, ...] = ()
+    required_audit_events: tuple[str, ...] = ()
 
 
 class ExpectedRecovery(EvaluationModel):
@@ -287,6 +288,8 @@ class CapturedExecution(EvaluationModel):
     errors: tuple[TaskError, ...] = ()
     warnings: tuple[str, ...] = ()
     workflow_events: tuple[dict[str, JsonValue], ...] = ()
+    tool_audit_events: tuple[dict[str, JsonValue], ...] = ()
+    artifact_authorization_probe: str | None = None
     llm_usage: tuple[LLMUsageRecord, ...] = ()
     retry_count: int = Field(default=0, ge=0)
     replan_count: int = Field(default=0, ge=0)
@@ -310,6 +313,7 @@ class MetricResult(EvaluationModel):
 class EvaluationCaseResult(EvaluationModel):
     case_id: str
     category: str
+    tags: tuple[str, ...] = ()
     status: EvaluationCaseStatus
     task_id: str | None = None
     trace_id: str | None = None
@@ -317,6 +321,7 @@ class EvaluationCaseResult(EvaluationModel):
     completed_at: datetime
     latency_ms: int = Field(ge=0)
     terminal_task_status: TaskStatus | None = None
+    task_request_text: str = ""
     task_contract: TaskContract | None = None
     plan_snapshot: TaskPlan | None = None
     tool_calls: tuple[ToolCall, ...] = ()
@@ -330,6 +335,8 @@ class EvaluationCaseResult(EvaluationModel):
     errors: tuple[TaskError, ...] = ()
     warnings: tuple[str, ...] = ()
     workflow_events: tuple[dict[str, JsonValue], ...] = ()
+    tool_audit_events: tuple[dict[str, JsonValue], ...] = ()
+    artifact_authorization_probe: str | None = None
     metric_results: tuple[MetricResult, ...] = ()
     primary_failure_category: FailureCategory | None = None
     failure_categories: tuple[FailureCategory, ...] = ()

@@ -22,6 +22,12 @@ from copilot.contracts import (
     ToolTimeout,
 )
 from copilot.persistence.identifiers import UuidIdentifierFactory
+from copilot.security import (
+    ContentSourceType,
+    OutputDisposition,
+    OutputGuard,
+    OutputGuardBlockedError,
+)
 from copilot.services.workflows.ports import ArtifactStore, EvidenceReader, IdentifierFactory
 from copilot.tools.base import ToolExecutionContext, ToolExecutionOutput
 from copilot.tools.reporting.composer import ReportComposer
@@ -30,6 +36,7 @@ from copilot.tools.reporting.exceptions import (
     ReportInputDeniedError,
     ReportInputError,
     ReportPersistenceError,
+    SensitiveOutputBlockedError,
 )
 from copilot.tools.reporting.renderer import RendererRegistry
 from copilot.tools.reporting.schemas import (
@@ -88,6 +95,7 @@ class ReportTool:
         composer: ReportComposer | None = None,
         validator: ReportValidator | None = None,
         renderers: RendererRegistry | None = None,
+        output_guard: OutputGuard | None = None,
     ) -> None:
         self._artifact_store = artifact_store
         self._clock = clock
@@ -98,6 +106,7 @@ class ReportTool:
         )
         self._validator = validator or ReportValidator()
         self._renderers = renderers or RendererRegistry()
+        self._output_guard = output_guard or OutputGuard()
         self._idempotent_artifacts: dict[str, str] = {}
         self._lock = RLock()
         self.call_count = 0
@@ -124,8 +133,20 @@ class ReportTool:
 
         evidence = self._composer.load_evidence(request, task_id=context.call.task_id)
         raw_report = self._build_report(arguments, evidence)
+        guarded_report = self._output_guard.guard(
+            cast(JsonValue, raw_report),
+            source_type=ContentSourceType.TOOL_OUTPUT,
+            source_id=context.call.tool_call_id,
+            target="report",
+        )
+        if (
+            guarded_report.disposition is OutputDisposition.BLOCKED
+            or guarded_report.content is None
+            or not isinstance(guarded_report.content, dict)
+        ):
+            raise SensitiveOutputBlockedError()
         try:
-            document = ReportDocument.model_validate(raw_report)
+            document = ReportDocument.model_validate(guarded_report.content)
         except ValidationError as exc:
             raise ReportInputError(
                 "Report model could not be built from structured inputs"
@@ -134,6 +155,14 @@ class ReportTool:
         renderer = self._renderers.get(request.format)
         rendered = renderer.render(document)
         self._validator.validate_rendered(document, request.format, rendered.content)
+        guarded_bytes = self._output_guard.guard_bytes(
+            rendered.content,
+            source_type=ContentSourceType.TOOL_OUTPUT,
+            source_id=context.call.tool_call_id,
+            media_type=rendered.media_type,
+        )
+        if guarded_bytes.disposition is OutputDisposition.BLOCKED:
+            raise SensitiveOutputBlockedError()
 
         artifact_id = self._ids.new_id("A")
         filename = self._filename(request, artifact_id, rendered.extension)
@@ -153,6 +182,8 @@ class ReportTool:
                 generator_version=REPORT_GENERATOR_VERSION,
                 evidence_ids=request.evidence_refs,
             )
+        except OutputGuardBlockedError as exc:
+            raise SensitiveOutputBlockedError() from exc
         except (OSError, ValueError) as exc:
             raise ReportPersistenceError() from exc
         try:

@@ -25,7 +25,7 @@ def test_dataset_uses_stable_evaluator_tool_and_status_names() -> None:
         "report_generator",
     }
 
-    assert dataset.dataset_version == "1.0.0"
+    assert dataset.dataset_version == "1.1.0"
     for case in dataset.cases:
         assert set(case.expected_tools.required_tools).issubset(registered)
         assert case.expected_outcome.allowed_terminal_statuses

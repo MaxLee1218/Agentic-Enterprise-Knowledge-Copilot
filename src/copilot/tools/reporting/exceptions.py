@@ -72,11 +72,23 @@ class ReportConsistencyError(ToolRuntimeError):
         )
 
 
+class SensitiveOutputBlockedError(ToolRuntimeError):
+    """Raised when report content cannot be safely redacted before Artifact creation."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            error_code="SENSITIVE_OUTPUT_BLOCKED",
+            error_type=ErrorType.PERMISSION,
+            message="Report output was blocked by the safety policy",
+        )
+
+
 __all__ = [
     "ReportConsistencyError",
     "ReportInputDeniedError",
     "ReportInputError",
     "ReportPersistenceError",
     "ReportRenderingError",
+    "SensitiveOutputBlockedError",
     "UnsupportedReportFormatError",
 ]

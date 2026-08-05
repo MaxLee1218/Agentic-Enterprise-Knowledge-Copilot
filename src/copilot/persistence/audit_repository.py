@@ -2,11 +2,13 @@
 
 import json
 import sqlite3
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from threading import RLock
 
 from copilot.contracts import JsonObject, ToolResultStatus
+from copilot.security.redaction import redact_for_logging
 from copilot.services.workflows.models import WorkflowAuditRecord
 from copilot.tools.base import ToolAuditRecord
 
@@ -89,6 +91,13 @@ class InMemoryWorkflowAuditRepository:
 
     def append(self, record: WorkflowAuditRecord) -> None:
         """Append one unique structured event or fail closed."""
+        safe_metadata = redact_for_logging(record.metadata.root)
+        record = replace(
+            record,
+            metadata=JsonObject(
+                safe_metadata if isinstance(safe_metadata, dict) else {"value": "[REDACTED]"}
+            ),
+        )
         with self._lock:
             if record.event_id in self._event_ids:
                 raise ValueError("workflow audit event already exists")
@@ -130,6 +139,10 @@ def _tool_json(record: ToolAuditRecord) -> str:
             "timestamp": record.timestamp.isoformat(),
             "attempt": record.attempt,
             "error_code": record.error_code,
+            "principal_id": record.principal_id,
+            "policy_decision": record.policy_decision,
+            "reason_code": record.reason_code,
+            "security_finding_codes": list(record.security_finding_codes),
         },
         sort_keys=True,
     )
@@ -148,6 +161,10 @@ def _tool_record(payload: str) -> ToolAuditRecord:
         timestamp=datetime.fromisoformat(raw["timestamp"]),
         attempt=raw["attempt"],
         error_code=raw["error_code"],
+        principal_id=raw.get("principal_id"),
+        policy_decision=raw.get("policy_decision"),
+        reason_code=raw.get("reason_code"),
+        security_finding_codes=tuple(raw.get("security_finding_codes", ())),
     )
 
 

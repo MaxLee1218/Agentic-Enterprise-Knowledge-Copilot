@@ -213,6 +213,10 @@ def test_unauthorized_role_cannot_resolve_an_approval(tmp_path: Path) -> None:
                 cross_tenant,
             )
         assert container.approval_repository.get(approval_id).status is ApprovalStatus.PENDING
+        denied = {
+            record.event for record in container.workflow_audit.list() if record.task_id == task_id
+        }
+        assert "APPROVAL_PERMISSION_DENIED" in denied
 
 
 def test_restart_recovers_persisted_approval_and_checkpoint(tmp_path: Path) -> None:

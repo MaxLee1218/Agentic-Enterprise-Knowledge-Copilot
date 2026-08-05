@@ -37,11 +37,16 @@ class ToolSelectionEvaluator:
         recall = tp / recall_denominator if recall_denominator else 1.0
         f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
         applicable = bool(required or expected.optional_tools or forbidden)
+        scalar_denominator = 1_000_000 if applicable else 0
         return (
             ratio_metric("tool_selection_accuracy", int(strict), int(applicable)),
-            ratio_metric("tool_selection_precision", round(precision * 1_000_000), 1_000_000),
-            ratio_metric("tool_selection_recall", round(recall * 1_000_000), 1_000_000),
-            ratio_metric("tool_selection_f1", round(f1 * 1_000_000), 1_000_000),
+            ratio_metric(
+                "tool_selection_precision",
+                round(precision * 1_000_000),
+                scalar_denominator,
+            ),
+            ratio_metric("tool_selection_recall", round(recall * 1_000_000), scalar_denominator),
+            ratio_metric("tool_selection_f1", round(f1 * 1_000_000), scalar_denominator),
             count_metric("unexpected_tool_call_count", len(unexpected), pass_when=not unexpected),
             count_metric("missing_required_tool_count", len(missing), pass_when=not missing),
         )

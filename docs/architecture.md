@@ -55,6 +55,7 @@ renderer implementation directly.
 | Governed capability runtime | `copilot.tools.base`, `registry`, `executor`, `runner`, `schema` | Implemented application-facing port, registration, authorization, execution, evidence, and audit sequence |
 | Capability adapters | `copilot.tools.knowledge`, `database`, `analytics`, `reporting`, offline mock module | HTTP knowledge, SQLAlchemy SQLite database, deterministic analytics, and deterministic PDF/JSON reporting adapters are implemented |
 | Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | DeepSeek/Mock structured LLM adapters, Evidence Ledger, deterministic verification, SQLite workflow/checkpoint/approval/audit storage, execution leases, and local atomic Artifact storage support this stage |
+| Cross-cutting security | `copilot.security`, `copilot.policies` | Source/trust findings, sensitive-data registry, recursive redaction, output guard, centralized permission matrix, and table/field access policy |
 | Interfaces | `copilot.api`, `copilot.cli` | Natural-language submission, task/step/Evidence/Artifact query, controlled Artifact download, cooperative cancellation, health, and approval detail/resolution API/CLI are implemented |
 | Protocol boundary | `copilot.mcp` | Future Phase 5 boundary; scaffold only |
 | Bootstrap | `copilot.bootstrap` | Composition root uses offline adapters by default and registers the real read-only Database Tool in production or when explicitly enabled |
@@ -104,6 +105,10 @@ Additional mandatory boundaries:
 - Agent execution reaches capabilities only through the tool registry and executor.
 - Policy and any required approval are checked before capability execution.
 - Material outputs pass through evidence, audit, observability, and verification boundaries.
+- Trusted caller/task context travels separately from user-controlled data. Plan validation and
+  `ToolExecutor` independently authorize every capability attempt.
+- Evidence, report models, rendered content, and Artifact bytes pass through the shared output
+  policy before persistence or publication.
 - SDK-specific MCP types stop at `copilot.mcp.protocol`; internal code uses
   `copilot.contracts.mcp`.
 - Imported MCP capabilities, when Phase 5 is authorized, use stable server namespaces and the
@@ -121,20 +126,26 @@ User or approved protocol client
   -> NaturalLanguageTaskSubmission (transport only)
   -> NaturalLanguageTaskService / Task Intake
   -> immutable TaskRequest + trusted execution context
+  -> untrusted-input classification and safe security finding audit
   -> initial CREATED state persisted + TASK_SUBMITTED audit
   -> LangGraph validate_request
   -> Task understanding and classification
   -> TaskContract
   -> Planner and plan validator
+  -> centralized role/tool permission matrix
   -> TaskPlan
   -> Policy check and approval gate
   -> WAITING_APPROVAL + durable checkpoint, when required
   -> ApprovalService authorize/resolve/resume
   -> Tool registry and executor
+  -> current-context reauthorization + output guard
   -> Concrete capability adapter
   -> Approved external system
   -> Tool result and evidence registration
+  -> Evidence source/trust/sanitization metadata
   -> Report composition
+  -> structured and rendered output guard
+  -> atomic governed Artifact persistence
   -> Verification
   -> Final task result and artifact references
 ```
@@ -166,6 +177,12 @@ and infrastructure supplies its implementation.
 
 No route, agent node, protocol handler, or tool may create an alternate execution path around
 policy, approval, registry, executor, evidence, audit, or verification.
+
+Security components are composed once in `bootstrap`: a shared sensitive-data registry, output
+guard, prompt-injection detector, permission matrix, and data-access policy are injected into the
+services, graph runtime, executor, Evidence Ledger, report adapter, database adapter, Artifact
+repository, and read service. `copilot.security` contains deterministic cross-cutting mechanisms;
+it does not own business authorization or create a second workflow.
 
 ### Natural-language boundary objects
 

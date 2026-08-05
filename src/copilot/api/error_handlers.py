@@ -5,6 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from copilot.api.schemas.tasks import TaskErrorResponse
+from copilot.security.redaction import redact_text
 from copilot.services.approval_service import ApprovalServiceError
 from copilot.services.artifact_service import ArtifactServiceError
 from copilot.services.task_intake import TaskIntakeValidationError
@@ -56,7 +57,7 @@ async def approval_service_error_handler(
     )
     payload = TaskErrorResponse(
         error_code=approval_error.code,
-        message=str(approval_error),
+        message=redact_text(str(approval_error)),
         trace_id=_trace_id(request),
     )
     return JSONResponse(
@@ -77,7 +78,7 @@ async def task_intake_validation_handler(
     )
     payload = TaskErrorResponse(
         error_code=intake_error.code,
-        message=str(intake_error),
+        message=redact_text(str(intake_error)),
         trace_id=_trace_id(request),
     )
     return JSONResponse(status_code=422, content=payload.model_dump(mode="json"))
@@ -107,7 +108,7 @@ async def task_service_error_handler(request: Request, error: Exception) -> JSON
     )
     payload = TaskErrorResponse(
         error_code=task_error.code,
-        message=str(task_error),
+        message=redact_text(str(task_error)),
         task_id=task_error.task_id,
         trace_id=_trace_id(request),
     )
@@ -131,7 +132,7 @@ async def artifact_service_error_handler(request: Request, error: Exception) -> 
     )
     payload = TaskErrorResponse(
         error_code=artifact_error.code,
-        message=str(artifact_error),
+        message=redact_text(str(artifact_error)),
         task_id=artifact_error.task_id,
         trace_id=_trace_id(request),
     )

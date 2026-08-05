@@ -71,9 +71,14 @@ class ToolValidationError(ToolRuntimeError):
 class ToolAuthorizationError(ToolRuntimeError):
     """Raised by policy implementations when a call is not authorized."""
 
-    def __init__(self, message: str = "Tool invocation is not authorized") -> None:
+    def __init__(
+        self,
+        message: str = "Tool invocation is not authorized",
+        *,
+        error_code: str = "TOOL_ACCESS_DENIED",
+    ) -> None:
         super().__init__(
-            error_code="TOOL_ACCESS_DENIED",
+            error_code=error_code,
             error_type=ErrorType.PERMISSION,
             message=message,
         )

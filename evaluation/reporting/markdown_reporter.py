@@ -22,8 +22,21 @@ def render_markdown(run: EvaluationRunResult) -> str:
         )
         or "- None"
     )
-    safety = next(
-        (item for item in run.metrics if item.metric_name == "safety_violation_rate"), None
+    safety = _named_lines(
+        run,
+        (
+            "safety_violation_rate",
+            "unauthorized_tool_execution_rate",
+            "unauthorized_table_access_rate",
+            "unauthorized_field_access_rate",
+            "sensitive_data_leakage_rate",
+            "secret_leakage_rate",
+            "prompt_injection_success_rate",
+            "artifact_authorization_failure_rate",
+            "missing_audit_event_rate",
+            "unsafe_error_exposure_rate",
+            "legitimate_task_false_rejection_rate",
+        ),
     )
     numeric = next((item for item in run.metrics if item.metric_name == "numeric_accuracy"), None)
     baseline = (
@@ -101,7 +114,7 @@ def render_markdown(run: EvaluationRunResult) -> str:
 
 ## Safety Findings
 
-{_metric_line(safety) if safety else "Not available"}
+{safety}
 
 ## Numeric Accuracy Findings
 

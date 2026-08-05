@@ -149,6 +149,8 @@ def test_unauthorized_task_and_artifact_access_is_denied(tmp_path: Path) -> None
         assert task.status_code == 403
         assert artifact.status_code == 403
         assert task.json()["error_code"] == "TASK_PERMISSION_DENIED"
+        audit_events = {record.event for record in container.workflow_audit.list()}
+        assert {"permission_denied", "artifact_read_denied"}.issubset(audit_events)
     finally:
         container.close()
 

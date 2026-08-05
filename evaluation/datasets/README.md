@@ -23,6 +23,11 @@ Expected fields describe stable behavior: permitted status, semantic plan/tool c
 Evidence types and lineage, citation requirements, Decimal numeric assertions, safety boundaries,
 and bounded recovery. They do not serialize an entire TaskState or require exact step prose/IDs.
 
+Stage 15 security cases use explicit tags such as `prompt_injection`, `secret`,
+`sensitive_data`, `unsafe_error`, and `artifact_authorization`. `required_audit_events` lists safe
+event/finding markers that must be captured. Malicious payloads use fixed synthetic values only;
+never add a real credential, personal record, connection string, or production path.
+
 Oracle values are evaluator-only. Never copy `expected_*`, fixture answers, forbidden lists, or
 numeric assertions into `TaskRequest`, LLM messages, ToolCall arguments, or Graph state. The loader
 test for `agent_task_payload()` enforces the public subset.

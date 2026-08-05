@@ -30,6 +30,13 @@ from copilot.contracts import (
 )
 from copilot.contracts.errors import DomainError
 from copilot.contracts.validators import utc_now
+from copilot.security import (
+    ContentSourceType,
+    OutputDisposition,
+    OutputGuard,
+    PromptInjectionDetector,
+    TrustLevel,
+)
 from copilot.tools.base import EvidenceDraft
 
 
@@ -59,9 +66,13 @@ class InMemoryEvidenceLedger:
         id_factory: Callable[[], str] | None = None,
         clock: Callable[[], datetime] | None = None,
         database_path: Path | None = None,
+        output_guard: OutputGuard | None = None,
+        injection_detector: PromptInjectionDetector | None = None,
     ) -> None:
         self._id_factory = id_factory or (lambda: f"E-{uuid4().hex}")
         self._clock = clock or utc_now
+        self._output_guard = output_guard or OutputGuard()
+        self._injection_detector = injection_detector or PromptInjectionDetector()
         self._items: dict[str, EvidenceItem] = {}
         self._fingerprints: dict[tuple[str, str], str] = {}
         self._lock = RLock()
@@ -96,6 +107,7 @@ class InMemoryEvidenceLedger:
             pending: list[EvidenceItem] = []
             generated_ids: set[str] = set()
             for draft in drafts:
+                draft = self._secure_draft(call, draft)
                 evidence_id = self._id_factory()
                 if evidence_id in generated_ids or evidence_id in self._items:
                     raise self._validation_error(
@@ -123,6 +135,108 @@ class InMemoryEvidenceLedger:
                 self._rollback_created(results)
                 raise
             return tuple(_copy_item(result.evidence) for result in results)
+
+    def _secure_draft(self, call: ToolCall, draft: EvidenceDraft) -> EvidenceDraft:
+        """Minimize secrets and mark trust/injection metadata before Evidence persistence."""
+        data = deepcopy(draft.content.data.root)
+        reference = deepcopy(draft.source_reference.reference.root)
+        findings: list[JsonValue] = []
+        trust_level = TrustLevel.UNTRUSTED
+        quarantined = False
+        if draft.source_type is EvidenceType.DOCUMENT:
+            excerpt = data.get("excerpt")
+            if isinstance(excerpt, str):
+                scan = self._injection_detector.scan(
+                    excerpt,
+                    source_type=ContentSourceType.RETRIEVED_DOCUMENT,
+                    source_id=f"{call.tool_call_id}:{reference.get('chunk_id', 'document')}",
+                )
+                data["excerpt"] = scan.content
+                findings = [
+                    cast(
+                        JsonValue,
+                        {
+                            "finding_id": finding.finding_id,
+                            "category": finding.category,
+                            "severity": finding.severity.value,
+                            "matched_rule": finding.matched_rule,
+                            "content_hash": finding.content_hash,
+                        },
+                    )
+                    for finding in scan.findings
+                ]
+                trust_level = scan.trust_level
+                quarantined = scan.quarantined
+        guarded = self._output_guard.guard(
+            cast(JsonValue, data),
+            source_type=(
+                ContentSourceType.RETRIEVED_DOCUMENT
+                if draft.source_type is EvidenceType.DOCUMENT
+                else ContentSourceType.DATABASE_RESULT
+                if draft.source_type is EvidenceType.DATABASE
+                else ContentSourceType.TOOL_OUTPUT
+            ),
+            source_id=call.tool_call_id,
+            target="evidence",
+        )
+        guarded_reference = self._output_guard.guard(
+            cast(JsonValue, reference),
+            source_type=ContentSourceType.TOOL_OUTPUT,
+            source_id=call.tool_call_id,
+            target="evidence",
+        )
+        if (
+            guarded.disposition is OutputDisposition.BLOCKED
+            or guarded.content is None
+            or guarded_reference.disposition is OutputDisposition.BLOCKED
+            or guarded_reference.content is None
+        ):
+            raise self._validation_error(
+                call.task_id,
+                "SECRET_DETECTED",
+                "Evidence content was blocked by the security policy",
+            )
+        safe_data = cast(dict[str, JsonValue], guarded.content)
+        reference = cast(dict[str, JsonValue], guarded_reference.content)
+        content_changed = safe_data != draft.content.data.root
+        checksum = (
+            hashlib.sha256(
+                json.dumps(
+                    safe_data,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
+            if content_changed
+            else draft.content.checksum
+        )
+        reference.update(
+            {
+                "content_source_type": (
+                    ContentSourceType.RETRIEVED_DOCUMENT.value
+                    if draft.source_type is EvidenceType.DOCUMENT
+                    else ContentSourceType.DATABASE_RESULT.value
+                    if draft.source_type is EvidenceType.DATABASE
+                    else ContentSourceType.TOOL_OUTPUT.value
+                ),
+                "trust_level": trust_level.value,
+                "produced_by": call.tool_name,
+                "content_hash": checksum,
+                "injection_findings": findings,
+                "quarantined": quarantined,
+                "redacted": bool(guarded.redactions or content_changed),
+            }
+        )
+        return EvidenceDraft(
+            source_type=draft.source_type,
+            source_reference=draft.source_reference.model_copy(
+                update={"reference": JsonObject(reference)}
+            ),
+            content=draft.content.model_copy(
+                update={"data": JsonObject(safe_data), "checksum": checksum}
+            ),
+        )
 
     def add(self, evidence: EvidenceItem) -> EvidenceAddResult:
         """Append one item or return the existing canonical logical duplicate."""

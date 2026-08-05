@@ -1,5 +1,6 @@
 """Artifact path, UTF-8 content, metadata, and integrity tests."""
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -46,3 +47,39 @@ def test_artifact_repository_rejects_path_traversal(tmp_path: Path, filename: st
             generator_version="v1",
             evidence_ids=("E-001",),
         )
+
+
+def test_artifact_repository_persists_only_the_redacted_json(tmp_path: Path) -> None:
+    repository = LocalArtifactRepository(tmp_path, clock=_clock)
+    artifact = repository.write(
+        artifact_id="A-REDACTED",
+        task_id="T-001",
+        artifact_type=ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
+        filename="redacted.json",
+        media_type="application/json",
+        content=json.dumps({"bank_account": "1234567890123456", "salary": 250000}).encode(),
+        generator_version="v1",
+        evidence_ids=("E-001",),
+    )
+
+    persisted = json.loads(repository.path_for(artifact).read_text(encoding="utf-8"))
+    assert persisted == {"bank_account": "***3456"}
+
+
+def test_artifact_repository_blocks_secret_before_creating_a_file(tmp_path: Path) -> None:
+    repository = LocalArtifactRepository(tmp_path, clock=_clock)
+
+    with pytest.raises(ValueError, match="blocked"):
+        repository.write(
+            artifact_id="A-BLOCKED",
+            task_id="T-001",
+            artifact_type=ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
+            filename="blocked.json",
+            media_type="application/json",
+            content=json.dumps({"access_token": "fixed-stage15-test-token"}).encode(),
+            generator_version="v1",
+            evidence_ids=("E-001",),
+        )
+
+    assert not (tmp_path / "blocked.json").exists()
+    assert repository.list_by_task("T-001") == ()

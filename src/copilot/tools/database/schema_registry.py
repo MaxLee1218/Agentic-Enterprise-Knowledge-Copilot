@@ -8,6 +8,7 @@ from typing import cast
 
 from sqlalchemy import Table
 
+from copilot.policies.data_access import access_profile_for_query_template
 from copilot.tools.database.models import (
     CorrectiveAction,
     IncomingInspection,
@@ -106,6 +107,14 @@ class SchemaRegistry:
     def list_templates(self) -> tuple[str, ...]:
         """List approved query templates in deterministic order."""
         return tuple(sorted(self._query_templates))
+
+    def access_profile_for_template(
+        self, template_id: str
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """Return the complete physical table/field footprint of a frozen query template."""
+        if template_id not in self._query_templates:
+            return (), ()
+        return access_profile_for_query_template(template_id)
 
 
 __all__ = ["DEFAULT_SENSITIVE_COLUMNS", "SCHEMA_VERSION", "SchemaRegistry"]

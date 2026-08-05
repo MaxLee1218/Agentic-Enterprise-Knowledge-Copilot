@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from datetime import datetime
+from typing import TYPE_CHECKING, cast
+
+from pydantic import JsonValue
 
 from copilot.contracts import (
     ErrorType,
@@ -14,8 +18,12 @@ from copilot.contracts import (
     ToolResult,
     ToolResultStatus,
 )
+from copilot.contracts.errors import DomainError
 from copilot.contracts.validators import utc_now
+from copilot.security import ContentSourceType, OutputDisposition, OutputGuard
+from copilot.security.prompt_injection import PromptInjectionDetector
 from copilot.tools.base import (
+    ContextualToolAuthorizer,
     EvidenceRecorder,
     ToolAuditRecord,
     ToolAuditSink,
@@ -34,6 +42,9 @@ from copilot.tools.registry import ToolRegistry
 from copilot.tools.runner import ThreadPoolToolRunner
 from copilot.tools.schema import validate_payload
 
+if TYPE_CHECKING:
+    from copilot.services.task_intake import TrustedTaskContext
+
 
 class ToolExecutor:
     """Execute registered tools without knowing any concrete business capability."""
@@ -47,6 +58,8 @@ class ToolExecutor:
         audit_sink: ToolAuditSink,
         runner: ToolRunner | None = None,
         clock: Callable[[], datetime] = utc_now,
+        output_guard: OutputGuard | None = None,
+        injection_detector: PromptInjectionDetector | None = None,
     ) -> None:
         self._registry = registry
         self._authorizer = authorizer
@@ -59,17 +72,49 @@ class ToolExecutor:
             self._owned_runner = None
             self._runner = runner
         self._clock = clock
+        self._output_guard = output_guard or OutputGuard()
+        self._injection_detector = injection_detector or PromptInjectionDetector()
 
-    def execute(self, call: ToolCall, *, attempt: int = 1) -> ToolResult:
+    def execute(
+        self,
+        call: ToolCall,
+        *,
+        attempt: int = 1,
+        security_context: TrustedTaskContext | None = None,
+    ) -> ToolResult:
         """Run one governed attempt through validation, policy, evidence, and audit."""
         if not 1 <= attempt <= 3:
             raise ValueError("attempt must be between 1 and 3")
-        tool = self._registry.get(call.tool_name)
         started_at = self._clock()
+        try:
+            tool = self._registry.get(call.tool_name)
+        except ToolRuntimeError:
+            self._append_audit(
+                ToolAuditRecord(
+                    tool_call_id=call.tool_call_id,
+                    task_id=call.task_id,
+                    step_id=call.step_id,
+                    tool_name=call.tool_name,
+                    tool_version=call.tool_version,
+                    status=ToolResultStatus.PERMISSION_DENIED,
+                    latency_ms=0,
+                    timestamp=started_at,
+                    attempt=attempt,
+                    error_code="TOOL_NOT_ALLOWED",
+                    principal_id=call.user_id,
+                    policy_decision="DENY",
+                    reason_code="TOOL_NOT_ALLOWED",
+                )
+            )
+            raise
         self._validate_call(call, tool.definition, started_at, attempt)
 
         try:
-            self._authorizer.authorize(call, tool.definition)
+            if security_context is not None and hasattr(self._authorizer, "authorize_with_context"):
+                contextual = cast(ContextualToolAuthorizer, self._authorizer)
+                contextual.authorize_with_context(call, tool.definition, security_context)
+            else:
+                self._authorizer.authorize(call, tool.definition)
         except ToolAuthorizationError as exc:
             return self._failure_result(
                 call=call,
@@ -103,7 +148,34 @@ class ToolExecutor:
             payload = self._runner.run(
                 tool,
                 call.input,
-                ToolExecutionContext(call=call, metadata=JsonObject({"attempt": attempt})),
+                ToolExecutionContext(
+                    call=call,
+                    metadata=JsonObject(
+                        {
+                            "attempt": attempt,
+                            "trace_id": (
+                                security_context.trace_id
+                                if security_context is not None
+                                else call.tool_call_id
+                            ),
+                            "roles": (
+                                list(security_context.roles)
+                                if security_context is not None
+                                else ["quality_analyst"]
+                            ),
+                            "is_demo_identity": (
+                                security_context.is_demo_identity
+                                if security_context is not None
+                                else True
+                            ),
+                            "purpose": (
+                                security_context.purpose
+                                if security_context is not None
+                                else "supplier_quality_analysis.v1"
+                            ),
+                        }
+                    ),
+                ),
                 timeout_seconds,
             )
         except ToolTimeoutError as exc:
@@ -123,8 +195,28 @@ class ToolExecutor:
                 attempt=attempt,
             )
 
+        safe_output, finding_codes = self._guard_tool_output(
+            payload.output,
+            tool_name=call.tool_name,
+            source_id=call.tool_call_id,
+        )
+        if safe_output is None:
+            return self._failure_result(
+                call=call,
+                started_at=started_at,
+                status=ToolResultStatus.PERMISSION_DENIED,
+                error=self._new_error(
+                    call,
+                    error_code="SENSITIVE_OUTPUT_BLOCKED",
+                    error_type=ErrorType.PERMISSION,
+                    message="Tool output was blocked by the output safety policy",
+                ),
+                attempt=attempt,
+                security_finding_codes=finding_codes,
+            )
+
         try:
-            validate_payload(payload.output, tool.definition.output_schema.root, "output")
+            validate_payload(safe_output, tool.definition.output_schema.root, "output")
         except ToolValidationError:
             return self._failure_result(
                 call=call,
@@ -141,6 +233,21 @@ class ToolExecutor:
 
         try:
             evidence = self._evidence_recorder.record(call, payload.evidence)
+        except DomainError as exc:
+            security_code = exc.error.error_code
+            security_failure = security_code in {"SECRET_DETECTED", "SENSITIVE_OUTPUT_BLOCKED"}
+            return self._failure_result(
+                call=call,
+                started_at=started_at,
+                status=(
+                    ToolResultStatus.PERMISSION_DENIED
+                    if security_failure
+                    else ToolResultStatus.TECHNICAL_FAILURE
+                ),
+                error=self._bind_error(exc.error, call),
+                attempt=attempt,
+                security_finding_codes=((security_code,) if security_failure else ()),
+            )
         except Exception:
             return self._failure_result(
                 call=call,
@@ -163,14 +270,14 @@ class ToolExecutor:
             tool_name=call.tool_name,
             tool_version=call.tool_version,
             status=ToolResultStatus.SUCCESS,
-            output=payload.output,
+            output=safe_output,
             error=None,
             started_at=started_at,
             completed_at=completed_at,
             attempt=attempt,
             evidence_ids=tuple(item.evidence_id for item in evidence),
         )
-        self._audit(result)
+        self._audit(result, principal_id=call.user_id, security_finding_codes=finding_codes)
         return result
 
     def close(self) -> None:
@@ -212,6 +319,9 @@ class ToolExecutor:
                     timestamp=completed_at,
                     attempt=attempt,
                     error_code=exc.error.error_code,
+                    principal_id=call.user_id,
+                    policy_decision="DENY",
+                    reason_code=exc.error.error_code,
                 )
             )
             raise
@@ -239,6 +349,7 @@ class ToolExecutor:
         status: ToolResultStatus,
         error: TaskError,
         attempt: int,
+        security_finding_codes: tuple[str, ...] = (),
     ) -> ToolResult:
         completed_at = self._clock()
         result = ToolResult(
@@ -254,10 +365,20 @@ class ToolExecutor:
             completed_at=completed_at,
             attempt=attempt,
         )
-        self._audit(result)
+        self._audit(
+            result,
+            principal_id=call.user_id,
+            security_finding_codes=security_finding_codes,
+        )
         return result
 
-    def _audit(self, result: ToolResult) -> None:
+    def _audit(
+        self,
+        result: ToolResult,
+        *,
+        principal_id: str,
+        security_finding_codes: tuple[str, ...] = (),
+    ) -> None:
         self._append_audit(
             ToolAuditRecord(
                 tool_call_id=result.tool_call_id,
@@ -270,6 +391,10 @@ class ToolExecutor:
                 timestamp=result.completed_at,
                 attempt=result.attempt,
                 error_code=result.error.error_code if result.error is not None else None,
+                principal_id=principal_id,
+                policy_decision=("ALLOW" if result.status is ToolResultStatus.SUCCESS else "DENY"),
+                reason_code=(result.error.error_code if result.error is not None else "ALLOWED"),
+                security_finding_codes=security_finding_codes,
             )
         )
 
@@ -278,6 +403,57 @@ class ToolExecutor:
             self._audit_sink.append(record)
         except Exception as exc:
             raise ToolAuditError() from exc
+
+    def _guard_tool_output(
+        self,
+        output: JsonObject,
+        *,
+        tool_name: str,
+        source_id: str,
+    ) -> tuple[JsonObject | None, tuple[str, ...]]:
+        values = dict(output.root)
+        finding_codes: list[str] = []
+        if tool_name == "knowledge_search":
+            raw_matches = values.get("matches")
+            if isinstance(raw_matches, list):
+                matches: list[JsonValue] = []
+                for index, raw in enumerate(raw_matches):
+                    if not isinstance(raw, dict):
+                        matches.append(raw)
+                        continue
+                    match = dict(raw)
+                    excerpt = match.get("excerpt")
+                    if isinstance(excerpt, str):
+                        scan = self._injection_detector.scan(
+                            excerpt,
+                            source_type=ContentSourceType.RETRIEVED_DOCUMENT,
+                            source_id=f"{source_id}:match:{index}",
+                        )
+                        match["excerpt"] = scan.content
+                        match["checksum"] = hashlib.sha256(scan.content.encode("utf-8")).hexdigest()
+                        finding_codes.extend(finding.category for finding in scan.findings)
+                    matches.append(match)
+                values["matches"] = matches
+        scan_values = dict(values)
+        if tool_name == "report_generator":
+            scan_values.pop("location", None)
+        guard = self._output_guard.guard(
+            cast(JsonValue, scan_values),
+            source_type=ContentSourceType.TOOL_OUTPUT,
+            source_id=source_id,
+            target="tool_output",
+        )
+        finding_codes.extend(finding.category for finding in guard.findings)
+        if guard.disposition is OutputDisposition.BLOCKED or guard.content is None:
+            return None, tuple(dict.fromkeys(finding_codes))
+        if not isinstance(guard.content, dict):
+            return None, tuple(dict.fromkeys((*finding_codes, "UNSAFE_TOOL_OUTPUT")))
+        safe_values = dict(guard.content)
+        if tool_name == "report_generator" and "location" in values:
+            safe_values["location"] = values["location"]
+        if guard.redactions:
+            finding_codes.append("OUTPUT_REDACTED")
+        return JsonObject(safe_values), tuple(dict.fromkeys(finding_codes))
 
     @staticmethod
     def _bind_error(error: TaskError, call: ToolCall) -> TaskError:

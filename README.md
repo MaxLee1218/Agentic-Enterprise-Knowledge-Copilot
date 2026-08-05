@@ -18,6 +18,11 @@ Stage 13 adds stable `/v1` task-management APIs and matching local CLIs for task
 status, steps, Evidence, Artifact metadata/download, and cooperative cancellation. These adapters
 reuse the same application services and do not create a second Graph, Registry, or execution path.
 
+Stage 15 hardens the existing path with an explicit trusted security context, centralized demo
+permission and data-access policies, execution-time reauthorization, prompt-injection isolation,
+sensitive-data classification, recursive log/audit redaction, shared output guarding, and
+Artifact publication/read checks. It does not broaden the frozen Supplier Quality v1.1 scope.
+
 The typed Supplier Quality Analysis contracts and lifecycle are documented in
 [Domain Contracts](docs/domain-contracts.md).
 
@@ -254,9 +259,34 @@ python -m build
 All current tests run offline. Database integration tests use isolated disposable SQLite files;
 no live enterprise database, LLM, or network service is required.
 
+## Security
+
+This repository is a demo/portfolio implementation of governed controls, not a production identity
+or security platform. The current database path remains read-only. Business writes, automatic
+CAPA execution, email, procurement actions, arbitrary SQL/Python, new live connectors, and MCP are
+not supported.
+
+API, CLI, services, graph nodes, policies, and the executor carry identity/tenant/role facts in a
+trusted context separate from task text. The centralized role matrix is deny-by-default, and every
+tool is reauthorized immediately before execution. Database access uses frozen query templates,
+AST table/field validation, row limits, tenant scope, and query fingerprints. Reports and
+Artifacts pass through the same sensitive-data and output guard before persistence; downloads
+also require caller/task/Artifact binding and integrity checks. Logs and audit metadata are
+recursively redacted.
+
+Prompt-injection risk is reduced through source/trust separation, bounded prompts, typed model
+output, the Registry allowlist, plan validation, policy/approval checks, executor reauthorization,
+read-only database enforcement, Evidence verification, output guarding, and audit. It is not
+claimed to be completely eliminated.
+
+The checked-in demo identity is not production authentication. Deployment still requires real
+IAM/SSO, permission revocation, a Secret Manager, database-native least privilege, centralized
+tamper-evident audit/observability, encrypted governed object storage, retention controls, and
+incident response. See [Security Model](docs/security-model.md).
+
 ## Agent Evaluation
 
-Stage 14 provides a reproducible offline evaluation system that executes 15 Supplier Quality cases
+Stages 14 and 15 provide a reproducible offline evaluation system that executes 30 Supplier Quality cases
 through the same Task Service, LangGraph, policy, Registry/Executor, Evidence, approval, reporting,
 and verification path used by the API and CLI:
 
@@ -272,23 +302,27 @@ Reports are written to `evaluation/reports/latest.json`, `latest.md`, and an imm
 directory. Dataset authoring, metric formulas, exit codes, baseline updates, and reproducibility
 rules are documented in [Offline Agent Evaluation](docs/evaluation.md).
 
-The checked-in fixed Mock baseline was generated on 2026-08-03 at commit
-`5b4d403a9b1138a39cdd470cdd92908ecc06023b`, using dataset `1.0.0` with hash
-`sha256:9c31d359cc2b8e3d178dbe9d4bde11b96df056dd1ca4adb432b85d75a798dc92`, mode
+The checked-in fixed Mock baseline was generated on 2026-08-05 at commit
+`c1a1b5ecbed395bc53ed2f8318687bef0d728646`, using dataset `1.1.0` with hash
+`sha256:13ff939d7af5f665d99f3832409dd4cb0fe444e0de1cc9471b53ee52567fc3c7`, mode
 `mock`, and seed `42`.
 
 | Baseline metric | Result |
 |---|---:|
-| Cases satisfying their oracle | 100.00% (15/15) |
-| Initial / final plan validity | 100.00% (10/10) / 100.00% (10/10) |
+| Cases satisfying their oracle | 100.00% (30/30) |
+| Initial / final plan validity | 100.00% (24/24) / 100.00% (24/24) |
 | Tool selection accuracy | 100.00% (15/15) |
-| Tool execution success | 97.14% (34/35; one expected transient failure) |
-| Evidence coverage / citation correctness | 100.00% (28/28) / 100.00% (32/32) |
+| Tool execution success | 92.86% (65/70; expected transient and security failures remain attempts) |
+| Evidence coverage / citation correctness | 100.00% (28/28) / 100.00% (56/56) |
 | Numeric accuracy | 100.00% (4/4) |
-| Safety violation rate | 0.00% (0/6) |
+| Safety violation / attack block / authorization block | 0.00% (0/21) / 100.00% (10/10) / 100.00% (6/6) |
+| Unauthorized tool / table / field access | 0.00% (0/22) / 0.00% (0/2) / 0.00% (0/3) |
+| Sensitive / Secret / unsafe-error leakage | 0.00% (0/1) / 0.00% (0/2) / 0.00% (0/2) |
+| Prompt-injection success / Artifact authorization failure | 0.00% (0/3) / 0.00% (0/1) |
+| Missing required security audit / legitimate false rejection | 0.00% (0/17) / 0.00% (0/1) |
 | Replan recovery | 100.00% (1/1) |
-| Average steps / measured wall latency | 2.73 / 38.73 ms |
-| Fixed Mock token usage / estimated cost | 5,400 / USD 0.00 |
+| Average steps / measured wall latency | 3.27 / 39.97 ms |
+| Fixed Mock token usage / estimated cost | 11,400 / USD 0.00 |
 
 Known failures: none. Controlled `FAILED`, `CANCELLED`, and `WAITING_APPROVAL` outcomes count as
 successful only when required by the case oracle. This Mock baseline validates deterministic

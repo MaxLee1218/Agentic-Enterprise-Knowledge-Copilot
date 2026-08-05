@@ -24,6 +24,7 @@ from copilot.llm.deepseek import DeepSeekProvider
 from copilot.llm.manifest import PlannerToolManifestBuilder
 from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.llm.planning import LLMPlanningService
+from copilot.observability.logging import install_logging_redaction
 from copilot.persistence.approval_repository import ApprovalRepository
 from copilot.persistence.artifact_repository import LocalArtifactRepository
 from copilot.persistence.audit_repository import (
@@ -33,7 +34,10 @@ from copilot.persistence.audit_repository import (
 from copilot.persistence.identifiers import UuidIdentifierFactory
 from copilot.persistence.task_repository import InMemoryWorkflowRepository
 from copilot.policies.approval import SupplierQualityApprovalPolicy
+from copilot.policies.data_access import DataAccessPolicy
 from copilot.policies.offline import OfflineSupplierQualityAuthorizer
+from copilot.policies.permissions import PermissionMatrix
+from copilot.security import OutputGuard, PromptInjectionDetector, SensitiveDataRegistry
 from copilot.services.approval_service import ApprovalGateService, ApprovalService
 from copilot.services.artifact_service import ArtifactService
 from copilot.services.llm import LLMGenerationOptions, LLMProvider
@@ -130,19 +134,28 @@ def build_workflow_container(
     llm_provider: LLMProvider | None = None,
 ) -> WorkflowContainer:
     """Construct all application ports and offline adapters without global mutable state."""
+    install_logging_redaction()
     identifier_factory = ids or UuidIdentifierFactory()
+    sensitive_registry = SensitiveDataRegistry()
+    output_guard = OutputGuard(sensitive_registry)
+    injection_detector = PromptInjectionDetector()
+    permission_matrix = PermissionMatrix()
+    data_access_policy = DataAccessPolicy()
     if settings.checkpoint_enabled:
         settings.checkpoint_database_path.parent.mkdir(parents=True, exist_ok=True)
     evidence = InMemoryEvidenceLedger(
         id_factory=lambda: identifier_factory.new_id("E"),
         clock=clock,
         database_path=(settings.checkpoint_database_path if settings.checkpoint_enabled else None),
+        output_guard=output_guard,
+        injection_detector=injection_detector,
     )
     artifacts = LocalArtifactRepository(
         settings.artifact_path,
         clock=clock,
         max_size_bytes=settings.report_max_size_bytes,
         database_path=(settings.checkpoint_database_path if settings.checkpoint_enabled else None),
+        output_guard=output_guard,
     )
     repository = InMemoryWorkflowRepository(
         settings.checkpoint_database_path if settings.checkpoint_enabled else None
@@ -178,6 +191,7 @@ def build_workflow_container(
             ),
             statement_timeout_seconds=settings.database_statement_timeout_seconds,
             schema_registry=schema_registry,
+            data_access_policy=data_access_policy,
         )
     else:
         database_tool = MockDatabaseTool(database_behavior)
@@ -193,6 +207,7 @@ def build_workflow_container(
             artifact_store=artifacts,
             ids=identifier_factory,
             clock=clock,
+            output_guard=output_guard,
         )
     else:
         report_tool = MockReportTool(
@@ -215,10 +230,17 @@ def build_workflow_container(
     approval_policy = SupplierQualityApprovalPolicy()
     executor = ToolExecutor(
         registry=registry,
-        authorizer=OfflineSupplierQualityAuthorizer(approval_repository, clock=clock),
+        authorizer=OfflineSupplierQualityAuthorizer(
+            approval_repository,
+            clock=clock,
+            permission_matrix=permission_matrix,
+            data_access_policy=data_access_policy,
+        ),
         evidence_recorder=evidence,
         audit_sink=tool_audit,
         clock=clock,
+        output_guard=output_guard,
+        injection_detector=injection_detector,
     )
     plan_factory = SupplierQualityAnalysisPlanFactory(registry)
     plan_validator = PlanValidator(
@@ -289,6 +311,7 @@ def build_workflow_container(
         max_replan_count=settings.max_replan_count,
         max_plan_repair_attempts=settings.max_plan_repair_attempts,
         planning_service=planning_service,
+        permission_matrix=permission_matrix,
     )
     checkpoint_connection: sqlite3.Connection | None = None
     checkpointer: BaseCheckpointSaver[str]
@@ -322,6 +345,7 @@ def build_workflow_container(
         audit_sink=workflow_audit,
         ids=identifier_factory,
         clock=clock,
+        permission_matrix=permission_matrix,
     )
     service = SupplierQualityWorkflowService(
         engine=engine,
@@ -350,6 +374,9 @@ def build_workflow_container(
         approvals=approval_repository,
         state_machine=state_machine,
         audit_sink=workflow_audit,
+        injection_detector=injection_detector,
+        output_guard=output_guard,
+        permission_matrix=permission_matrix,
     )
     artifact_service = ArtifactService(
         repository=artifacts,
@@ -357,6 +384,7 @@ def build_workflow_container(
         audit_sink=workflow_audit,
         ids=identifier_factory,
         clock=clock,
+        permission_matrix=permission_matrix,
     )
     return WorkflowContainer(
         service=service,

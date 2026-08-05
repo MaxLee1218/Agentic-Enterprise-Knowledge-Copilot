@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import sqlite3
 import tempfile
@@ -13,6 +14,12 @@ from pathlib import Path
 from threading import RLock
 
 from copilot.contracts import Artifact, ArtifactType
+from copilot.security import (
+    ContentSourceType,
+    OutputDisposition,
+    OutputGuard,
+    OutputGuardBlockedError,
+)
 
 _EXTENSION_BY_TYPE = {
     ArtifactType.QUALITY_ANALYSIS_REPORT_JSON: ".json",
@@ -95,10 +102,12 @@ class LocalArtifactRepository:
         clock: Callable[[], datetime],
         max_size_bytes: int = 10 * 1024 * 1024,
         database_path: Path | None = None,
+        output_guard: OutputGuard | None = None,
     ) -> None:
         self._root = root.resolve()
         self._clock = clock
         self._writer = AtomicArtifactWriter(self._root, max_size_bytes=max_size_bytes)
+        self._output_guard = output_guard or OutputGuard()
         self._artifacts: dict[str, Artifact] = {}
         self._lock = RLock()
         self._database = (
@@ -140,6 +149,25 @@ class LocalArtifactRepository:
             raise ValueError("artifact content must not be empty")
         if not evidence_ids:
             raise ValueError("artifact must cite evidence")
+        guard = self._output_guard.guard_bytes(
+            content,
+            source_type=ContentSourceType.TOOL_OUTPUT,
+            source_id=artifact_id,
+            media_type=media_type,
+        )
+        if guard.disposition is OutputDisposition.BLOCKED or guard.content is None:
+            raise OutputGuardBlockedError(
+                "artifact content was blocked by the output safety policy"
+            )
+        if guard.disposition is OutputDisposition.ALLOWED_WITH_REDACTIONS:
+            if media_type != "application/json":
+                raise OutputGuardBlockedError("binary artifact requires unsafe content redaction")
+            content = json.dumps(
+                guard.content,
+                sort_keys=True,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
         checksum = f"sha256:{hashlib.sha256(content).hexdigest()}"
         expected_extension = _EXTENSION_BY_TYPE[artifact_type]
         if Path(filename).suffix.lower() != expected_extension:

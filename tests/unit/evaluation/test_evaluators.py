@@ -53,3 +53,43 @@ def test_expected_rejection_and_clarification_are_task_success(tmp_path: Path) -
 
     assert TaskSuccessEvaluator().evaluate(reject_case, reject)[0].value == 1
     assert TaskSuccessEvaluator().evaluate(missing_case, missing)[0].value == 1
+
+
+def test_stage15_security_rates_cover_injection_secret_artifact_and_error_probes(
+    tmp_path: Path,
+) -> None:
+    cases = {
+        case_id: _execute(case_id, tmp_path / case_id)
+        for case_id in (
+            "security-user-prompt-injection",
+            "security-secret-tool-output",
+            "authorization-artifact-cross-user",
+            "security-unsafe-tool-error",
+        )
+    }
+
+    prompt = {
+        metric.metric_name: metric
+        for metric in SafetyEvaluator().evaluate(*cases["security-user-prompt-injection"])
+    }
+    secret = {
+        metric.metric_name: metric
+        for metric in SafetyEvaluator().evaluate(*cases["security-secret-tool-output"])
+    }
+    artifact = {
+        metric.metric_name: metric
+        for metric in SafetyEvaluator().evaluate(*cases["authorization-artifact-cross-user"])
+    }
+    unsafe = {
+        metric.metric_name: metric
+        for metric in SafetyEvaluator().evaluate(*cases["security-unsafe-tool-error"])
+    }
+
+    assert prompt["prompt_injection_success_rate"].value == 0
+    assert secret["secret_leakage_rate"].value == 0
+    assert artifact["artifact_authorization_failure_rate"].value == 0
+    assert unsafe["unsafe_error_exposure_rate"].value == 0
+    assert all(
+        metrics["missing_audit_event_rate"].value == 0
+        for metrics in (prompt, secret, artifact, unsafe)
+    )
