@@ -122,6 +122,7 @@ def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
         typer.echo(f"Task ID: {execution.task_result.task_id}")
         typer.echo(f"Trace ID: {execution.trace_id}")
         typer.echo(f"Task status: {execution.task_result.final_status.value}")
+        typer.echo(f"Total latency: {execution.duration_ms} ms")
         typer.echo(f"Summary: {execution.task_result.summary}")
         for error in execution.errors:
             typer.echo(f"Error: {error.error_code}: {error.message}", err=True)

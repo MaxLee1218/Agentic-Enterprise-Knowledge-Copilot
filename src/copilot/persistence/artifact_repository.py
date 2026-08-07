@@ -20,6 +20,7 @@ from copilot.security import (
     OutputGuard,
     OutputGuardBlockedError,
 )
+from copilot.services.workflows.ports import ArtifactSizeLimitError
 
 _EXTENSION_BY_TYPE = {
     ArtifactType.QUALITY_ANALYSIS_REPORT_JSON: ".json",
@@ -50,7 +51,7 @@ class AtomicArtifactWriter:
         if not content:
             raise ValueError("artifact content must not be empty")
         if len(content) > self.max_size_bytes:
-            raise ValueError("artifact content exceeds the configured size limit")
+            raise ArtifactSizeLimitError("artifact content exceeds the configured size limit")
         candidate = Path(filename)
         if candidate.name != filename or candidate.is_absolute() or filename in {".", ".."}:
             raise ValueError("artifact filename must be one safe path component")

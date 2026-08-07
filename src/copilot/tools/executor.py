@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections.abc import Callable
 from datetime import datetime
+from time import monotonic
 from typing import TYPE_CHECKING, cast
 
 from pydantic import JsonValue
@@ -12,6 +14,8 @@ from pydantic import JsonValue
 from copilot.contracts import (
     ErrorType,
     JsonObject,
+    SpanKind,
+    SpanStatus,
     TaskError,
     ToolCall,
     ToolDefinition,
@@ -22,6 +26,7 @@ from copilot.contracts.errors import DomainError
 from copilot.contracts.validators import utc_now
 from copilot.security import ContentSourceType, OutputDisposition, OutputGuard
 from copilot.security.prompt_injection import PromptInjectionDetector
+from copilot.services.observability import EventName, NoopObservability, ObservabilityPort
 from copilot.tools.base import (
     ContextualToolAuthorizer,
     EvidenceRecorder,
@@ -60,7 +65,13 @@ class ToolExecutor:
         clock: Callable[[], datetime] = utc_now,
         output_guard: OutputGuard | None = None,
         injection_detector: PromptInjectionDetector | None = None,
+        observability: ObservabilityPort | None = None,
+        timer: Callable[[], float] = monotonic,
+        max_step_duration_seconds: float = 60,
+        max_database_rows: int = 10_000,
     ) -> None:
+        if max_step_duration_seconds <= 0 or max_database_rows <= 0:
+            raise ValueError("tool performance limits must be positive")
         self._registry = registry
         self._authorizer = authorizer
         self._evidence_recorder = evidence_recorder
@@ -74,6 +85,10 @@ class ToolExecutor:
         self._clock = clock
         self._output_guard = output_guard or OutputGuard()
         self._injection_detector = injection_detector or PromptInjectionDetector()
+        self._observability = observability or NoopObservability()
+        self._timer = timer
+        self._max_step_duration_seconds = max_step_duration_seconds
+        self._max_database_rows = max_database_rows
 
     def execute(
         self,
@@ -83,6 +98,120 @@ class ToolExecutor:
         security_context: TrustedTaskContext | None = None,
     ) -> ToolResult:
         """Run one governed attempt through validation, policy, evidence, and audit."""
+        trace_id = (
+            security_context.trace_id
+            if security_context is not None
+            else self._observability.current_context.trace_id or call.tool_call_id
+        )
+        labels = {"tool_name": call.tool_name}
+        started_tick = self._timer()
+        with self._observability.bind_context(
+            task_id=call.task_id,
+            trace_id=trace_id,
+            step_id=call.step_id,
+            tool_name=call.tool_name,
+        ):
+            self._observability.emit(
+                EventName.STEP_STARTED,
+                fields={"status": "RUNNING", "attempt": attempt},
+            )
+            with self._observability.span(
+                f"step.{call.step_id}",
+                SpanKind.STEP,
+                attributes={"attempt": attempt},
+            ) as step_span:
+                self._observability.emit(
+                    EventName.TOOL_RETRY if attempt > 1 else EventName.TOOL_STARTED,
+                    level=logging.WARNING if attempt > 1 else logging.INFO,
+                    fields={"status": "RUNNING", "attempt": attempt},
+                )
+                self._observability.increment("tool_executions_total", labels=labels)
+                self._observability.gauge_add("active_tool_calls", 1, labels=labels)
+                if attempt > 1:
+                    self._observability.increment("tool_retries_total", labels=labels)
+                try:
+                    with self._observability.span(
+                        f"tool.{call.tool_name}",
+                        SpanKind.TOOL,
+                        attributes={"attempt": attempt, "tool_version": call.tool_version},
+                    ) as tool_span:
+                        try:
+                            limited = self._database_limit_result(call, attempt)
+                            result = limited or self._execute_attempt(
+                                call,
+                                attempt=attempt,
+                                security_context=security_context,
+                            )
+                        except BaseException as exc:
+                            latency_ms = max(0.0, (self._timer() - started_tick) * 1000)
+                            tool_span.set_status(
+                                SpanStatus.FAILED,
+                                error_type=type(exc).__name__,
+                            )
+                            step_span.set_status(
+                                SpanStatus.FAILED,
+                                error_type=type(exc).__name__,
+                            )
+                            self._observability.increment("tool_failures_total", labels=labels)
+                            self._observe_tool_completion(
+                                call,
+                                attempt,
+                                latency_ms,
+                                event=EventName.TOOL_FAILED,
+                                status="FAILED",
+                                error_type=type(exc).__name__,
+                            )
+                            raise
+                        latency_ms = max(0.0, (self._timer() - started_tick) * 1000)
+                        status, span_status, event = _observability_status(result.status)
+                        error_type = result.error.error_code if result.error is not None else None
+                        tool_span.set_attribute("evidence_count", len(result.evidence_ids))
+                        tool_span.set_attribute(
+                            "output_size",
+                            (
+                                len(result.output.model_dump_json())
+                                if result.output is not None
+                                else 0
+                            ),
+                        )
+                        tool_span.set_status(span_status, error_type=error_type)
+                        step_span.set_status(span_status, error_type=error_type)
+                        if result.status is ToolResultStatus.SUCCESS:
+                            self._observability.increment("tool_successes_total", labels=labels)
+                        elif result.status is ToolResultStatus.TIMEOUT:
+                            self._observability.increment("tool_timeouts_total", labels=labels)
+                        else:
+                            self._observability.increment("tool_failures_total", labels=labels)
+                        if error_type is not None and "LIMIT_EXCEEDED" in error_type:
+                            self._observability.increment(
+                                "performance_limit_exceeded_total",
+                                labels={"error_type": error_type},
+                            )
+                            self._observability.emit(
+                                EventName.PERFORMANCE_LIMIT_EXCEEDED,
+                                level=logging.ERROR,
+                                fields={"error_type": error_type, "latency_ms": latency_ms},
+                            )
+                        self._observe_tool_completion(
+                            call,
+                            attempt,
+                            latency_ms,
+                            event=event,
+                            status=status,
+                            error_type=error_type,
+                        )
+                        return result
+                finally:
+                    self._observability.gauge_add("active_tool_calls", -1, labels=labels)
+
+    def _execute_attempt(
+        self,
+        call: ToolCall,
+        *,
+        attempt: int = 1,
+        security_context: TrustedTaskContext | None = None,
+    ) -> ToolResult:
+        """Execute the existing governed lifecycle beneath uniform instrumentation."""
         if not 1 <= attempt <= 3:
             raise ValueError("attempt must be between 1 and 3")
         started_at = self._clock()
@@ -139,6 +268,7 @@ class ToolExecutor:
 
         timeout_seconds = min(
             float(tool.definition.timeout.attempt_seconds),
+            self._max_step_duration_seconds,
             (call.deadline_at - started_at).total_seconds(),
         )
         if timeout_seconds <= 0:
@@ -279,6 +409,62 @@ class ToolExecutor:
         )
         self._audit(result, principal_id=call.user_id, security_finding_codes=finding_codes)
         return result
+
+    def _database_limit_result(self, call: ToolCall, attempt: int) -> ToolResult | None:
+        if call.tool_name != "database_query":
+            return None
+        row_limit = call.input.root.get("row_limit")
+        if not isinstance(row_limit, int) or isinstance(row_limit, bool):
+            return None
+        if row_limit <= self._max_database_rows:
+            return None
+        return self._failure_result(
+            call=call,
+            started_at=self._clock(),
+            status=ToolResultStatus.BUSINESS_FAILURE,
+            error=self._new_error(
+                call,
+                error_code="DATABASE_ROW_LIMIT_EXCEEDED",
+                error_type=ErrorType.VALIDATION,
+                message="Database row limit exceeds the configured performance boundary",
+            ),
+            attempt=attempt,
+        )
+
+    def _observe_tool_completion(
+        self,
+        call: ToolCall,
+        attempt: int,
+        latency_ms: float,
+        *,
+        event: str,
+        status: str,
+        error_type: str | None,
+    ) -> None:
+        labels = {"tool_name": call.tool_name}
+        self._observability.observe("tool_latency_ms", latency_ms, labels=labels)
+        self._observability.observe("step_latency_ms", latency_ms, labels=labels)
+        self._observability.emit(
+            event,
+            level=logging.INFO if status == "SUCCEEDED" else logging.ERROR,
+            fields={
+                "status": status,
+                "latency_ms": latency_ms,
+                "attempt": attempt,
+                "retry_count": max(0, attempt - 1),
+                "error_type": error_type,
+            },
+        )
+        self._observability.emit(
+            EventName.STEP_COMPLETED if status == "SUCCEEDED" else EventName.STEP_FAILED,
+            level=logging.INFO if status == "SUCCEEDED" else logging.ERROR,
+            fields={
+                "status": status,
+                "latency_ms": latency_ms,
+                "attempt": attempt,
+                "error_type": error_type,
+            },
+        )
 
     def close(self) -> None:
         """Close an internally owned runner."""
@@ -493,6 +679,16 @@ def _status_for_error(error: TaskError) -> ToolResultStatus:
     if error.error_type is ErrorType.TIMEOUT:
         return ToolResultStatus.TIMEOUT
     return ToolResultStatus.TECHNICAL_FAILURE
+
+
+def _observability_status(
+    status: ToolResultStatus,
+) -> tuple[str, SpanStatus, str]:
+    if status is ToolResultStatus.SUCCESS:
+        return "SUCCEEDED", SpanStatus.SUCCEEDED, EventName.TOOL_COMPLETED
+    if status is ToolResultStatus.TIMEOUT:
+        return "TIMED_OUT", SpanStatus.TIMED_OUT, EventName.TOOL_TIMEOUT
+    return "FAILED", SpanStatus.FAILED, EventName.TOOL_FAILED
 
 
 def _latency_ms(started_at: datetime, completed_at: datetime) -> int:

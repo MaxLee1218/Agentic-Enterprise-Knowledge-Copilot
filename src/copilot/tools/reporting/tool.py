@@ -28,7 +28,12 @@ from copilot.security import (
     OutputGuard,
     OutputGuardBlockedError,
 )
-from copilot.services.workflows.ports import ArtifactStore, EvidenceReader, IdentifierFactory
+from copilot.services.workflows.ports import (
+    ArtifactSizeLimitError,
+    ArtifactStore,
+    EvidenceReader,
+    IdentifierFactory,
+)
 from copilot.tools.base import ToolExecutionContext, ToolExecutionOutput
 from copilot.tools.reporting.composer import ReportComposer
 from copilot.tools.reporting.exceptions import (
@@ -36,6 +41,7 @@ from copilot.tools.reporting.exceptions import (
     ReportInputDeniedError,
     ReportInputError,
     ReportPersistenceError,
+    ReportSizeLimitError,
     SensitiveOutputBlockedError,
 )
 from copilot.tools.reporting.renderer import RendererRegistry
@@ -184,6 +190,8 @@ class ReportTool:
             )
         except OutputGuardBlockedError as exc:
             raise SensitiveOutputBlockedError() from exc
+        except ArtifactSizeLimitError as exc:
+            raise ReportSizeLimitError() from exc
         except (OSError, ValueError) as exc:
             raise ReportPersistenceError() from exc
         try:

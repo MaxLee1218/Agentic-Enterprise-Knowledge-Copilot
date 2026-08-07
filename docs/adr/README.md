@@ -94,3 +94,4 @@ What becomes easier or harder, including operational and migration effects?
 | [ADR-002](ADR-002-langgraph-orchestration.md) | Accepted | 2026-07-28 | Use LangGraph orchestration with separate SQLite checkpoints, business facts, and execution leases |
 | [ADR-003](ADR-003-llm-provider-and-structured-output.md) | Accepted | 2026-07-31 | Use replaceable structured LLM providers with deterministic validation, repair, and replan gates |
 | [ADR-004](ADR-004-approval-edit-resolution.md) | Accepted | 2026-08-02 | Resolve bounded approval edits with complete replacement arguments and checkpoint resume |
+| [ADR-005](ADR-005-local-observability-boundary.md) | Accepted | 2026-08-06 | Use injected provider-independent observability with bounded local logs, spans, metrics, and analysis |

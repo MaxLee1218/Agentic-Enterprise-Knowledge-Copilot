@@ -8,8 +8,8 @@ from copilot.agent.graph import WorkflowInterrupted
 from copilot.contracts import StepResult, StepResultStatus
 from copilot.llm.manifest import PlannerToolManifestBuilder
 from copilot.llm.mock import MockLLM
-from copilot.llm.planning import LLMPlanningService
-from copilot.services.llm import LLMSchemaValidationError
+from copilot.llm.planning import LLMPlanningService, _enforce_token_budget
+from copilot.services.llm import LLMSchemaValidationError, LLMTokenBudgetExceededError
 from copilot.services.workflows.models import SupplierQualityCommand
 from copilot.services.workflows.validation import PlanValidator
 from tests.workflow_helpers import build_test_container
@@ -127,3 +127,12 @@ def test_replan_cannot_change_a_successful_non_report_step(tmp_path: Path) -> No
                 trace_id="TRACE-1",
                 remaining_steps=6,
             )
+
+
+def test_llm_output_token_limit_raises_stable_non_retryable_error() -> None:
+    with pytest.raises(LLMTokenBudgetExceededError) as exceeded:
+        _enforce_token_budget(101, 100, attempts=2)
+
+    assert exceeded.value.code.value == "LLM_TOKEN_BUDGET_EXCEEDED"
+    assert exceeded.value.attempts == 2
+    assert not exceeded.value.retryable

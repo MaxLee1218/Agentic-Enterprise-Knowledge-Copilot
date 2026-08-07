@@ -81,6 +81,10 @@ class ArtifactStore(Protocol):
         ...
 
 
+class ArtifactSizeLimitError(ValueError):
+    """Stable internal signal that bytes exceed the configured Artifact budget."""
+
+
 class WorkflowRepository(Protocol):
     """Persistence port for task snapshots and append-only execution results."""
 

@@ -29,6 +29,7 @@ from copilot.policies.approval import PolicyOutcome, SupplierQualityApprovalPoli
 from copilot.policies.permissions import AuthorizationRequest, Permission, PermissionMatrix
 from copilot.services.approval_service import ApprovalGateService, ApprovalRepositoryPort
 from copilot.services.llm import LLMErrorCode, LLMProviderError
+from copilot.services.observability import NoopObservability, ObservabilityPort
 from copilot.services.workflows.dependency import DependencyChecker
 from copilot.services.workflows.errors import StepInputError
 from copilot.services.workflows.fixed_plan import SUPPLIER_QUALITY_PLAN_ID
@@ -98,6 +99,7 @@ class GraphNodeRuntime:
         max_plan_repair_attempts: int = 2,
         planning_service: PlanningService | None = None,
         permission_matrix: PermissionMatrix | None = None,
+        observability: ObservabilityPort | None = None,
     ) -> None:
         self._tool_executor = tool_executor
         self._registry = registry
@@ -122,6 +124,7 @@ class GraphNodeRuntime:
         self._approval_repository = approval_repository
         self._approval_policy = approval_policy
         self._permission_matrix = permission_matrix or PermissionMatrix()
+        self._observability = observability or NoopObservability()
 
     def validate_request(self, state: AgentGraphState) -> dict[str, object]:
         """Reject inconsistent, terminal, cancelled, expired, or over-budget input."""
@@ -1092,6 +1095,7 @@ class GraphNodeRuntime:
                 LLMErrorCode.INVALID_RESPONSE,
                 LLMErrorCode.SCHEMA_VALIDATION,
                 LLMErrorCode.CONTEXT_LIMIT,
+                LLMErrorCode.TOKEN_BUDGET,
                 LLMErrorCode.CONFIGURATION,
             }
             else ErrorType.PERMISSION
@@ -1580,6 +1584,7 @@ class GraphNodeRuntime:
         duration_ms: int | None = None,
         metadata: JsonObject | None = None,
     ) -> None:
+        safe_metadata = metadata or JsonObject({})
         self._audit_sink.append(
             WorkflowAuditRecord(
                 event_id=self._ids.new_id("AUD"),
@@ -1593,8 +1598,13 @@ class GraphNodeRuntime:
                 step_id=state["current_step_id"],
                 status=status,
                 duration_ms=duration_ms,
-                metadata=metadata or JsonObject({}),
+                metadata=safe_metadata,
             )
+        )
+        self._observability.record_workflow_event(
+            event,
+            status=status,
+            fields=safe_metadata.root,
         )
 
     def record_submission(self, state: AgentGraphState) -> None:

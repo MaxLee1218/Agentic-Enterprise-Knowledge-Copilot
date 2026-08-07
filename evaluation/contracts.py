@@ -294,6 +294,7 @@ class CapturedExecution(EvaluationModel):
     retry_count: int = Field(default=0, ge=0)
     replan_count: int = Field(default=0, ge=0)
     plan_repair_count: int = Field(default=0, ge=0)
+    observability_snapshot: dict[str, JsonValue] = Field(default_factory=dict)
     interrupted: bool = False
     harness_error: str | None = None
 

@@ -244,13 +244,29 @@ class EvaluationHarness:
             else (container.repository.step_results_for(task_id) if task_id else ())
         )
         retries = sum(max(result.attempt - 1, 0) for result in tool_results)
+        trace_id = (
+            execution.trace_id if execution is not None else (state["trace_id"] if state else None)
+        )
+        observability_snapshot: dict[str, JsonValue] = {"timing_source": "in_process"}
+        if trace_id and container.observability is not None:
+            summary = container.observability.trace_summary(
+                trace_id,
+                status=terminal.value if terminal is not None else "UNKNOWN",
+            )
+            analysis = container.observability.analyze_trace(
+                trace_id,
+                status=terminal.value if terminal is not None else "UNKNOWN",
+            )
+            observability_snapshot.update(
+                {
+                    "trace_summary": summary.model_dump(mode="json") if summary else None,
+                    "performance": analysis.model_dump(mode="json") if analysis else None,
+                    "metrics": container.observability.metrics_snapshot().model_dump(mode="json"),
+                }
+            )
         return CapturedExecution(
             task_id=task_id,
-            trace_id=(
-                execution.trace_id
-                if execution is not None
-                else (state["trace_id"] if state else None)
-            ),
+            trace_id=trace_id,
             started_at=started_at,
             completed_at=completed_at,
             latency_ms=latency_ms,
@@ -282,6 +298,7 @@ class EvaluationHarness:
             retry_count=retries,
             replan_count=int(state["replan_count"] if state is not None else 0),
             plan_repair_count=int(state["plan_repair_count"] if state is not None else 0),
+            observability_snapshot=observability_snapshot,
             interrupted=interrupted,
             harness_error=harness_error,
         )

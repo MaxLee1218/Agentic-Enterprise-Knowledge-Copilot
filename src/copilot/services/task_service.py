@@ -32,6 +32,12 @@ from copilot.security import (
     PromptInjectionDetector,
 )
 from copilot.security.redaction import redact_text
+from copilot.services.observability import (
+    EventName,
+    NoopObservability,
+    ObservabilityPort,
+    validate_correlation_id,
+)
 from copilot.services.task_intake import (
     IntakeLimits,
     NaturalLanguageTaskCommand,
@@ -179,6 +185,7 @@ class NaturalLanguageTaskService:
         injection_detector: PromptInjectionDetector | None = None,
         output_guard: OutputGuard | None = None,
         permission_matrix: PermissionMatrix | None = None,
+        observability: ObservabilityPort | None = None,
     ) -> None:
         self._engine = engine
         self._ids = ids
@@ -193,6 +200,7 @@ class NaturalLanguageTaskService:
         self._injection_detector = injection_detector or PromptInjectionDetector()
         self._output_guard = output_guard or OutputGuard()
         self._permission_matrix = permission_matrix or PermissionMatrix()
+        self._observability = observability or NoopObservability()
 
     def submit(
         self,
@@ -201,10 +209,27 @@ class NaturalLanguageTaskService:
     ) -> WorkflowExecution:
         """Create TaskRequest and trusted context, then enter the existing LangGraph."""
         request, context = self.prepare(command, caller)
-        security = request.metadata.root.get("security")
-        if isinstance(security, dict) and security.get("finding_count"):
-            self._audit_security_finding(request, context, caller, security)
-        return self._engine.submit(request, context)
+        with self._observability.bind_context(
+            task_id=context.task_id,
+            trace_id=context.trace_id,
+            request_id=request.id,
+            tenant_id=context.tenant_id,
+            user_id=context.user_id,
+            session_id=context.session_id,
+        ):
+            self._observability.emit(
+                EventName.TASK_CREATED,
+                fields={
+                    "status": TaskStatus.CREATED.value,
+                    "request_source": context.request_source.value,
+                    "input_size": context.task_text_length,
+                    "input_hash": context.task_text_hash,
+                },
+            )
+            security = request.metadata.root.get("security")
+            if isinstance(security, dict) and security.get("finding_count"):
+                self._audit_security_finding(request, context, caller, security)
+            return self._engine.submit(request, context)
 
     def prepare(
         self,
@@ -231,7 +256,7 @@ class NaturalLanguageTaskService:
         )
         now = self._clock()
         task_id = self._ids.new_id("T")
-        trace_id = command.trace_id or self._ids.new_id("TRACE")
+        trace_id = validate_correlation_id(command.trace_id) or self._ids.new_id("TRACE")
         session_id = command.session_id or self._ids.new_id("SESSION")
         task_hash = hashlib.sha256(task_text.encode("utf-8")).hexdigest()
         injection_scan = self._injection_detector.scan(

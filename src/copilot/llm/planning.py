@@ -36,6 +36,7 @@ from copilot.services.llm import (
     LLMGenerationOptions,
     LLMProvider,
     LLMSchemaValidationError,
+    LLMTokenBudgetExceededError,
 )
 from copilot.services.task_intake import TrustedTaskContext
 from copilot.services.workflows.planning import (
@@ -120,6 +121,11 @@ class LLMPlanningService:
             output_schema=TaskUnderstandingOutput,
             context=context,
             options=self._options,
+        )
+        _enforce_token_budget(
+            result.usage.output_tokens,
+            self._options.max_output_tokens,
+            attempts=result.attempts,
         )
         candidate = result.parsed_output
         missing = list(candidate.missing_information)
@@ -264,6 +270,11 @@ class LLMPlanningService:
             ),
             options=self._options,
         )
+        _enforce_token_budget(
+            result.usage.output_tokens,
+            self._options.max_output_tokens,
+            attempts=result.attempts,
+        )
         plan = result.parsed_output
         validation = self._validator.evaluate(plan, contract)
         return PlanGenerationOutcome(
@@ -301,6 +312,11 @@ class LLMPlanningService:
                 schema_version=_PLAN_SCHEMA_VERSION,
             ),
             options=self._options,
+        )
+        _enforce_token_budget(
+            repaired.usage.output_tokens,
+            self._options.max_output_tokens,
+            attempts=repaired.attempts,
         )
         plan = repaired.parsed_output
         return PlanGenerationOutcome(
@@ -354,6 +370,11 @@ class LLMPlanningService:
             ),
             options=self._options,
         )
+        _enforce_token_budget(
+            generated.usage.output_tokens,
+            self._options.max_output_tokens,
+            attempts=generated.attempts,
+        )
         plan = generated.parsed_output
         if plan.planning_version != next_version:
             raise LLMSchemaValidationError("Replan returned an invalid planning_version")
@@ -381,6 +402,14 @@ def _quarter_dates(year: int, quarter: int) -> tuple[date, date]:
     start_month = (quarter - 1) * 3 + 1
     end_month = start_month + 2
     return date(year, start_month, 1), date(year, end_month, monthrange(year, end_month)[1])
+
+
+def _enforce_token_budget(output_tokens: int, maximum: int, *, attempts: int) -> None:
+    if output_tokens > maximum:
+        raise LLMTokenBudgetExceededError(
+            "Structured LLM output exceeded the configured token budget",
+            attempts=attempts,
+        )
 
 
 __all__ = ["LLMPlanningService"]

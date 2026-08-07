@@ -88,6 +88,28 @@ def test_identical_content_in_different_tasks_is_not_deduplicated() -> None:
     assert len(ledger.list("T-A")) == len(ledger.list("T-B")) == 1
 
 
+def test_evidence_limit_rejects_unique_items_but_allows_duplicate_lookup() -> None:
+    ledger = InMemoryEvidenceLedger(max_items_per_task=1)
+    first = evidence_item("E-LIMIT-1", EvidenceType.DOCUMENT)
+    assert ledger.add(first).created
+
+    duplicate = first.model_copy(update={"evidence_id": "E-LIMIT-DUPLICATE"})
+    assert not ledger.add(duplicate).created
+    with pytest.raises(EvidenceValidationError) as exceeded:
+        ledger.add(
+            evidence_item(
+                "E-LIMIT-2",
+                EvidenceType.DOCUMENT,
+                reference={
+                    "document_id": "DOC-OTHER",
+                    "document_version": "v1",
+                    "chunk_id": "chunk-2",
+                },
+            )
+        )
+    assert exceeded.value.error.error_code == "EVIDENCE_LIMIT_EXCEEDED"
+
+
 def test_returned_nested_content_cannot_mutate_ledger_state() -> None:
     ledger = valid_ledger()
     detached = ledger.get(DB_ID, task_id=TASK_ID)

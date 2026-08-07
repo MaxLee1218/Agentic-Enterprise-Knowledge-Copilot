@@ -61,6 +61,17 @@ class ReportPersistenceError(ToolRuntimeError):
         )
 
 
+class ReportSizeLimitError(ToolRuntimeError):
+    """Raised when rendered report bytes exceed the configured Artifact budget."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            error_code="ARTIFACT_SIZE_LIMIT_EXCEEDED",
+            error_type=ErrorType.VALIDATION,
+            message="Report Artifact exceeds the configured size limit",
+        )
+
+
 class ReportConsistencyError(ToolRuntimeError):
     """Raised when structured or rendered report consistency checks fail."""
 
@@ -89,6 +100,7 @@ __all__ = [
     "ReportInputError",
     "ReportPersistenceError",
     "ReportRenderingError",
+    "ReportSizeLimitError",
     "SensitiveOutputBlockedError",
     "UnsupportedReportFormatError",
 ]

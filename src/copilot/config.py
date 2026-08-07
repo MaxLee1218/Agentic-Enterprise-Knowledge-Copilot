@@ -5,7 +5,13 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AnyHttpUrl, Field, SecretStr, ValidationError, field_validator
+from pydantic import (
+    AnyHttpUrl,
+    Field,
+    SecretStr,
+    ValidationError,
+    field_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -28,6 +34,15 @@ class Settings(BaseSettings):
 
     app_env: Literal["development", "test", "staging", "production"] = "development"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    log_format: Literal["json", "text"] = "json"
+    observability_enabled: bool = True
+    metrics_enabled: bool = True
+    trace_enabled: bool = True
+    metrics_window_size: int = Field(default=1000, ge=1, le=100_000)
+    max_trace_spans: int = Field(default=10_000, ge=100, le=1_000_000)
+    max_trace_attributes: int = Field(default=32, ge=1, le=128)
+    max_trace_attribute_length: int = Field(default=256, ge=16, le=4096)
+    max_log_summary_length: int = Field(default=512, ge=64, le=8192)
     rag_base_url: AnyHttpUrl = AnyHttpUrl("http://127.0.0.1:8000")
     rag_timeout_seconds: float = Field(default=30, gt=0)
     rag_max_attempts: int = Field(default=3, ge=1, le=3)
@@ -57,8 +72,11 @@ class Settings(BaseSettings):
     max_plan_repair_attempts: int = Field(default=2, ge=0, le=2)
     database_url: str
     database_statement_timeout_seconds: float = Field(default=8, gt=0, le=8)
+    max_database_rows: int = Field(default=10_000, ge=1, le=10_000)
     artifact_dir: Path = Path("data/artifacts")
     report_max_size_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=100 * 1024 * 1024)
+    max_evidence_items: int = Field(default=500, ge=1, le=10_000)
+    max_step_duration_seconds: int = Field(default=60, ge=1, le=300)
     max_task_steps: int = Field(default=10, gt=0)
     max_task_text_length: int = Field(default=10_000, ge=1, le=100_000)
     max_task_metadata_bytes: int = Field(default=16_384, ge=2, le=1_048_576)

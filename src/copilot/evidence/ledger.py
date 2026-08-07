@@ -68,11 +68,15 @@ class InMemoryEvidenceLedger:
         database_path: Path | None = None,
         output_guard: OutputGuard | None = None,
         injection_detector: PromptInjectionDetector | None = None,
+        max_items_per_task: int = 500,
     ) -> None:
+        if max_items_per_task < 1:
+            raise ValueError("max_items_per_task must be positive")
         self._id_factory = id_factory or (lambda: f"E-{uuid4().hex}")
         self._clock = clock or utc_now
         self._output_guard = output_guard or OutputGuard()
         self._injection_detector = injection_detector or PromptInjectionDetector()
+        self._max_items_per_task = max_items_per_task
         self._items: dict[str, EvidenceItem] = {}
         self._fingerprints: dict[tuple[str, str], str] = {}
         self._lock = RLock()
@@ -104,6 +108,13 @@ class InMemoryEvidenceLedger:
         if not drafts:
             return ()
         with self._lock:
+            existing_count = sum(item.task_id == call.task_id for item in self._items.values())
+            if existing_count + len(drafts) > self._max_items_per_task:
+                raise self._validation_error(
+                    call.task_id,
+                    "EVIDENCE_LIMIT_EXCEEDED",
+                    "Task evidence exceeds the configured item limit",
+                )
             pending: list[EvidenceItem] = []
             generated_ids: set[str] = set()
             for draft in drafts:
@@ -241,7 +252,19 @@ class InMemoryEvidenceLedger:
     def add(self, evidence: EvidenceItem) -> EvidenceAddResult:
         """Append one item or return the existing canonical logical duplicate."""
         with self._lock:
-            result = self._add_locked(_copy_item(evidence))
+            detached = _copy_item(evidence)
+            fingerprint = evidence_fingerprint(detached)
+            existing_count = sum(item.task_id == detached.task_id for item in self._items.values())
+            if (
+                existing_count >= self._max_items_per_task
+                and (detached.task_id, fingerprint) not in self._fingerprints
+            ):
+                raise self._validation_error(
+                    detached.task_id,
+                    "EVIDENCE_LIMIT_EXCEEDED",
+                    "Task evidence exceeds the configured item limit",
+                )
+            result = self._add_locked(detached)
             try:
                 self._persist_created((result,))
             except Exception:

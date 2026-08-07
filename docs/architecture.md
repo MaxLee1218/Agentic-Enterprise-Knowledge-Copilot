@@ -54,7 +54,7 @@ renderer implementation directly.
 | Application | `copilot.services`, `copilot.agent`, `copilot.policies` | LangGraph workflow, deterministic validation, optional LLM planning/repair/replan, structured approval policy, and checkpoint resume implemented |
 | Governed capability runtime | `copilot.tools.base`, `registry`, `executor`, `runner`, `schema` | Implemented application-facing port, registration, authorization, execution, evidence, and audit sequence |
 | Capability adapters | `copilot.tools.knowledge`, `database`, `analytics`, `reporting`, offline mock module | HTTP knowledge, SQLAlchemy SQLite database, deterministic analytics, and deterministic PDF/JSON reporting adapters are implemented |
-| Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | DeepSeek/Mock structured LLM adapters, Evidence Ledger, deterministic verification, SQLite workflow/checkpoint/approval/audit storage, execution leases, and local atomic Artifact storage support this stage |
+| Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | DeepSeek/Mock structured LLM adapters, Evidence Ledger, deterministic verification, SQLite workflow/checkpoint/approval/audit storage, execution leases, local atomic Artifact storage, and bounded local observability support this stage |
 | Cross-cutting security | `copilot.security`, `copilot.policies` | Source/trust findings, sensitive-data registry, recursive redaction, output guard, centralized permission matrix, and table/field access policy |
 | Interfaces | `copilot.api`, `copilot.cli` | Natural-language submission, task/step/Evidence/Artifact query, controlled Artifact download, cooperative cancellation, health, and approval detail/resolution API/CLI are implemented |
 | Protocol boundary | `copilot.mcp` | Future Phase 5 boundary; scaffold only |
@@ -177,6 +177,28 @@ and infrastructure supplies its implementation.
 
 No route, agent node, protocol handler, or tool may create an alternate execution path around
 policy, approval, registry, executor, evidence, audit, or verification.
+
+Observability follows the same call direction and is injected rather than globally constructed:
+
+```text
+API / CLI
+  -> NaturalLanguageTaskService
+  -> LangGraph engine and node runtime
+  -> ToolExecutor
+  -> registered Tool
+
+all correlated through application-owned ObservabilityPort
+  -> Context + stable events + spans + metrics + performance analysis
+  -> local bounded implementation (future exporters remain infrastructure adapters)
+```
+
+Provider-independent observability values live in `copilot.contracts`; the port lives in
+`copilot.services.observability`; the concrete logger, tracer, metric registry, sanitizer, and
+analyzer live in `copilot.observability` and are wired by `copilot.bootstrap`. Application code
+must not import an external telemetry SDK or the concrete implementation. Observability derives
+from existing lifecycle facts and cannot authorize, transition, retry, or replace audit/evidence.
+See [Observability](observability.md), [Performance](performance.md), and
+[ADR-005](adr/ADR-005-local-observability-boundary.md).
 
 Security components are composed once in `bootstrap`: a shared sensitive-data registry, output
 guard, prompt-injection detector, permission matrix, and data-access policy are injected into the
@@ -344,6 +366,9 @@ before implementation.
 
 - [ADR index and process](adr/README.md)
 - [ADR-001: Package Naming and Layer Boundary](adr/ADR-001-package-and-layer-boundary.md)
+- [ADR-005: Local Replaceable Observability Boundary](adr/ADR-005-local-observability-boundary.md)
+- [Observability](observability.md)
+- [Performance analysis and limits](performance.md)
 - [Frozen design baseline](design/design_baseline.md)
 - [Domain contracts](domain-contracts.md)
 - [Deterministic Supplier Quality workflow](deterministic-workflow.md)

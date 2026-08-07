@@ -26,6 +26,7 @@ from copilot.policies.approval import (
     schema_fingerprint,
 )
 from copilot.policies.permissions import AuthorizationRequest, Permission, PermissionMatrix
+from copilot.services.observability import EventName, NoopObservability, ObservabilityPort
 from copilot.services.task_intake import TrustedCallerContext
 from copilot.services.workflows.fixed_plan import SUPPLIER_QUALITY_PLAN_ID
 from copilot.services.workflows.models import WorkflowAuditRecord, WorkflowExecution
@@ -251,6 +252,7 @@ class ApprovalService:
         ids: IdentifierFactory,
         clock: Callable[[], datetime],
         permission_matrix: PermissionMatrix | None = None,
+        observability: ObservabilityPort | None = None,
     ) -> None:
         self._repository = repository
         self._engine = engine
@@ -259,6 +261,7 @@ class ApprovalService:
         self._ids = ids
         self._clock = clock
         self._permission_matrix = permission_matrix or PermissionMatrix()
+        self._observability = observability or NoopObservability()
 
     def get(
         self,
@@ -339,6 +342,24 @@ class ApprovalService:
             ApprovalResolutionAction.REJECT: "APPROVAL_REJECTED",
         }[command.action]
         self._append_audit(resolved, event, trace_id=trace_id)
+        with self._observability.bind_context(
+            task_id=command.task_id,
+            trace_id=trace_id,
+            tenant_id=caller.tenant_id,
+            user_id=caller.user_id,
+        ):
+            if resolved.status is ApprovalStatus.APPROVED:
+                self._observability.increment("approvals_approved_total")
+                self._observability.emit(
+                    EventName.APPROVAL_APPROVED,
+                    fields={"approval_status": resolved.status.value},
+                )
+            else:
+                self._observability.increment("approvals_rejected_total")
+                self._observability.emit(
+                    EventName.APPROVAL_REJECTED,
+                    fields={"approval_status": resolved.status.value},
+                )
         self._append_audit(resolved, "APPROVAL_RESUME_STARTED", trace_id=trace_id)
         try:
             execution = self._engine.resume_approval(resolved, caller.tenant_id)

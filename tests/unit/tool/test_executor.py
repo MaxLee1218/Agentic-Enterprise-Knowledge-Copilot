@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from time import sleep
 
@@ -10,6 +11,15 @@ import pytest
 from copilot.contracts import JsonObject, ToolCall, ToolDefinition, ToolResultStatus
 from copilot.contracts.base import JsonMapping
 from copilot.evidence.ledger import InMemoryEvidenceLedger
+from copilot.observability import (
+    InMemoryObservability,
+    InMemoryTracer,
+    MetricsRegistry,
+    ObservabilityContextManager,
+    PerformanceAnalyzer,
+    PerformanceLimits,
+    StructuredEventLogger,
+)
 from copilot.persistence.audit_repository import InMemoryToolAuditRepository
 from copilot.policies.offline import OfflineSupplierQualityAuthorizer
 from copilot.services.task_intake import RequestSource, TrustedTaskContext
@@ -21,6 +31,7 @@ from copilot.tools import (
     ToolRegistry,
 )
 from copilot.tools.exceptions import ToolAuthorizationError, ToolNotFoundError, ToolValidationError
+from copilot.tools.mock_supplier_quality import MockDatabaseTool as SupplierQualityDatabaseTool
 from tests.mocks.mock_tools import (
     MockAnalyticsTool,
     MockDatabaseTool,
@@ -248,6 +259,90 @@ def test_timeout_becomes_typed_result_and_late_output_is_not_recorded() -> None:
     assert result.evidence_ids == ()
     assert ledger.list_for_call(result.tool_call_id) == ()
     assert audit.list()[0].status is ToolResultStatus.TIMEOUT
+
+
+def test_configured_step_duration_limit_bounds_a_longer_tool_timeout() -> None:
+    tool = SleepingKnowledgeTool()
+    registry = ToolRegistry()
+    registry.register(tool)
+    ledger = InMemoryEvidenceLedger()
+    audit = InMemoryToolAuditRepository()
+    executor = ToolExecutor(
+        registry=registry,
+        authorizer=ApprovedAuthorizer(),
+        evidence_recorder=ledger,
+        audit_sink=audit,
+        max_step_duration_seconds=0.02,
+    )
+
+    try:
+        result = executor.execute(make_call(deadline_after=5))
+    finally:
+        executor.close()
+
+    assert result.status is ToolResultStatus.TIMEOUT
+    assert result.error is not None
+    assert result.error.error_code == "TOOL_TIMEOUT"
+
+
+def test_database_limit_returns_typed_result_metric_and_event(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    context = ObservabilityContextManager()
+    metrics = MetricsRegistry()
+    logger = logging.getLogger("copilot.test.performance_limit")
+    telemetry = InMemoryObservability(
+        context=context,
+        tracer=InMemoryTracer(context=context),
+        metrics=metrics,
+        analyzer=PerformanceAnalyzer(PerformanceLimits(30, 5, 10, 10, 1024, 100)),
+        logger=StructuredEventLogger(logger),
+        max_step_duration_seconds=5,
+    )
+    tool = SupplierQualityDatabaseTool()
+    registry = ToolRegistry()
+    registry.register(tool)
+    executor = ToolExecutor(
+        registry=registry,
+        authorizer=ApprovedAuthorizer(),
+        evidence_recorder=InMemoryEvidenceLedger(),
+        audit_sink=InMemoryToolAuditRepository(),
+        observability=telemetry,
+        max_database_rows=10,
+    )
+    call = make_call(
+        tool_name="database_query",
+        tool_version=tool.definition.tool_version,
+        input_payload={
+            "query_template_id": "supplier_quality_summary_v1",
+            "parameters": {
+                "tenant_id": "TENANT-A",
+                "start_date": "2026-04-01",
+                "end_date": "2026-06-30",
+                "supplier_ids": [],
+            },
+            "schema_version": "quality.v1",
+            "snapshot_at": datetime.now(UTC).isoformat(),
+            "row_limit": 11,
+        },
+    )
+
+    caplog.set_level(logging.ERROR, logger=logger.name)
+    try:
+        result = executor.execute(call)
+    finally:
+        executor.close()
+
+    assert result.status is ToolResultStatus.BUSINESS_FAILURE
+    assert result.error is not None
+    assert result.error.error_code == "DATABASE_ROW_LIMIT_EXCEEDED"
+    assert tool.call_count == 0
+    snapshot = metrics.snapshot()
+    series = "performance_limit_exceeded_total{error_type=DATABASE_ROW_LIMIT_EXCEEDED}"
+    assert snapshot.counters[series] == 1
+    assert any(
+        getattr(record, "event", None) == "performance.limit_exceeded" for record in caplog.records
+    )
 
 
 def test_policy_denial_prevents_execution_and_is_audited() -> None:

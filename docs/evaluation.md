@@ -128,6 +128,14 @@ loss blocks only when the baseline previously met the configured coverage gate.
 
 ## Reproducibility
 
+Stage 16 also attaches an optional `observability_snapshot` to each in-process
+`CapturedExecution`. It reuses the composed Trace Summary, performance analysis, and metric
+snapshot for task/stage/tool latency, retries, replans, and limit warnings. It does not replace or
+recompute the established Evaluation latency, token, cost, or average-step metrics. The snapshot
+marks its timing source as `in_process`; mock/fixed business timestamps do not imply fixed machine
+latency. Machine-dependent performance values remain informational and outside the default hard
+regression gate.
+
 Stable inputs are code revision, dataset/hash, fixture hash, config hash, seed, and mock model.
 Stable outputs include case status, plan/tool sequence, Evidence/citation/numeric/safety decisions,
 failure categories, and deterministic metric values. Run IDs, timestamps, task/trace IDs, temporary

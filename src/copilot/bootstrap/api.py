@@ -20,6 +20,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         application.state.approval_service = container.approval_service
         application.state.artifact_service = container.artifact_service
         application.state.settings = settings
+        application.state.observability = container.observability
         yield
 
 

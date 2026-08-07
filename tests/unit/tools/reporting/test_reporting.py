@@ -22,6 +22,7 @@ from copilot.tools.reporting.exceptions import (
     ReportConsistencyError,
     ReportInputDeniedError,
     ReportInputError,
+    ReportSizeLimitError,
 )
 from copilot.tools.reporting.renderer import extract_pdf_report_model
 from tests.unit.tools.reporting.helpers import (
@@ -175,3 +176,14 @@ def test_report_tool_compensates_post_commit_consistency_failure(
         )
     assert repository.list_by_task(TASK_ID) == ()
     assert list(tmp_path.iterdir()) == []
+
+
+def test_report_tool_maps_artifact_size_limit_to_typed_error(tmp_path: Path) -> None:
+    tool, repository = report_tool(tmp_path, max_size_bytes=16)
+    request = report_request()
+
+    with pytest.raises(ReportSizeLimitError) as exceeded:
+        tool.execute(JsonObject(request.model_dump(mode="json")), report_context(request))
+
+    assert exceeded.value.error.error_code == "ARTIFACT_SIZE_LIMIT_EXCEEDED"
+    assert repository.list_by_task(TASK_ID) == ()

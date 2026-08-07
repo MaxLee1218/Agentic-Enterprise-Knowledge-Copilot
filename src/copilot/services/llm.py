@@ -87,6 +87,7 @@ class LLMErrorCode(StrEnum):
     INVALID_RESPONSE = "LLM_INVALID_RESPONSE_ERROR"
     SCHEMA_VALIDATION = "LLM_SCHEMA_VALIDATION_ERROR"
     CONTEXT_LIMIT = "LLM_CONTEXT_LIMIT_ERROR"
+    TOKEN_BUDGET = "LLM_TOKEN_BUDGET_EXCEEDED"
     INTERNAL = "LLM_INTERNAL_ERROR"
 
 
@@ -134,6 +135,12 @@ class LLMSchemaValidationError(LLMProviderError):
 
 class LLMContextLimitError(LLMProviderError):
     code = LLMErrorCode.CONTEXT_LIMIT
+
+
+class LLMTokenBudgetExceededError(LLMProviderError):
+    """Provider usage exceeded the deterministic configured output-token ceiling."""
+
+    code = LLMErrorCode.TOKEN_BUDGET
 
 
 class LLMInternalError(LLMProviderError):

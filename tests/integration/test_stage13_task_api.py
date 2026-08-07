@@ -10,6 +10,7 @@ from copilot.api.app import create_app
 from copilot.api.dependencies import get_caller_context, get_task_service
 from copilot.bootstrap.container import WorkflowContainer, build_workflow_container
 from copilot.config import Settings
+from copilot.contracts import SpanKind, SpanStatus
 from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.persistence.identifiers import SequentialIdentifierFactory
 from copilot.services.task_intake import TrustedCallerContext
@@ -38,6 +39,7 @@ def _client(tmp_path: Path) -> tuple[TestClient, WorkflowContainer]:
         artifact_service=container.artifact_service,
         approval_service=container.approval_service,
         settings=settings,
+        observability=container.observability,
     )
     return TestClient(application), container
 
@@ -187,5 +189,61 @@ def test_unknown_internal_error_is_safely_normalized(tmp_path: Path) -> None:
         assert response.status_code == 500
         assert response.json()["error_code"] == "INTERNAL_ERROR"
         assert str(tmp_path) not in response.text
+    finally:
+        container.close()
+
+
+def test_api_trace_propagates_through_task_graph_steps_and_tools(tmp_path: Path) -> None:
+    client, container = _client(tmp_path)
+    trace_id = "TRACE-client-stage16"
+    try:
+        with client:
+            response = client.post(
+                "/v1/tasks",
+                json={"task": TASK_TEXT},
+                headers={"X-Trace-ID": trace_id, "X-Request-ID": "REQUEST-client-stage16"},
+            )
+        assert response.status_code == 201
+        assert response.headers["x-trace-id"] == trace_id
+        assert response.json()["trace_id"] == trace_id
+        assert container.observability is not None
+        spans = container.observability.spans_for_trace(trace_id)
+        kinds = {span.kind for span in spans}
+        assert {
+            SpanKind.EXTERNAL_SERVICE,
+            SpanKind.TASK,
+            SpanKind.GRAPH_NODE,
+            SpanKind.STEP,
+            SpanKind.TOOL,
+        }.issubset(kinds)
+        request_span = next(span for span in spans if span.name == "request.http")
+        task_span = next(span for span in spans if span.name == "task.total")
+        assert task_span.parent_span_id == request_span.span_id
+        assert all(span.status is SpanStatus.SUCCEEDED for span in spans)
+        assert all(span.step_id for span in spans if span.kind is SpanKind.TOOL)
+        summary = container.observability.trace_summary(trace_id, status="COMPLETED")
+        assert summary is not None
+        assert summary.tool_call_count == 4
+        assert summary.step_count == 4
+        snapshot = container.observability.metrics_snapshot()
+        assert snapshot.counters["tasks_completed_total"] == 1
+        assert snapshot.quantiles["task_latency_ms"]["p95"] is not None
+    finally:
+        container.close()
+
+
+def test_api_replaces_an_invalid_external_trace_id(tmp_path: Path) -> None:
+    client, container = _client(tmp_path)
+    try:
+        with client:
+            response = client.get("/health", headers={"X-Trace-ID": "invalid trace id"})
+        generated = response.headers["x-trace-id"]
+        assert response.status_code == 200
+        assert generated.startswith("TRACE-")
+        assert generated != "invalid trace id"
+        assert container.observability is not None
+        spans = container.observability.spans_for_trace(generated)
+        assert len(spans) == 1
+        assert spans[0].kind is SpanKind.EXTERNAL_SERVICE
     finally:
         container.close()

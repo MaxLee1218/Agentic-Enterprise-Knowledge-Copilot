@@ -6,7 +6,7 @@ import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from time import sleep
+from time import monotonic, sleep
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
@@ -24,7 +24,16 @@ from copilot.llm.deepseek import DeepSeekProvider
 from copilot.llm.manifest import PlannerToolManifestBuilder
 from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.llm.planning import LLMPlanningService
-from copilot.observability.logging import install_logging_redaction
+from copilot.observability import (
+    InMemoryObservability,
+    InMemoryTracer,
+    MetricsRegistry,
+    ObservabilityContextManager,
+    PerformanceAnalyzer,
+    PerformanceLimits,
+    StructuredEventLogger,
+    configure_logging,
+)
 from copilot.persistence.approval_repository import ApprovalRepository
 from copilot.persistence.artifact_repository import LocalArtifactRepository
 from copilot.persistence.audit_repository import (
@@ -93,6 +102,7 @@ class WorkflowContainer:
     planning_service: LLMPlanningService | None = None
     owned_llm_provider: DeepSeekProvider | None = None
     checkpoint_connection: sqlite3.Connection | None = None
+    observability: InMemoryObservability | None = None
 
     def close(self) -> None:
         """Release the executor's owned worker pool."""
@@ -124,6 +134,7 @@ def build_workflow_container(
     *,
     ids: IdentifierFactory | None = None,
     clock: Callable[[], datetime] = utc_now,
+    timer: Callable[[], float] = monotonic,
     sleeper: Callable[[float], None] | None = None,
     knowledge_behavior: MockBehavior | None = None,
     database_behavior: MockBehavior | None = None,
@@ -134,7 +145,42 @@ def build_workflow_container(
     llm_provider: LLMProvider | None = None,
 ) -> WorkflowContainer:
     """Construct all application ports and offline adapters without global mutable state."""
-    install_logging_redaction()
+    observability_context = ObservabilityContextManager()
+    configure_logging(
+        level=settings.log_level,
+        log_format=settings.log_format,
+        context=observability_context,
+        max_summary_length=settings.max_log_summary_length,
+    )
+    performance_limits = PerformanceLimits(
+        max_task_duration_seconds=settings.max_total_execution_seconds,
+        max_step_duration_seconds=settings.max_step_duration_seconds,
+        max_database_rows=settings.max_database_rows,
+        max_evidence_items=settings.max_evidence_items,
+        max_report_size_bytes=settings.report_max_size_bytes,
+        max_llm_output_tokens=settings.llm_max_output_tokens,
+    )
+    metrics = MetricsRegistry(window_size=settings.metrics_window_size, clock=clock)
+    tracer = InMemoryTracer(
+        context=observability_context,
+        max_spans=settings.max_trace_spans,
+        max_attributes=settings.max_trace_attributes,
+        max_attribute_length=settings.max_trace_attribute_length,
+        clock=clock,
+        timer=timer,
+    )
+    observability = InMemoryObservability(
+        context=observability_context,
+        tracer=tracer,
+        metrics=metrics,
+        analyzer=PerformanceAnalyzer(performance_limits),
+        logger=StructuredEventLogger(max_summary_length=settings.max_log_summary_length),
+        max_step_duration_seconds=settings.max_step_duration_seconds,
+        enabled=settings.observability_enabled,
+        trace_enabled=settings.trace_enabled,
+        metrics_enabled=settings.metrics_enabled,
+        timer=timer,
+    )
     identifier_factory = ids or UuidIdentifierFactory()
     sensitive_registry = SensitiveDataRegistry()
     output_guard = OutputGuard(sensitive_registry)
@@ -149,6 +195,7 @@ def build_workflow_container(
         database_path=(settings.checkpoint_database_path if settings.checkpoint_enabled else None),
         output_guard=output_guard,
         injection_detector=injection_detector,
+        max_items_per_task=settings.max_evidence_items,
     )
     artifacts = LocalArtifactRepository(
         settings.artifact_path,
@@ -241,6 +288,10 @@ def build_workflow_container(
         clock=clock,
         output_guard=output_guard,
         injection_detector=injection_detector,
+        observability=observability,
+        timer=timer,
+        max_step_duration_seconds=settings.max_step_duration_seconds,
+        max_database_rows=settings.max_database_rows,
     )
     plan_factory = SupplierQualityAnalysisPlanFactory(registry)
     plan_validator = PlanValidator(
@@ -312,6 +363,7 @@ def build_workflow_container(
         max_plan_repair_attempts=settings.max_plan_repair_attempts,
         planning_service=planning_service,
         permission_matrix=permission_matrix,
+        observability=observability,
     )
     checkpoint_connection: sqlite3.Connection | None = None
     checkpointer: BaseCheckpointSaver[str]
@@ -337,6 +389,8 @@ def build_workflow_container(
         recursion_limit=settings.graph_recursion_limit,
         max_task_steps=settings.max_task_steps,
         interrupt_after=interrupt_after,
+        observability=observability,
+        timer=timer,
     )
     approval_service = ApprovalService(
         repository=approval_repository,
@@ -346,6 +400,7 @@ def build_workflow_container(
         ids=identifier_factory,
         clock=clock,
         permission_matrix=permission_matrix,
+        observability=observability,
     )
     service = SupplierQualityWorkflowService(
         engine=engine,
@@ -377,6 +432,7 @@ def build_workflow_container(
         injection_detector=injection_detector,
         output_guard=output_guard,
         permission_matrix=permission_matrix,
+        observability=observability,
     )
     artifact_service = ArtifactService(
         repository=artifacts,
@@ -409,6 +465,7 @@ def build_workflow_container(
         planning_service=planning_service,
         owned_llm_provider=owned_llm_provider,
         checkpoint_connection=checkpoint_connection,
+        observability=observability,
     )
 
 

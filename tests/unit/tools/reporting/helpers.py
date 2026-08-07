@@ -203,11 +203,17 @@ def report_context(request: ReportRequest, *, task_id: str = TASK_ID) -> ToolExe
     )
 
 
-def report_tool(tmp_path: Path) -> tuple[ReportTool, LocalArtifactRepository]:
+def report_tool(
+    tmp_path: Path, *, max_size_bytes: int = 10 * 1024 * 1024
+) -> tuple[ReportTool, LocalArtifactRepository]:
     """Create a Report Tool with deterministic local dependencies."""
     items = evidence_items()
     reader = DictEvidenceReader(items)
-    repository = LocalArtifactRepository(tmp_path, clock=lambda: FIXED_NOW)
+    repository = LocalArtifactRepository(
+        tmp_path,
+        clock=lambda: FIXED_NOW,
+        max_size_bytes=max_size_bytes,
+    )
     tool = ReportTool(
         evidence_reader=reader,
         artifact_store=repository,

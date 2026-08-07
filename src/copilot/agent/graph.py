@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections.abc import Callable
 from datetime import datetime
 from functools import partial
+from time import monotonic
 from typing import cast
 
-from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables import RunnableConfig, RunnableLambda
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -34,10 +36,17 @@ from copilot.contracts import (
     ApprovalRequest,
     ApprovalResolutionAction,
     ApprovalStatus,
+    SpanKind,
+    SpanStatus,
     TaskContract,
     TaskPlan,
     TaskRequest,
     TaskStatus,
+)
+from copilot.services.observability import (
+    EventName,
+    NoopObservability,
+    ObservabilityPort,
 )
 from copilot.services.task_intake import RequestSource, TrustedTaskContext
 from copilot.services.workflows.errors import WorkflowRecoveryError
@@ -72,22 +81,33 @@ def build_agent_graph(
     *,
     checkpointer: BaseCheckpointSaver[str],
     interrupt_after: tuple[str, ...] = (),
+    observability: ObservabilityPort | None = None,
 ) -> CompiledStateGraph[AgentGraphState, None, AgentGraphState, AgentGraphState]:
     """Compile the explicit graph with pure conditional routing and SQLite persistence."""
+    telemetry = observability or NoopObservability()
     builder = StateGraph(AgentGraphState)
-    builder.add_node("validate_request", partial(nodes.validate_request, node_runtime=runtime))
-    builder.add_node("understand_task", partial(nodes.understand_task, node_runtime=runtime))
-    builder.add_node("classify_task", partial(nodes.classify_task, node_runtime=runtime))
-    builder.add_node("create_plan", partial(nodes.create_plan, node_runtime=runtime))
-    builder.add_node("validate_plan", partial(nodes.validate_plan, node_runtime=runtime))
-    builder.add_node("repair_plan", partial(nodes.repair_plan, node_runtime=runtime))
-    builder.add_node("replan", partial(nodes.replan, node_runtime=runtime))
-    builder.add_node("policy_check", partial(nodes.policy_check, node_runtime=runtime))
-    builder.add_node("execute_tool", partial(nodes.execute_tool, node_runtime=runtime))
-    builder.add_node("aggregate_evidence", partial(nodes.aggregate_evidence, node_runtime=runtime))
-    builder.add_node("verify_result", partial(nodes.verify_result, node_runtime=runtime))
-    builder.add_node("generate_report", partial(nodes.generate_report, node_runtime=runtime))
-    builder.add_node("persist_result", partial(nodes.persist_result, node_runtime=runtime))
+    node_functions = {
+        "validate_request": nodes.validate_request,
+        "understand_task": nodes.understand_task,
+        "classify_task": nodes.classify_task,
+        "create_plan": nodes.create_plan,
+        "validate_plan": nodes.validate_plan,
+        "repair_plan": nodes.repair_plan,
+        "replan": nodes.replan,
+        "policy_check": nodes.policy_check,
+        "execute_tool": nodes.execute_tool,
+        "aggregate_evidence": nodes.aggregate_evidence,
+        "verify_result": nodes.verify_result,
+        "generate_report": nodes.generate_report,
+        "persist_result": nodes.persist_result,
+    }
+    for node_name, function in node_functions.items():
+        bound = partial(function, node_runtime=runtime)
+        node_action = cast(Callable[[AgentGraphState], dict[str, object]], bound)
+        builder.add_node(
+            node_name,
+            RunnableLambda(telemetry.instrument_node(node_name, node_action)),
+        )
 
     builder.add_edge(START, "validate_request")
     builder.add_conditional_edges("validate_request", route_after_validate)
@@ -126,12 +146,17 @@ class LangGraphWorkflowEngine:
         recursion_limit: int,
         max_task_steps: int,
         interrupt_after: tuple[str, ...] = (),
+        observability: ObservabilityPort | None = None,
+        timer: Callable[[], float] = monotonic,
     ) -> None:
         self._runtime = runtime
+        self._observability = observability or NoopObservability()
+        self._timer = timer
         self._graph = build_agent_graph(
             runtime,
             checkpointer=checkpointer,
             interrupt_after=interrupt_after,
+            observability=self._observability,
         )
         self._repository = repository
         self._evidence_reader = evidence_reader
@@ -176,7 +201,7 @@ class LangGraphWorkflowEngine:
         self._repository.acquire_execution(contract.task_id, owner_id)
         config = self._config(contract.task_id, contract.constraints.tenant_id)
         try:
-            output = self._graph.invoke(
+            output = self._invoke_graph(
                 initial_graph_state(
                     request=request,
                     intake_context=intake_context,
@@ -186,8 +211,10 @@ class LangGraphWorkflowEngine:
                     started_at=started_at,
                 ),
                 config,
+                intake_context=intake_context,
+                resumed=False,
             )
-            return self._execution(cast(AgentGraphState, output))
+            return self._execution(output)
         finally:
             self._repository.release_execution(contract.task_id, owner_id)
 
@@ -217,8 +244,13 @@ class LangGraphWorkflowEngine:
         self._repository.acquire_execution(intake_context.task_id, owner_id)
         config = self._config(intake_context.task_id, intake_context.tenant_id)
         try:
-            output = self._graph.invoke(state, config)
-            return self._execution(cast(AgentGraphState, output))
+            output = self._invoke_graph(
+                state,
+                config,
+                intake_context=intake_context,
+                resumed=False,
+            )
+            return self._execution(output)
         finally:
             self._repository.release_execution(intake_context.task_id, owner_id)
 
@@ -244,8 +276,13 @@ class LangGraphWorkflowEngine:
                 config,
                 {"resume_count": current["resume_count"] + 1},
             )
-            output = self._graph.invoke(None, config)
-            return self._execution(cast(AgentGraphState, output))
+            output = self._invoke_graph(
+                None,
+                config,
+                intake_context=current["intake_context"],
+                resumed=True,
+            )
+            return self._execution(output)
         finally:
             self._repository.release_execution(task_id, owner_id)
 
@@ -316,9 +353,13 @@ class LangGraphWorkflowEngine:
                 },
                 as_node="policy_check",
             )
-            output = self._graph.invoke(None, config)
-            resumed = cast(AgentGraphState, output)
-            return self._execution(resumed)
+            output = self._invoke_graph(
+                None,
+                config,
+                intake_context=current["intake_context"],
+                resumed=True,
+            )
+            return self._execution(output)
         finally:
             self._repository.release_execution(approval.task_id, owner_id)
 
@@ -337,6 +378,84 @@ class LangGraphWorkflowEngine:
             "configurable": {"thread_id": f"{tenant_id}:{task_id}"},
             "recursion_limit": self._recursion_limit,
         }
+
+    def _invoke_graph(
+        self,
+        input_state: AgentGraphState | None,
+        config: RunnableConfig,
+        *,
+        intake_context: TrustedTaskContext,
+        resumed: bool,
+    ) -> AgentGraphState:
+        """Run one task/resume root span and record only terminal task outcome counters."""
+        started = self._timer()
+        with self._observability.bind_context(
+            task_id=intake_context.task_id,
+            trace_id=intake_context.trace_id,
+            step_id=None,
+            node_name=None,
+            tool_name=None,
+            tenant_id=intake_context.tenant_id,
+            user_id=intake_context.user_id,
+            session_id=intake_context.session_id,
+        ):
+            if resumed:
+                self._observability.increment("task_resumes_total")
+                self._observability.emit(EventName.TASK_RESUMED)
+            else:
+                self._observability.increment("tasks_started_total")
+                self._observability.emit(EventName.TASK_STARTED)
+            self._observability.gauge_add("active_tasks", 1)
+            try:
+                with self._observability.span(
+                    "task.total",
+                    SpanKind.TASK,
+                    attributes={"resume_count": 1 if resumed else 0},
+                ) as root_span:
+                    try:
+                        output = cast(AgentGraphState, self._graph.invoke(input_state, config))
+                    except BaseException as exc:
+                        root_span.set_status(SpanStatus.FAILED, error_type=type(exc).__name__)
+                        self._observability.increment("tasks_failed_total")
+                        self._observability.emit(
+                            EventName.TASK_FAILED,
+                            level=logging.ERROR,
+                            fields={"error_type": type(exc).__name__},
+                        )
+                        raise
+                    domain_status = output["domain_state"].state
+                    root_span.set_attribute("task_status", domain_status.value)
+                    root_span.set_attribute("retry_count", output["tool_retry_count"])
+                    root_span.set_attribute("replan_count", output["replan_count"])
+                    root_span.set_attribute("approval_count", 1 if output["approval_id"] else 0)
+                    if domain_status is TaskStatus.FAILED:
+                        root_span.set_status(SpanStatus.FAILED, error_type="TASK_FAILED")
+                    elif domain_status is TaskStatus.CANCELLED:
+                        root_span.set_status(SpanStatus.CANCELLED)
+                    else:
+                        root_span.set_status(SpanStatus.SUCCEEDED)
+                latency_ms = max(0.0, (self._timer() - started) * 1000)
+                if output["task_result"] is not None:
+                    self._observability.observe("task_latency_ms", latency_ms)
+                    if domain_status is TaskStatus.COMPLETED:
+                        self._observability.increment("tasks_completed_total")
+                        event = EventName.TASK_COMPLETED
+                    elif domain_status is TaskStatus.CANCELLED:
+                        self._observability.increment("tasks_cancelled_total")
+                        event = EventName.TASK_CANCELLED
+                    else:
+                        self._observability.increment("tasks_failed_total")
+                        event = EventName.TASK_FAILED
+                    self._observability.emit(
+                        event,
+                        level=(
+                            logging.INFO if domain_status is TaskStatus.COMPLETED else logging.ERROR
+                        ),
+                        fields={"status": domain_status.value, "latency_ms": latency_ms},
+                    )
+                return output
+            finally:
+                self._observability.gauge_add("active_tasks", -1)
 
     def _execution(self, state: AgentGraphState) -> WorkflowExecution:
         if state["task_result"] is None:

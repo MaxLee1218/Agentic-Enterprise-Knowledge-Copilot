@@ -23,6 +23,11 @@ permission and data-access policies, execution-time reauthorization, prompt-inje
 sensitive-data classification, recursive log/audit redaction, shared output guarding, and
 Artifact publication/read checks. It does not broaden the frozen Supplier Quality v1.1 scope.
 
+Stage 16 adds one injected observability context across API/CLI, Task Service, LangGraph, Step, and
+Tool execution: safe JSON events, bounded in-memory spans and metrics, p50/p95 snapshots, task
+performance analysis, and enforced task/step/database/Evidence/report/LLM budgets. It requires no
+external monitoring service and does not change the frozen business lifecycle or four-tool scope.
+
 The typed Supplier Quality Analysis contracts and lifecycle are documented in
 [Domain Contracts](docs/domain-contracts.md).
 
@@ -122,8 +127,17 @@ Local task inspection and the deterministic Stage 13 smoke test use the same ser
 ```bash
 python scripts/inspect_task.py TASK_ID
 python scripts/inspect_task.py TASK_ID --json
+python scripts/inspect_task.py TASK_ID --performance
 python scripts/smoke_agent.py
+python scripts/smoke_agent.py --show-trace
 ```
+
+Task CLI output includes Task ID, Trace ID, terminal status, total latency, and Artifact metadata.
+The Stage 16 smoke output includes the sanitized Task/Node/Step/Tool trace, latency breakdown,
+p50/p95, slowest stage/step/tool, retry/replan counts, and tool attempt failure rate. Full trace
+and metrics are process-local; `inspect_task.py --performance` falls back to durable audit timing
+after restart. See [Observability](docs/observability.md) and
+[Performance Analysis and Limits](docs/performance.md).
 
 CLI exit codes are `0` for success or an expected approval pause, `1` for task/operation failure,
 `2` for invalid CLI input, `3` for configuration failure, `4` for an unavailable dependency, and
@@ -301,6 +315,11 @@ python evaluation/run_eval.py \
 Reports are written to `evaluation/reports/latest.json`, `latest.md`, and an immutable run
 directory. Dataset authoring, metric formulas, exit codes, baseline updates, and reproducibility
 rules are documented in [Offline Agent Evaluation](docs/evaluation.md).
+
+Each captured execution may also include a unified observability snapshot containing the trace
+summary, stage/tool latency, retry/replan counts, performance warnings, and process-local metrics.
+Existing Evaluation latency/token/cost formulas remain authoritative; the snapshot is optional
+diagnostic input and does not establish a second scoring calculation.
 
 The checked-in fixed Mock baseline was generated on 2026-08-05 at commit
 `c1a1b5ecbed395bc53ed2f8318687bef0d728646`, using dataset `1.1.0` with hash

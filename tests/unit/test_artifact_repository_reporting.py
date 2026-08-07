@@ -7,6 +7,7 @@ import pytest
 
 from copilot.contracts import ArtifactType
 from copilot.persistence.artifact_repository import LocalArtifactRepository
+from copilot.services.workflows.ports import ArtifactSizeLimitError
 
 
 def _repository(tmp_path: Path, *, max_size_bytes: int = 1024) -> LocalArtifactRepository:
@@ -43,7 +44,7 @@ def test_repository_enforces_extension_and_size_limit(tmp_path: Path) -> None:
             generator_version="report_generator.v1",
             evidence_ids=("E-001",),
         )
-    with pytest.raises(ValueError, match="size"):
+    with pytest.raises(ArtifactSizeLimitError, match="size"):
         repository.write(
             artifact_id="A-002",
             task_id="T-001",
