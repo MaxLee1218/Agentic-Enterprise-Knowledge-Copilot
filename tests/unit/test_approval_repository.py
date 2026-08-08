@@ -14,10 +14,16 @@ from copilot.contracts import (
     ApprovalResolutionAction,
     ApprovalStatus,
     JsonObject,
+    TaskRequest,
 )
 from copilot.persistence.approval_repository import ApprovalRepository
+from copilot.persistence.identifiers import SequentialIdentifierFactory
+from copilot.persistence.task_repository import WorkflowRepository
+from copilot.services.workflows.state_machine import TaskStateMachine
+from tests.unit.domain.helpers import make_contract, make_plan
 
 NOW = datetime(2026, 8, 2, 8, 0, tzinfo=UTC)
+TENANT_ID = "TENANT-A"
 
 
 def pending_approval() -> ApprovalRequest:
@@ -72,23 +78,43 @@ def test_approval_serialization_preserves_complete_pending_and_resolved_versions
 def test_repository_persists_and_restores_current_approval_version(tmp_path: Path) -> None:
     database = tmp_path / "approval.db"
     pending = pending_approval()
+    workflow = WorkflowRepository(database)
+    workflow.initialize(
+        TaskRequest(
+            id="R-001",
+            user_id="U-001",
+            raw_input="Analyze supplier quality",
+            created_at=NOW,
+        ),
+        make_contract(),
+        make_plan(),
+        TaskStateMachine(
+            clock=lambda: NOW,
+            ids=SequentialIdentifierFactory(),
+        ).initial("T-001"),
+        tenant_id=TENANT_ID,
+    )
+    workflow.close()
     first = ApprovalRepository(database)
-    first.create(pending)
+    first.create(pending, tenant_id=TENANT_ID)
     first.close()
 
     second = ApprovalRepository(database)
     try:
-        assert second.get("AP-001") == pending
-        second.resolve(pending, approved(pending))
-        assert second.history("AP-001") == (pending, approved(pending))
+        assert second.get("AP-001", tenant_id=TENANT_ID) == pending
+        second.resolve(pending, approved(pending), tenant_id=TENANT_ID)
+        assert second.history("AP-001", tenant_id=TENANT_ID) == (pending, approved(pending))
     finally:
         second.close()
 
     restored = ApprovalRepository(database)
     try:
-        assert restored.get("AP-001").status is ApprovalStatus.APPROVED
-        assert restored.get_pending_for_task("T-001") == ()
-        assert restored.history("AP-001") == (pending, approved(pending))
+        assert restored.get("AP-001", tenant_id=TENANT_ID).status is ApprovalStatus.APPROVED
+        assert restored.get_pending_for_task("T-001", tenant_id=TENANT_ID) == ()
+        assert restored.history("AP-001", tenant_id=TENANT_ID) == (
+            pending,
+            approved(pending),
+        )
     finally:
         restored.close()
 
@@ -96,14 +122,14 @@ def test_repository_persists_and_restores_current_approval_version(tmp_path: Pat
 def test_only_one_concurrent_resolution_wins() -> None:
     repository = ApprovalRepository()
     pending = pending_approval()
-    repository.create(pending)
+    repository.create(pending, tenant_id=TENANT_ID)
     resolved = approved(pending)
     barrier = Barrier(2)
 
     def attempt() -> str:
         barrier.wait()
         try:
-            repository.resolve(pending, resolved)
+            repository.resolve(pending, resolved, tenant_id=TENANT_ID)
         except ValueError:
             return "conflict"
         return "resolved"
@@ -112,18 +138,20 @@ def test_only_one_concurrent_resolution_wins() -> None:
         outcomes = tuple(pool.map(lambda _index: attempt(), range(2)))
 
     assert sorted(outcomes) == ["conflict", "resolved"]
-    assert repository.get("AP-001") == resolved
+    assert repository.get("AP-001", tenant_id=TENANT_ID) == resolved
 
 
 def test_repository_reads_cannot_mutate_persisted_argument_history() -> None:
     repository = ApprovalRepository()
     pending = pending_approval()
-    repository.create(pending)
+    repository.create(pending, tenant_id=TENANT_ID)
 
-    returned = repository.get("AP-001")
+    returned = repository.get("AP-001", tenant_id=TENANT_ID)
     returned.proposed_arguments.root["row_limit"] = 1
 
-    assert repository.get("AP-001").proposed_arguments.root["row_limit"] == 10000
+    assert (
+        repository.get("AP-001", tenant_id=TENANT_ID).proposed_arguments.root["row_limit"] == 10000
+    )
 
 
 def test_production_mode_requires_the_formal_approval_migration(tmp_path: Path) -> None:

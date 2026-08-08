@@ -130,14 +130,22 @@ class ReportTool:
             cached_id = self._idempotent_artifacts.get(context.call.idempotency_key)
         if cached_id is not None:
             try:
-                cached = self._artifact_store.get(cached_id)
+                cached = self._artifact_store.get(cached_id, tenant_id=context.tenant_id)
             except (KeyError, LookupError):
                 cached = None
             if cached is not None:
-                evidence = self._composer.load_evidence(request, task_id=context.call.task_id)
+                evidence = self._composer.load_evidence(
+                    request,
+                    task_id=context.call.task_id,
+                    tenant_id=context.tenant_id,
+                )
                 return ToolExecutionOutput(output=self._tool_output(cached, evidence))
 
-        evidence = self._composer.load_evidence(request, task_id=context.call.task_id)
+        evidence = self._composer.load_evidence(
+            request,
+            task_id=context.call.task_id,
+            tenant_id=context.tenant_id,
+        )
         raw_report = self._build_report(arguments, evidence)
         guarded_report = self._output_guard.guard(
             cast(JsonValue, raw_report),
@@ -181,6 +189,7 @@ class ReportTool:
             artifact = self._artifact_store.write(
                 artifact_id=artifact_id,
                 task_id=request.task_id,
+                tenant_id=context.tenant_id,
                 artifact_type=artifact_type,
                 filename=filename,
                 media_type=rendered.media_type,
@@ -204,7 +213,10 @@ class ReportTool:
             )
         except (ReportConsistencyError, OSError, ValueError) as validation_error:
             try:
-                self._artifact_store.delete(artifact.artifact_id)
+                self._artifact_store.delete(
+                    artifact.artifact_id,
+                    tenant_id=context.tenant_id,
+                )
             except (KeyError, OSError, ValueError) as exc:
                 raise ReportPersistenceError() from exc
             if isinstance(validation_error, ReportConsistencyError):

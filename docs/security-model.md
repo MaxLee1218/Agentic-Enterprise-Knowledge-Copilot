@@ -1,8 +1,8 @@
 # Security Model
 
 The frozen Supplier Quality Analysis v1.1 design remains authoritative for identity, task state,
-policy, approval, tool execution, Evidence, and verification. Stage 15 hardens those boundaries; it
-does not add business capabilities or change the frozen four-tool scope.
+policy, approval, tool execution, Evidence, and verification. Stage 17.1 hardens those boundaries;
+it does not add business capabilities, change the frozen four-tool scope, or implement MCP.
 
 ## Security goals and protected assets
 
@@ -41,15 +41,41 @@ does not retain the matched malicious or sensitive value.
 
 ## Identity and trusted context
 
-API, CLI, internal evaluation, and graph entry paths create or receive `TrustedCallerContext` and
-derive `TrustedTaskContext`. These are the existing security contexts; there is no parallel
-Principal model. They carry user, tenant, data scope, supplier scope, roles, authentication source,
-demo marker, purpose, task/session/trace IDs, read-only/approval constraints, and deadline.
+API requests resolve an identity through the injected `IdentityProvider`. Development/test can use
+`DemoIdentityProvider`; CLI execution additionally requires the explicit `--demo` flag. Production
+configuration requires `TrustedHeaderIdentityProvider`, which verifies a short-lived HMAC covering
+user, tenant, roles, scopes, supplier scope, purpose, and timestamp. A missing, stale, malformed,
+or modified assertion is denied; there is no authentication-to-demo fallback.
+
+The trusted gateway adapter is an integration boundary, not an OAuth/JWT domain contract and not a
+replacement for an organization's upstream IdP. Gateway headers must be stripped from untrusted
+internet requests and recreated only after authentication. The signing secret is supplied through
+the deployment secret boundary and is never placed in a URL, log, task, trace, or Artifact.
+
+API, explicit demo CLI, internal evaluation, and graph entry paths create or receive
+`TrustedCallerContext` and derive `TrustedTaskContext`. These contexts carry user, tenant, data
+scope, supplier scope, roles, scopes, authentication source, demo marker, purpose,
+task/session/trace IDs, read-only/approval constraints, and deadline.
 
 Roles and authorization facts are never read from task text or user JSON metadata. Metadata keys
-that represent credentials are rejected at intake. Missing roles are denied for non-demo callers.
-The checked-in API/CLI adapter is explicitly a demo identity: an empty demo role receives only the
-`quality_analyst` fallback. This fallback is not authentication and is not suitable for production.
+that represent credentials are rejected at intake. Missing roles or scopes are denied for trusted
+header callers. Demo identity has only the configured least-privilege `quality_analyst` role by
+default and cannot be constructed in production.
+
+## Mandatory execution and tenant context
+
+Every protected adapter attempt requires an `ExecutionContext` that exactly matches the
+`ToolCall`: task, step, user, tenant, deadline, and approval identifier. It also carries trace,
+roles, scopes, data scope, purpose, authentication state, and cancellation token. The executor
+never synthesizes a privileged/default context. A missing context is a call-signature error; an
+unauthenticated or mismatched context raises a stable authorization error before tool execution.
+
+Tenant isolation is enforced at persistence boundaries. Tenant-owned tables include Task, Task
+State and events, plan/result/step/tool data, Evidence, Approval and history, Artifact metadata,
+tool/workflow Audit, execution lease, and checkpoint state. Repository reads and writes require a
+tenant, SQL statements filter by it, indexed composite keys support those filters, and composite
+foreign keys prevent cross-tenant child/task associations. A wrong tenant receives not-found or an
+empty scoped collection rather than another tenant's data.
 
 ## Demo role and permission matrix
 
@@ -73,6 +99,12 @@ Authorization is enforced at plan validation, policy check, `ToolExecutor`, the 
 approval service, task service, and Artifact service. `ToolExecutor` rechecks the current explicit
 trusted context for every real attempt, so a persisted plan or direct executor call is not an
 authorization grant.
+
+When policy or caller constraints require approval, the executor requires a current approved
+record matching tenant, task, step, tool name/version, input-schema fingerprint, controlled scope,
+and the hash/fingerprint of the final arguments. Rejected, revoked, expired, missing, wrong-owner,
+wrong-tool, and edited-but-mismatched approvals are denied. Resume rebuilds and revalidates the
+trusted context; a checkpoint is not a permanent authorization grant.
 
 ## Database table and field access
 
@@ -186,8 +218,12 @@ Security violations are verifier errors, not warnings, and cannot result in `COM
 
 - Prompt injection risk is reduced by layered deterministic controls; it is not eliminated.
 - The rule-based injection and secret detectors are bounded and require continued evaluation.
-- The role matrix and identity providers are demo/portfolio adapters, not OAuth, SSO, or enterprise
-  IAM. Production must supply real authentication, role/scope refresh, and revocation.
+- The trusted-header provider verifies an authenticated gateway assertion but does not implement
+  OAuth, SSO, workforce lifecycle, role/scope refresh, or revocation. Production must supply and
+  govern that upstream IAM/gateway layer.
+- Synchronous HTTP, database, and report work cannot be forcibly stopped by Python. Cancellation
+  invalidates their result and exposes `CANCELLATION_REQUESTED` until the adapter returns; Analytics
+  is cooperatively cancellable at bounded checkpoints.
 - PostgreSQL deployment persistence and filesystem Artifacts are not automatically tamper-evident
   audit or governed object storage. Production still needs retention, legal hold, access logging,
   encryption/KMS controls, and independent Artifact-volume backup.

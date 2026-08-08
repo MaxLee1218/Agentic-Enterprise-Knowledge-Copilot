@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from copilot.api.app import create_app
 from copilot.bootstrap.container import build_application
 from copilot.config import get_settings
+from copilot.security.identity import build_identity_provider
 
 settings = get_settings()
 
@@ -20,6 +21,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         application.state.approval_service = container.approval_service
         application.state.artifact_service = container.artifact_service
         application.state.settings = settings
+        application.state.identity_provider = build_identity_provider(settings)
         application.state.observability = container.observability
         application.state.readiness = container.readiness
         yield

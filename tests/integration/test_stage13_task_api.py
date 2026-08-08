@@ -13,6 +13,7 @@ from copilot.config import Settings
 from copilot.contracts import SpanKind, SpanStatus
 from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.persistence.identifiers import SequentialIdentifierFactory
+from copilot.security.identity import DemoIdentityProvider
 from copilot.services.task_intake import TrustedCallerContext
 from tests.workflow_helpers import fixed_clock
 
@@ -40,6 +41,7 @@ def _client(tmp_path: Path) -> tuple[TestClient, WorkflowContainer]:
         approval_service=container.approval_service,
         settings=settings,
         observability=container.observability,
+        identity_provider=DemoIdentityProvider(settings),
     )
     return TestClient(application), container
 
@@ -125,7 +127,9 @@ def test_waiting_approval_can_be_cancelled_and_old_approval_cannot_resume(
         assert repeated.json()["status"] == "CANCELLED"
         assert stale.status_code == 409
         assert stale.json()["error_code"] == "APPROVAL_ALREADY_RESOLVED"
-        audit_events = {record.event for record in container.workflow_audit.list()}
+        audit_events = {
+            record.event for record in container.workflow_audit.list(tenant_id="TENANT-DEMO")
+        }
         assert "task_cancellation_requested" in audit_events
         assert "task_cancelled" in audit_events
     finally:
@@ -151,7 +155,9 @@ def test_unauthorized_task_and_artifact_access_is_denied(tmp_path: Path) -> None
         assert task.status_code == 403
         assert artifact.status_code == 403
         assert task.json()["error_code"] == "TASK_PERMISSION_DENIED"
-        audit_events = {record.event for record in container.workflow_audit.list()}
+        audit_events = {
+            record.event for record in container.workflow_audit.list(tenant_id="TENANT-DEMO")
+        }
         assert {"permission_denied", "artifact_read_denied"}.issubset(audit_events)
     finally:
         container.close()
@@ -164,7 +170,7 @@ def test_missing_artifact_file_returns_gone_without_exposing_path(tmp_path: Path
             created = client.post("/v1/tasks", json={"task": TASK_TEXT})
             payload = created.json()
             artifact_id = payload["artifacts"][0]["artifact_id"]
-            metadata = container.artifacts.get_by_id(artifact_id)
+            metadata = container.artifacts.get_by_id(artifact_id, tenant_id="TENANT-DEMO")
             container.artifacts.path_for(metadata).unlink()
             response = client.get(f"/v1/tasks/{payload['task_id']}/artifacts/{artifact_id}")
         assert response.status_code == 410

@@ -229,10 +229,17 @@ class EvaluationHarness:
             if execution is not None
             else (state["domain_state"].state if state is not None else None)
         )
-        tool_results = container.repository.tool_results_for(task_id) if task_id else ()
-        approvals = container.approval_repository.list_by_task(task_id) if task_id else ()
+        tenant_id = case.actor_context.tenant_id
+        tool_results = (
+            container.repository.tool_results_for(task_id, tenant_id=tenant_id) if task_id else ()
+        )
+        approvals = (
+            container.approval_repository.list_by_task(task_id, tenant_id=tenant_id)
+            if task_id
+            else ()
+        )
         artifact_probe = self._artifact_authorization_probe(container, case, task_id)
-        events = _workflow_events(container, task_id)
+        events = _workflow_events(container, task_id, tenant_id=tenant_id)
         errors = (
             execution.errors
             if execution is not None
@@ -241,7 +248,11 @@ class EvaluationHarness:
         step_results = (
             execution.step_results
             if execution is not None
-            else (container.repository.step_results_for(task_id) if task_id else ())
+            else (
+                container.repository.step_results_for(task_id, tenant_id=tenant_id)
+                if task_id
+                else ()
+            )
         )
         retries = sum(max(result.attempt - 1, 0) for result in tool_results)
         trace_id = (
@@ -277,11 +288,19 @@ class EvaluationHarness:
             tool_calls=tuple(state["tool_calls"] if state is not None else ()),
             tool_results=tool_results,
             step_results=step_results,
-            evidence=container.evidence.list_for_task(task_id) if task_id else (),
-            artifacts=container.artifacts.list_by_task(task_id) if task_id else (),
+            evidence=(
+                container.evidence.list_for_task(task_id, tenant_id=tenant_id) if task_id else ()
+            ),
+            artifacts=(
+                container.artifacts.list_by_task(task_id, tenant_id=tenant_id) if task_id else ()
+            ),
             artifact_texts=tuple(
                 _artifact_text(container, artifact)
-                for artifact in (container.artifacts.list_by_task(task_id) if task_id else ())
+                for artifact in (
+                    container.artifacts.list_by_task(task_id, tenant_id=tenant_id)
+                    if task_id
+                    else ()
+                )
             ),
             verification_result=(
                 execution.verification_result
@@ -292,7 +311,7 @@ class EvaluationHarness:
             errors=errors,
             warnings=_warnings(step_results),
             workflow_events=events,
-            tool_audit_events=_tool_audit_events(container, task_id),
+            tool_audit_events=_tool_audit_events(container, task_id, tenant_id=tenant_id),
             artifact_authorization_probe=artifact_probe,
             llm_usage=tuple(provider.records),
             retry_count=retries,
@@ -311,7 +330,14 @@ class EvaluationHarness:
     ) -> str | None:
         if "artifact_authorization" not in case.tags:
             return None
-        artifacts = container.artifacts.list_by_task(task_id) if task_id else ()
+        artifacts = (
+            container.artifacts.list_by_task(
+                task_id,
+                tenant_id=case.actor_context.tenant_id,
+            )
+            if task_id
+            else ()
+        )
         if task_id is None or not artifacts:
             return "NO_ARTIFACT"
         attacker = TrustedCallerContext(
@@ -344,7 +370,10 @@ class EvaluationHarness:
     ) -> ApprovalResolutionResult:
         action_name = case.execution_config.approval_action or "approve"
         action = ApprovalResolutionAction(action_name.upper())
-        pending = container.approval_repository.get(approval_id)
+        pending = container.approval_repository.get(
+            approval_id,
+            tenant_id=caller.tenant_id,
+        )
         edited: JsonObject | None = None
         if action is ApprovalResolutionAction.EDIT:
             values = dict(pending.proposed_arguments.root)
@@ -515,10 +544,10 @@ def _artifact_text(container: WorkflowContainer, artifact: Artifact) -> str:
 
 
 def _workflow_events(
-    container: WorkflowContainer, task_id: str | None
+    container: WorkflowContainer, task_id: str | None, *, tenant_id: str
 ) -> tuple[dict[str, JsonValue], ...]:
     events: list[dict[str, JsonValue]] = []
-    for record in container.workflow_audit.list():
+    for record in container.workflow_audit.list(tenant_id=tenant_id, task_id=task_id):
         if task_id is not None and record.task_id != task_id:
             continue
         events.append(
@@ -537,10 +566,10 @@ def _workflow_events(
 
 
 def _tool_audit_events(
-    container: WorkflowContainer, task_id: str | None
+    container: WorkflowContainer, task_id: str | None, *, tenant_id: str
 ) -> tuple[dict[str, JsonValue], ...]:
     events: list[dict[str, JsonValue]] = []
-    for record in container.tool_audit.list():
+    for record in container.tool_audit.list(tenant_id=tenant_id, task_id=task_id):
         if task_id is not None and record.task_id != task_id:
             continue
         events.append(

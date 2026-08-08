@@ -185,6 +185,10 @@ def test_valid_production_profile_is_strict_and_separates_databases(
     monkeypatch.setenv("DATABASE_PROVIDER", "sqlalchemy")
     monkeypatch.setenv("KNOWLEDGE_PROVIDER", "http")
     monkeypatch.setenv("RAG_BASE_URL", "https://rag.internal.example")
+    monkeypatch.setenv("IDENTITY_PROVIDER", "trusted_headers")
+    monkeypatch.setenv("IDENTITY_SIGNING_SECRET", "stage17-test-identity-secret-value")
+    monkeypatch.setenv("LLM_PROVIDER", "deepseek")
+    monkeypatch.setenv("LLM_API_KEY", "stage17-test-llm-key")
 
     settings = get_settings()
 

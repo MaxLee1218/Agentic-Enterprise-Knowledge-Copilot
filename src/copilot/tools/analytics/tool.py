@@ -76,6 +76,7 @@ class AnalyticsTool:
 
     def execute(self, arguments: JsonObject, context: ToolExecutionContext) -> ToolExecutionOutput:
         """Validate lineage, calculate metrics, and return one calculation evidence draft."""
+        context.cancellation.raise_if_requested()
         self.call_count += 1
         request = self._parse_request(arguments)
         source_evidence = self._validate_lineage(request, context)
@@ -85,7 +86,9 @@ class AnalyticsTool:
         if not checksum_matches(raw_dataset, request.dataset_checksum):
             raise AnalyticsInputDeniedError("Analytics dataset checksum does not match its input")
 
+        context.cancellation.raise_if_requested()
         metrics, warnings = calculate_metrics(request)
+        context.cancellation.raise_if_requested()
         result = AnalyticsResult(
             metrics=metrics,
             warnings=warnings,
@@ -140,6 +143,7 @@ class AnalyticsTool:
                 "dataset_evidence_id": request.dataset_evidence_id,
             },
         )
+        context.cancellation.raise_if_requested()
         return ToolExecutionOutput(output=JsonObject(output_mapping), evidence=(evidence,))
 
     @staticmethod
@@ -155,7 +159,11 @@ class AnalyticsTool:
         context: ToolExecutionContext,
     ) -> EvidenceItem:
         try:
-            evidence = self._evidence_reader.get(request.dataset_evidence_id)
+            evidence = self._evidence_reader.get(
+                request.dataset_evidence_id,
+                task_id=context.call.task_id,
+                tenant_id=context.tenant_id,
+            )
         except (KeyError, LookupError) as exc:
             raise AnalyticsInputDeniedError("Analytics input evidence does not exist") from exc
         if evidence.task_id != context.call.task_id:

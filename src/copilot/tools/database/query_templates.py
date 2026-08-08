@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import Select, bindparam, func, select
+from sqlalchemy import Select, String, bindparam, func, select
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.sql.functions import FunctionElement
 
 from copilot.tools.database.errors import DatabaseQueryValidationError
 from copilot.tools.database.models import IncomingInspection, Supplier
@@ -19,6 +21,30 @@ class QueryTemplate:
     template_id: str
     statement: Select[Any]
     columns: tuple[tuple[str, str], ...]
+
+
+class MonthPeriod(FunctionElement[str]):
+    """Portable, allowlisted year-month projection for SQLite and PostgreSQL."""
+
+    type = String()
+    name = "month_period"
+    inherit_cache = True
+
+
+@compiles(MonthPeriod, "sqlite")
+def _compile_sqlite_month_period(element: MonthPeriod, compiler: Any, **kwargs: Any) -> str:
+    argument = compiler.process(next(iter(element.clauses)), **kwargs)
+    return f"strftime('%Y-%m', {argument})"
+
+
+@compiles(MonthPeriod, "postgresql")
+def _compile_postgresql_month_period(
+    element: MonthPeriod,
+    compiler: Any,
+    **kwargs: Any,
+) -> str:
+    argument = compiler.process(next(iter(element.clauses)), **kwargs)
+    return f"to_char({argument}, 'YYYY-MM')"
 
 
 class QueryTemplateRegistry:
@@ -56,7 +82,7 @@ class QueryTemplateRegistry:
         return statement
 
     def _summary(self, filter_supplier_ids: bool) -> QueryTemplate:
-        period = func.strftime("%Y-%m", IncomingInspection.inspection_date).label("period")
+        period = MonthPeriod(IncomingInspection.inspection_date).label("period")
         statement = (
             self._base_statement(filter_supplier_ids=filter_supplier_ids)
             .add_columns(
@@ -106,4 +132,4 @@ class QueryTemplateRegistry:
         )
 
 
-__all__ = ["QueryTemplate", "QueryTemplateRegistry"]
+__all__ = ["MonthPeriod", "QueryTemplate", "QueryTemplateRegistry"]

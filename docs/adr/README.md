@@ -96,3 +96,4 @@ What becomes easier or harder, including operational and migration effects?
 | [ADR-004](ADR-004-approval-edit-resolution.md) | Accepted | 2026-08-02 | Resolve bounded approval edits with complete replacement arguments and checkpoint resume |
 | [ADR-005](ADR-005-local-observability-boundary.md) | Accepted | 2026-08-06 | Use injected provider-independent observability with bounded local logs, spans, metrics, and analysis |
 | [ADR-006](ADR-006-deployment-persistence-boundary.md) | Accepted | 2026-08-07 | Separate Copilot PostgreSQL persistence from the enterprise business database and use explicit migrations |
+| [ADR-007](ADR-007-stage-18-mcp-readiness-boundary.md) | Accepted | 2026-08-08 | Preserve frozen v1.1 scope and require Stage 17.1 hardening gates before any separate Stage 18 MCP work |

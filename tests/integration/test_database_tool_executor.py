@@ -15,6 +15,7 @@ from copilot.services.workflows.models import SupplierQualityCommand
 from copilot.tools import ToolExecutor, ToolRegistry
 from copilot.tools.database import DatabaseConnection, DatabaseTool
 from copilot.tools.database.seed import seed_demo_database
+from tests.execution_helpers import execution_context
 from tests.unit.database.helpers import database_arguments
 from tests.workflow_helpers import build_test_container
 
@@ -50,7 +51,7 @@ def test_executor_runs_real_database_tool_and_records_evidence(tmp_path: Path) -
         user_id="U-QUALITY",
     )
     try:
-        result = executor.execute(call)
+        result = executor.execute(call, execution_context(call))
     finally:
         executor.close()
         tool.close()
@@ -59,10 +60,10 @@ def test_executor_runs_real_database_tool_and_records_evidence(tmp_path: Path) -
     assert result.output is not None
     assert result.latency_ms is not None and result.latency_ms >= 0
     assert len(result.evidence_ids) == 1
-    evidence = ledger.get(result.evidence_ids[0])
+    evidence = ledger.get(result.evidence_ids[0], task_id=call.task_id, tenant_id=call.tenant_id)
     assert evidence.source_type is EvidenceType.DATABASE
     assert evidence.task_id == call.task_id
-    assert audit.list()[0].status is ToolResultStatus.SUCCESS
+    assert audit.list(tenant_id=call.tenant_id)[0].status is ToolResultStatus.SUCCESS
 
 
 def test_full_workflow_can_use_real_database_tool(tmp_path: Path) -> None:

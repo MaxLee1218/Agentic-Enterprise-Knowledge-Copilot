@@ -34,6 +34,7 @@ from copilot.tools.knowledge import (
     RAGTimeoutError,
     RAGUnavailableError,
 )
+from tests.execution_helpers import execution_context
 
 
 def input_payload(query: str = "quality policy") -> JsonObject:
@@ -121,7 +122,9 @@ def test_tool_calls_client_with_query_trace_and_creates_document_evidence() -> N
     tool = KnowledgeTool(client)
     context = ToolExecutionContext(
         call=make_call(tool),
-        metadata=JsonObject({"trace_id": "upstream-trace"}),
+        trace_id="upstream-trace",
+        tenant_id="TENANT-A",
+        user_id="U-1",
     )
 
     execution = tool.execute(input_payload(), context)
@@ -211,7 +214,8 @@ def test_registry_executor_records_evidence_and_does_not_amplify_client_retry() 
     )
 
     try:
-        result = executor.execute(make_call(tool))
+        call = make_call(tool)
+        result = executor.execute(call, execution_context(call))
     finally:
         executor.close()
 
@@ -251,7 +255,8 @@ def test_executor_with_http_client_stops_after_configured_transport_attempts() -
     )
 
     try:
-        result = executor.execute(make_call(tool))
+        call = make_call(tool)
+        result = executor.execute(call, execution_context(call))
     finally:
         executor.close()
 
@@ -274,12 +279,13 @@ def test_registry_executor_success_makes_evidence_available_to_workflow_reader()
     )
 
     try:
-        result = executor.execute(make_call(tool))
+        call = make_call(tool)
+        result = executor.execute(call, execution_context(call))
     finally:
         executor.close()
 
     assert result.status is ToolResultStatus.SUCCESS
     assert len(result.evidence_ids) == 2
-    assert len(ledger.list_for_task("T-HTTP")) == 2
+    assert len(ledger.list_for_task("T-HTTP", tenant_id="TENANT-A")) == 2
     assert result.latency_ms is not None
     assert result.latency_ms >= 0

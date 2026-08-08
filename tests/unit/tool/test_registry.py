@@ -1,5 +1,8 @@
 """Registry behavior and governance validation tests."""
 
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
+
 import pytest
 
 from copilot.contracts import RiskLevel
@@ -8,7 +11,15 @@ from copilot.tools.exceptions import (
     ToolDefinitionValidationError,
     ToolNotFoundError,
 )
-from copilot.tools.registry import ToolRegistry, validate_tool_name
+from copilot.tools.registry import (
+    RegistrationSource,
+    ToolCancellationMode,
+    ToolOrigin,
+    ToolProvenance,
+    ToolRegistrationRequest,
+    ToolRegistry,
+    validate_tool_name,
+)
 from tests.mocks.mock_tools import MockDatabaseTool, MockKnowledgeTool
 
 
@@ -66,3 +77,87 @@ def test_registry_rejects_high_risk_tools_in_frozen_v1() -> None:
 
     with pytest.raises(ToolDefinitionValidationError, match="Risk level"):
         ToolRegistry().register(tool)
+
+
+def _request(tool: MockKnowledgeTool | MockDatabaseTool) -> ToolRegistrationRequest:
+    return ToolRegistrationRequest(
+        tool=tool,
+        namespace="partner-a",
+        origin=ToolOrigin(source_id="approved-source-a", origin_type="external_service"),
+        provenance=ToolProvenance(
+            provider="controlled-test-provider",
+            revision="2026.08",
+            checksum="sha256:registry-fixture",
+        ),
+        schema_version="tool-definition.v1",
+        registration_source=RegistrationSource.DISCOVERY,
+        cancellation_mode=ToolCancellationMode.COOPERATIVE,
+    )
+
+
+def test_namespace_metadata_atomic_refresh_and_reliable_revocation() -> None:
+    registry = ToolRegistry(allowed_namespaces=("local", "partner-a"))
+    committed = registry.refresh_namespace(
+        "partner-a",
+        (_request(MockKnowledgeTool()), _request(MockDatabaseTool())),
+    )
+
+    assert [entry.canonical_name for entry in committed] == [
+        "partner-a.knowledge_search",
+        "partner-a.database_query",
+    ]
+    knowledge = registry.registration("partner-a.knowledge_search")
+    assert knowledge.origin.source_id == "approved-source-a"
+    assert knowledge.provenance.revision == "2026.08"
+    assert knowledge.registration_source is RegistrationSource.DISCOVERY
+    assert knowledge.cancellation_mode is ToolCancellationMode.COOPERATIVE
+
+    generation = registry.generation
+    with pytest.raises(ToolDefinitionValidationError, match="collision"):
+        registry.refresh_namespace(
+            "partner-a",
+            (_request(MockKnowledgeTool()), _request(MockKnowledgeTool())),
+        )
+    assert registry.generation == generation
+    assert len(registry.registrations()) == 2
+
+    assert registry.revoke_namespace("partner-a") == 2
+    with pytest.raises(ToolNotFoundError):
+        registry.get("partner-a.knowledge_search")
+
+
+def test_concurrent_namespace_reads_never_observe_partial_refresh_or_revoke() -> None:
+    registry = ToolRegistry(allowed_namespaces=("local", "partner-a"))
+    old_set = (_request(MockKnowledgeTool()), _request(MockDatabaseTool()))
+    new_set = (_request(MockKnowledgeTool()),)
+    registry.refresh_namespace("partner-a", old_set)
+    start = Event()
+
+    def reader() -> set[int]:
+        observed: set[int] = set()
+        start.wait()
+        for _index in range(1000):
+            observed.add(
+                len(
+                    tuple(
+                        item for item in registry.registrations() if item.namespace == "partner-a"
+                    )
+                )
+            )
+        return observed
+
+    def writer() -> None:
+        start.wait()
+        for _index in range(100):
+            registry.refresh_namespace("partner-a", new_set)
+            registry.refresh_namespace("partner-a", old_set)
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        reads = [pool.submit(reader), pool.submit(reader)]
+        update = pool.submit(writer)
+        start.set()
+        update.result()
+        observed = set().union(*(future.result() for future in reads))
+
+    assert observed.issubset({1, 2})
+    assert 0 not in observed

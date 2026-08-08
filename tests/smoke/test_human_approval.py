@@ -36,7 +36,7 @@ def test_offline_human_approval_edit_smoke(tmp_path: Path) -> None:
         task_id = captured.value.task_id
         approval_id = captured.value.approval_id
         assert approval_id is not None
-        pending = container.approval_repository.get(approval_id)
+        pending = container.approval_repository.get(approval_id, tenant_id=caller.tenant_id)
         edited = dict(pending.proposed_arguments.root)
         edited["row_limit"] = 5000
 

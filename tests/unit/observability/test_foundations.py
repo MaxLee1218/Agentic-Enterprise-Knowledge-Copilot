@@ -48,6 +48,32 @@ def test_context_nesting_restoration_exception_and_thread_isolation() -> None:
         assert context.current.step_id is None
     assert context.current.trace_id is None
 
+
+def test_contextvars_isolate_parallel_async_tasks_and_restore_parent() -> None:
+    context = ObservabilityContextManager()
+    context.clear()
+
+    async def worker(trace_id: str, task_id: str) -> tuple[str | None, str | None]:
+        with context.bind(trace_id=trace_id, task_id=task_id):
+            await asyncio.sleep(0)
+            return context.current.trace_id, context.current.task_id
+
+    async def scenario() -> tuple[tuple[str | None, str | None], ...]:
+        with context.bind(trace_id="TRACE-parent", task_id="T-parent"):
+            results = await asyncio.gather(
+                worker("TRACE-async-A", "T-async-A"),
+                worker("TRACE-async-B", "T-async-B"),
+            )
+            assert context.current.trace_id == "TRACE-parent"
+            assert context.current.task_id == "T-parent"
+            return tuple(results)
+
+    assert set(asyncio.run(scenario())) == {
+        ("TRACE-async-A", "T-async-A"),
+        ("TRACE-async-B", "T-async-B"),
+    }
+    assert context.current.trace_id is None
+
     def isolated(trace_id: str) -> str | None:
         with context.bind(trace_id=trace_id):
             return context.current.trace_id

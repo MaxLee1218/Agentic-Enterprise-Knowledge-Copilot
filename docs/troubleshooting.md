@@ -124,11 +124,32 @@ entry follows symptom, probable cause, diagnostic, and resolution.
 ### Configuration validation failure
 
 - **Symptom:** startup reports a `SETTINGS` validation error.
-- **Probable cause:** production uses debug/auto-schema, Mock providers, SQLite, loopback RAG, blank
-  required URL, or an unsupported environment.
+- **Probable cause:** production uses demo identity, lacks a valid signing secret, uses
+  debug/auto-schema, Mock providers, SQLite, loopback RAG, a blank required URL/credential, or an
+  unsupported environment.
 - **Diagnostic:** compare injected variable names and non-secret values with `.env.example` and
   `docs/deployment.md`.
 - **Resolution:** supply a valid production profile. Do not weaken validation to accept demo values.
+
+### Signed identity rejected
+
+- **Symptom:** a protected API route returns HTTP 401 with `IDENTITY_RESOLUTION_FAILED`.
+- **Probable cause:** the gateway assertion is missing, stale, signed with a different secret,
+  modified after signing, missing roles/scopes/data scope, or affected by clock skew.
+- **Diagnostic:** correlate request/trace ID with gateway Audit; compare secret version and clocks;
+  verify the canonical header names and assertion age without printing header values or signature.
+- **Resolution:** repair the gateway/header-stripping/signing path, synchronize clocks, or rotate the
+  managed secret. Never fall back to Demo Identity or accept unsigned headers.
+
+### Wrong tenant returns not found
+
+- **Symptom:** a task, Evidence, Approval, Artifact, Audit, or checkpoint exists for one caller but
+  is missing for another tenant.
+- **Probable cause:** expected tenant isolation, or an upstream tenant mapping defect.
+- **Diagnostic:** verify the authenticated tenant claim and query the authoritative repository with
+  both tenant and object ID. Use hashes/IDs only; do not inspect another tenant's payload casually.
+- **Resolution:** if the claim is wrong, fix the IdP/gateway mapping and revoke affected sessions. If
+  a cross-tenant read ever succeeds, stop task acceptance and follow the P0 tenant-incident runbook.
 
 ### HTTP 500 response
 
@@ -188,6 +209,18 @@ entry follows symptom, probable cause, diagnostic, and resolution.
   `python scripts/inspect_task.py TASK_ID --performance`.
 - **Resolution:** resolve a legitimate approval, restore the dependency, or use the existing bounded
   recovery path after lease expiry. Do not edit state rows.
+
+### Cancellation remains requested
+
+- **Symptom:** the task no longer accepts a result, but a Knowledge, Database, or Report worker is
+  still draining.
+- **Probable cause:** the adapter is truthfully classified non-cancellable; Python cannot forcibly
+  stop its synchronous thread safely.
+- **Diagnostic:** correlate task/tool Audit and trace, token request time, dependency timeout, and
+  shutdown grace period. Confirm no Evidence or Artifact was committed from the late result.
+- **Resolution:** wait for the bounded adapter timeout or terminate the process after the deployment
+  grace policy. Repair an unbounded dependency timeout; do not relabel requested work as already
+  interrupted.
 
 ### Checkpoint recovery failure
 
@@ -262,4 +295,3 @@ entry follows symptom, probable cause, diagnostic, and resolution.
   first failure.
 - **Resolution:** stop the loop, repair config/migration/image/dependency, then start once and verify
   liveness/readiness before restoring the restart policy.
-

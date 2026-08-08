@@ -12,9 +12,11 @@ from copilot.bootstrap.knowledge import build_http_knowledge_client
 from copilot.config import ConfigurationError, get_settings
 from copilot.contracts import EvidenceItem, JsonObject, ToolCall
 from copilot.evidence.ledger import InMemoryEvidenceLedger
-from copilot.persistence.audit_repository import InMemoryToolAuditRepository
+from copilot.persistence.audit_repository import ToolAuditRepository
 from copilot.policies.offline import OfflineSupplierQualityAuthorizer
+from copilot.services.execution import ExecutionContext
 from copilot.tools import ToolExecutor, ToolRegistry
+from copilot.tools.cancellation import CancellationToken
 from copilot.tools.knowledge import (
     KnowledgeResult,
     KnowledgeTool,
@@ -150,7 +152,7 @@ def _record_evidence(result: KnowledgeResult, question: str) -> tuple[EvidenceIt
         registry=registry,
         authorizer=OfflineSupplierQualityAuthorizer(),
         evidence_recorder=ledger,
-        audit_sink=InMemoryToolAuditRepository(),
+        audit_sink=ToolAuditRepository(),
     )
     call = ToolCall(
         tool_call_id="TC-KNOWLEDGE-CLI",
@@ -176,12 +178,36 @@ def _record_evidence(result: KnowledgeResult, question: str) -> tuple[EvidenceIt
         user_id="local-verification",
     )
     try:
-        execution = executor.execute(call)
+        execution = executor.execute(
+            call,
+            ExecutionContext(
+                task_id=call.task_id,
+                trace_id="TRACE-KNOWLEDGE-CLI",
+                step_id=call.step_id,
+                user_id=call.user_id,
+                tenant_id=call.tenant_id,
+                roles=("quality_analyst",),
+                scopes=("task:execute", "data:quality.v1"),
+                data_scope=("quality.v1",),
+                purpose="supplier_quality_analysis.v1",
+                authentication_source="explicit_local_verification",
+                is_demo_identity=True,
+                authenticated=True,
+                deadline_at=call.deadline_at,
+                approval_required=False,
+                approval_id=None,
+                cancellation=CancellationToken(),
+            ),
+        )
     finally:
         executor.close()
     if execution.error is not None:
         raise RuntimeError(execution.error.message)
-    return ledger.list_for_call(call.tool_call_id)
+    return ledger.list_for_call(
+        call.tool_call_id,
+        task_id=call.task_id,
+        tenant_id=call.tenant_id,
+    )
 
 
 def _print_configuration_error(error: Exception, as_json: bool) -> int:

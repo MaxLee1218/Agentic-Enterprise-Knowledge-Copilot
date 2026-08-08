@@ -1,8 +1,8 @@
 # Deployment Guide
 
-This guide deploys the Stage 17 Copilot baseline. It does not deploy production IAM, a managed
-secret store, an Enterprise RAG implementation, or MCP. The Enterprise RAG Engine remains an
-independent service and image.
+This guide deploys the Stage 17.1 hardened Copilot foundation. It does not deploy the upstream
+enterprise IdP/gateway, a managed secret store, an Enterprise RAG implementation, or MCP. The
+Enterprise RAG Engine remains an independent service and image.
 
 ## Architecture
 
@@ -35,6 +35,8 @@ Start from `.env.example`, but do not put production secrets in a committed `.en
 |---|---|---|
 | `APP_ENV` | Configuration profile | `production` |
 | `DEBUG` | Debug behavior | `false` |
+| `IDENTITY_PROVIDER` | Authentication adapter | `trusted_headers` |
+| `IDENTITY_SIGNING_SECRET` | Trusted-gateway assertion verification | Secret injection, at least 32 bytes |
 | `PERSISTENCE_DATABASE_URL` | Copilot-owned state | Explicit PostgreSQL URL |
 | `PERSISTENCE_AUTO_CREATE_SCHEMA` | Test/dev schema helper | `false` |
 | `DATABASE_URL` | Read-only enterprise business DB | Approved non-SQLite source |
@@ -42,16 +44,18 @@ Start from `.env.example`, but do not put production secrets in a committed `.en
 | `KNOWLEDGE_PROVIDER` | Knowledge adapter | `http` |
 | `RAG_BASE_URL` | Independent RAG endpoint | Valid, approved, non-loopback URL |
 | `RAG_TIMEOUT_SECONDS` | Per-attempt timeout | Bounded for the environment |
+| `LLM_PROVIDER`, `LLM_API_KEY` | Structured planning provider | Real provider and injected credential |
 | `ARTIFACT_DIR` | Artifact content root | Writable persistent volume |
 | `DB_POOL_SIZE` | PostgreSQL base pool | Match worker concurrency |
 | `DB_MAX_OVERFLOW` | Temporary pool burst | Keep bounded |
 | `DB_POOL_TIMEOUT_SECONDS` | Pool checkout wait | Fail within request budget |
 | `LOG_LEVEL`, `LOG_FORMAT` | stdout/stderr logging | Structured and non-debug |
 
-Production validation fails fast if debug or automatic schema creation is enabled, if persistence
-is not PostgreSQL, if real providers are not selected, if the business database uses SQLite, or if
-RAG is loopback. The checked-in Demo Identity is still a production rollout blocker: put the API
-behind trusted authentication or implement the approved identity adapter before exposing it.
+Production validation fails fast if trusted identity/signing material is missing, debug or
+automatic schema creation is enabled, persistence is not PostgreSQL, real providers are not
+selected, the business database uses SQLite, the model credential is absent, checkpointing is
+disabled, or RAG is loopback. `DemoIdentityProvider` refuses production construction; failed
+authentication never falls back to demo authority.
 
 ## Docker image build
 
@@ -68,6 +72,13 @@ No credential, RAG token, database password, or environment-specific URL belongs
 
 ## Docker Compose
 
+`docker-compose.yml` is an explicitly development topology. It contains local demo PostgreSQL
+credentials and Mock LLM/business-database providers and must not be promoted as a production
+manifest. `docker-compose.production.yml` is the fail-closed production expectation: it requires
+an immutable Copilot image, approved RAG image, trusted identity secret, model credential,
+PostgreSQL URL/credentials, and read-only enterprise business database URL. It contains no secret
+defaults and runs migration as a one-shot dependency before the API.
+
 Obtain the independently packaged RAG image first:
 
 ```bash
@@ -76,6 +87,22 @@ docker compose config
 docker compose build
 docker compose up -d
 ```
+
+Production topology validation and startup use the separate file:
+
+```bash
+docker compose -f docker-compose.production.yml config
+docker compose -f docker-compose.production.yml up -d
+docker compose -f docker-compose.production.yml ps
+curl --fail http://127.0.0.1:${COPILOT_PORT:-8000}/health/live
+curl --fail http://127.0.0.1:${COPILOT_PORT:-8000}/health/ready
+docker compose -f docker-compose.production.yml down
+```
+
+The production file intentionally does not publish PostgreSQL or RAG ports. Keep
+`PERSISTENCE_DATABASE_URL` consistent with the composed PostgreSQL credentials, or point it at an
+approved managed PostgreSQL and remove the local database through a reviewed override. The
+enterprise business database remains an external, independently governed dependency.
 
 The current sibling Enterprise RAG Engine source checkout has no Dockerfile. Its owner must supply
 an approved image or separately governed image packaging. Do not improvise that packaging inside
@@ -106,7 +133,7 @@ alembic current
 python -m copilot.persistence.migrate
 ```
 
-For a fresh PostgreSQL database, `alembic current` must report `20260807_0001 (head)` before the API
+For a fresh PostgreSQL database, `alembic current` must report `20260808_0002 (head)` before the API
 starts. Grant the runtime API role only the data privileges it needs; a separate deployment role
 may own schema changes.
 
@@ -129,9 +156,11 @@ image layer, command transcript, or committed file.
 3. Start PostgreSQL and wait for `pg_isready`.
 4. Run `python -m copilot.persistence.migrate` once as a deployment job.
 5. Verify the independent RAG with `scripts/check_rag_health.py`.
-6. Start `copilot.bootstrap.api:app` using the same composition root as local execution.
-7. Check `/health/live` and `/health/ready`.
-8. Run `python scripts/smoke_agent.py --show-trace` with approved test data.
+6. Configure the upstream trusted gateway to replace spoofable inbound identity headers and sign
+   the normalized identity assertion.
+7. Start `copilot.bootstrap.api:app` using the same composition root as local execution.
+8. Check `/health/live` and `/health/ready`.
+9. Run an authenticated smoke request with approved test data.
 
 Do not have every API worker race to apply migrations.
 
@@ -139,8 +168,9 @@ Do not have every API worker race to apply migrations.
 
 - `/health` retains the compatibility response `{"status":"ok"}`.
 - `/health/live` proves the process can serve requests; it does not prove dependencies are ready.
-- `/health/ready` probes persistence, Artifact storage, and real RAG when configured. HTTP 503 means
-  new task acceptance is unsafe. The process may still serve liveness and historical reads.
+- `/health/ready` probes persistence, Artifact storage, the registered enterprise business schema
+  when the real Database Tool is configured, and real RAG when configured. HTTP 503 means new task
+  acceptance is unsafe. The process may still serve liveness and historical reads.
 
 Health output contains component states and safe error categories, never secrets or raw connection
 strings.
@@ -157,7 +187,8 @@ Artifact directory read/write. Do not mount source code or `.env` files into a p
   manager; rotate credentials outside the image.
 - Use TLS and least-privilege roles for remote PostgreSQL, RAG, and business databases.
 - Keep `PERSISTENCE_AUTO_CREATE_SCHEMA=false` and `DEBUG=false`.
-- Replace Demo Identity before external exposure.
+- Terminate end-user authentication at the approved gateway, remove client-supplied Copilot
+  identity headers, sign a short-lived assertion, and rotate the signing secret.
 - Restrict the business database role to the approved read-only schema; the deterministic SQL
   allowlist remains mandatory.
 - Send structured stdout/stderr logs to the platform log collector with access and retention rules.
@@ -198,9 +229,20 @@ needed to interpret a backup; never commit backup files to Git.
 
 - The Compose RAG service requires an independently supplied image; the current sibling RAG source
   checkout does not contain a Dockerfile.
-- Demo Identity is not production authentication.
+- Trusted-header verification depends on a correctly configured upstream enterprise gateway; it is
+  not itself an IdP or workforce lifecycle system.
 - Artifact content uses one filesystem/volume rather than object storage.
 - Audit is durable but not cryptographically tamper-proof.
 - No distributed task queue or guaranteed forced cancellation of an in-flight external call.
 - No automatic cross-resource transaction for PostgreSQL, RAG, business DB, and Artifact storage.
-- MCP, Kubernetes, cloud-provider templates, and zero-downtime deployment are outside Stage 17.
+- MCP, Kubernetes, cloud-provider templates, and zero-downtime deployment are outside Stage 17.1.
+
+## Reproducible and controlled builds
+
+The wheel metadata constrains dependency major versions, and CI rebuilds the distribution in a
+clean Python 3.11 runner. The repository does not yet carry a fully resolved hash-locked runtime
+dependency file. Consequently an isolated build requires an approved package index (or a
+pre-populated wheel cache) and is not an offline supply-chain proof. Production release pipelines
+should resolve and scan dependencies against a controlled mirror, build one immutable image, and
+deploy that exact digest. This is a documented P2 limitation, not permission to bypass the build
+or security gates.

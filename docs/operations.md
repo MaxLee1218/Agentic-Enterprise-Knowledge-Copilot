@@ -1,7 +1,8 @@
 # Operations Runbook
 
-This runbook operates the Stage 17 deployment. Commands assume the repository root and Docker
-Compose unless noted otherwise.
+This runbook operates the Stage 17.1 deployment. Commands assume the repository root and Docker
+Compose unless noted otherwise. Plain `docker compose` refers to the development topology;
+production commands must pass `-f docker-compose.production.yml`.
 
 ## Service topology
 
@@ -41,7 +42,10 @@ docker compose down
 ```
 
 Uvicorn handles SIGTERM and the FastAPI lifespan closes the checkpoint connection, repository
-engine/pool, and other application resources. `docker compose down` preserves named volumes. Do
+engine/pool, HTTP/model/database clients, and other application resources. Shutdown first signals
+all active tool cancellation tokens. Cooperatively cancellable work stops at a checkpoint;
+non-cancellable synchronous work remains `CANCELLATION_REQUESTED`, is allowed to drain within the
+platform grace period, and its late output is discarded. `docker compose down` preserves named volumes. Do
 not add `--volumes` unless the target is an explicitly disposable development environment and the
 data loss is intended.
 
@@ -70,6 +74,47 @@ Correlate structured records using `task_id`, `trace_id`, `step_id`, `node_name`
 `status`, `latency_ms`, `retry_count`, and typed error fields. Database startup/migration failures
 log safe categories rather than URLs or passwords. Do not turn on payload or stack-trace logging in
 production.
+
+## Identity and authentication operations
+
+Production accepts only signed identity assertions from the approved gateway. The gateway must
+remove all inbound `X-Copilot-*` identity headers, authenticate the caller, authorize tenant/role
+claims, add a current timestamp, and sign the canonical assertion. Monitor stable
+`IDENTITY_RESOLUTION_FAILED`/HTTP 401 rates without logging headers or signatures.
+
+For an identity-provider incident:
+
+1. stop new task acceptance at the gateway if assertion integrity is uncertain;
+2. preserve safe request/trace IDs and gateway audit records;
+3. verify clock synchronization, secret version, assertion age, tenant mapping, and configured
+   provider without printing the secret;
+4. rotate the signing secret using the deployment secret mechanism and restart affected instances;
+5. run cross-tenant and least-privilege smoke checks before reopening traffic.
+
+Never switch production to `IDENTITY_PROVIDER=demo` as an availability workaround.
+
+## Cancellation inspection
+
+Task cancellation signals every active invocation registered for that task and revokes pending
+approvals. `CANCELLED` at the task boundary means no result can be committed. For synchronous
+Knowledge, Database, or Report work, the underlying thread may still be draining while its token is
+`CANCELLATION_REQUESTED`; do not report forced interruption. Correlate task Audit with
+`tool_call_id`, trace, adapter timeout, and shutdown time. Repeated cancellation is idempotent and a
+completed task cannot be relabelled cancelled.
+
+## Audit and tenant-incident lookup
+
+Audit, logs, and traces have different purposes: Audit answers who/what/why and policy outcome;
+logs diagnose component behavior; traces show the request path. Search by tenant plus task/trace ID
+and never by an unscoped task identifier in direct database diagnostics. Audit stores identity and
+scope summaries only after redaction, argument hashes instead of arguments, and tool
+origin/provenance instead of executable metadata.
+
+For suspected cross-tenant access, stop affected task acceptance, preserve database and gateway
+audit, identify the tenant-qualified task/checkpoint key, query every repository table using both
+tenant and task, and compare the composite foreign keys and migration revision. Do not copy another
+tenant's payload into an incident ticket. Treat any confirmed cross-tenant row/read as a P0
+security incident.
 
 ## Database operations
 

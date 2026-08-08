@@ -115,6 +115,7 @@ class LocalArtifactRepository:
         self._writer = AtomicArtifactWriter(self._root, max_size_bytes=max_size_bytes)
         self._output_guard = output_guard or OutputGuard()
         self._artifacts: dict[str, Artifact] = {}
+        self._artifact_tenants: dict[str, str] = {}
         self._lock = RLock()
         self._database, self._owns_database = coerce_database(
             database_path,
@@ -126,6 +127,7 @@ class LocalArtifactRepository:
         *,
         artifact_id: str,
         task_id: str,
+        tenant_id: str,
         artifact_type: ArtifactType,
         filename: str,
         media_type: str,
@@ -136,6 +138,8 @@ class LocalArtifactRepository:
         """Validate a safe filename and atomically commit non-empty UTF-8/report bytes."""
         if not content:
             raise ValueError("artifact content must not be empty")
+        if not tenant_id:
+            raise ValueError("tenant_id is required")
         if not evidence_ids:
             raise ValueError("artifact must cite evidence")
         guard = self._output_guard.guard_bytes(
@@ -163,7 +167,7 @@ class LocalArtifactRepository:
             raise ValueError("artifact extension does not match its type")
         with self._lock:
             try:
-                existing = self.get(artifact_id)
+                existing = self.get(artifact_id, tenant_id=tenant_id)
             except KeyError:
                 existing = None
             if existing is not None:
@@ -184,39 +188,45 @@ class LocalArtifactRepository:
                 created_at=self._clock(),
             )
             try:
-                self._save_metadata(artifact)
+                self._save_metadata(artifact, tenant_id=tenant_id)
             except Exception:
                 self._writer.delete(written.path)
                 raise
             return artifact
 
-    def get(self, artifact_id: str) -> Artifact:
+    def get(self, artifact_id: str, *, tenant_id: str) -> Artifact:
         """Return one committed artifact."""
         with self._lock:
             if self._database is not None:
                 with self._database.session() as session:
                     payload = session.scalar(
                         select(WorkflowArtifactRow.payload_json).where(
-                            WorkflowArtifactRow.artifact_id == artifact_id
+                            WorkflowArtifactRow.artifact_id == artifact_id,
+                            WorkflowArtifactRow.tenant_id == tenant_id,
                         )
                     )
                     if payload is None:
                         raise KeyError(artifact_id)
                     return Artifact.model_validate_json(payload)
+            if self._artifact_tenants.get(artifact_id) != tenant_id:
+                raise KeyError(artifact_id)
             return self._artifacts[artifact_id]
 
-    def get_by_id(self, artifact_id: str) -> Artifact:
+    def get_by_id(self, artifact_id: str, *, tenant_id: str) -> Artifact:
         """Return one Artifact using the repository-style query name."""
-        return self.get(artifact_id)
+        return self.get(artifact_id, tenant_id=tenant_id)
 
-    def list_by_task(self, task_id: str) -> tuple[Artifact, ...]:
+    def list_by_task(self, task_id: str, *, tenant_id: str) -> tuple[Artifact, ...]:
         """List Task-owned metadata in deterministic creation/identifier order."""
         with self._lock:
             if self._database is not None:
                 with self._database.session() as session:
                     payloads = session.scalars(
                         select(WorkflowArtifactRow.payload_json)
-                        .where(WorkflowArtifactRow.task_id == task_id)
+                        .where(
+                            WorkflowArtifactRow.task_id == task_id,
+                            WorkflowArtifactRow.tenant_id == tenant_id,
+                        )
                         .order_by(WorkflowArtifactRow.sequence_id)
                     )
                     artifacts = tuple(Artifact.model_validate_json(item) for item in payloads)
@@ -232,15 +242,16 @@ class LocalArtifactRepository:
                         artifact
                         for artifact in self._artifacts.values()
                         if artifact.task_id == task_id
+                        and self._artifact_tenants.get(artifact.artifact_id) == tenant_id
                     ),
                     key=lambda artifact: (artifact.created_at, artifact.artifact_id),
                 )
             )
 
-    def exists(self, artifact_id: str) -> bool:
+    def exists(self, artifact_id: str, *, tenant_id: str) -> bool:
         """Report whether metadata has been committed for an identifier."""
         try:
-            self.get(artifact_id)
+            self.get(artifact_id, tenant_id=tenant_id)
         except KeyError:
             return False
         return True
@@ -260,22 +271,24 @@ class LocalArtifactRepository:
         Path(temporary_name).unlink(missing_ok=True)
         return True
 
-    def delete(self, artifact_id: str) -> None:
+    def delete(self, artifact_id: str, *, tenant_id: str) -> None:
         """Compensate an invalid Artifact while it is not published to TaskResult."""
         with self._lock:
-            artifact = self.get(artifact_id)
+            artifact = self.get(artifact_id, tenant_id=tenant_id)
             self._writer.delete(Path(artifact.location))
             if self._database is not None:
                 with self._database.session() as session:
                     session.execute(
                         delete(WorkflowArtifactRow).where(
-                            WorkflowArtifactRow.artifact_id == artifact_id
+                            WorkflowArtifactRow.artifact_id == artifact_id,
+                            WorkflowArtifactRow.tenant_id == tenant_id,
                         )
                     )
             else:
                 self._artifacts.pop(artifact_id)
+                self._artifact_tenants.pop(artifact_id, None)
 
-    def _save_metadata(self, artifact: Artifact) -> None:
+    def _save_metadata(self, artifact: Artifact, *, tenant_id: str) -> None:
         """Commit metadata after final bytes have been verified."""
         if self._database is not None:
             try:
@@ -284,6 +297,7 @@ class LocalArtifactRepository:
                         WorkflowArtifactRow(
                             artifact_id=artifact.artifact_id,
                             task_id=artifact.task_id,
+                            tenant_id=tenant_id,
                             payload_json=artifact.model_dump_json(),
                         )
                     )
@@ -293,6 +307,7 @@ class LocalArtifactRepository:
         if artifact.artifact_id in self._artifacts:
             raise ValueError("artifact identifier already exists")
         self._artifacts[artifact.artifact_id] = artifact
+        self._artifact_tenants[artifact.artifact_id] = tenant_id
 
     def close(self) -> None:
         """Close the optional durable Artifact metadata connection."""

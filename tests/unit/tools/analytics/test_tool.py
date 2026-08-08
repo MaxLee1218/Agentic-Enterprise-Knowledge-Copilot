@@ -47,7 +47,7 @@ def test_checksum_mismatch_and_cross_task_evidence_fail_closed() -> None:
         tool.execute(mismatch, analytics_context(mismatch))
 
     arguments = analytics_arguments()
-    with pytest.raises(AnalyticsInputDeniedError, match="different task"):
+    with pytest.raises(AnalyticsInputDeniedError, match="does not exist"):
         tool.execute(arguments, analytics_context(arguments, task_id="T-OTHER"))
 
 

@@ -39,15 +39,19 @@ from copilot.tools.schema import validate_payload
 class ApprovalRepositoryPort(Protocol):
     """Persistence operations required by approval application services."""
 
-    def create(self, approval: ApprovalRequest) -> None: ...
+    def create(self, approval: ApprovalRequest, *, tenant_id: str) -> None: ...
 
-    def get(self, approval_id: str) -> ApprovalRequest: ...
+    def get(self, approval_id: str, *, tenant_id: str) -> ApprovalRequest: ...
 
-    def get_pending_for_task(self, task_id: str) -> tuple[ApprovalRequest, ...]: ...
+    def get_pending_for_task(
+        self, task_id: str, *, tenant_id: str
+    ) -> tuple[ApprovalRequest, ...]: ...
 
-    def list_by_task(self, task_id: str) -> tuple[ApprovalRequest, ...]: ...
+    def list_by_task(self, task_id: str, *, tenant_id: str) -> tuple[ApprovalRequest, ...]: ...
 
-    def resolve(self, pending: ApprovalRequest, resolved: ApprovalRequest) -> None: ...
+    def resolve(
+        self, pending: ApprovalRequest, resolved: ApprovalRequest, *, tenant_id: str
+    ) -> None: ...
 
 
 class ApprovalWorkflowEngine(Protocol):
@@ -163,7 +167,10 @@ class ApprovalGateService:
             controlled_scope=decision.controlled_scope,
             arguments=arguments,
         )
-        existing = self._repository.get_pending_for_task(contract.task_id)
+        existing = self._repository.get_pending_for_task(
+            contract.task_id,
+            tenant_id=contract.constraints.tenant_id,
+        )
         for approval in existing:
             if approval.step_id != step.step_id:
                 continue
@@ -192,7 +199,7 @@ class ApprovalGateService:
             created_at=now,
             expires_at=now + timedelta(seconds=self._ttl_seconds),
         )
-        self._repository.create(approval)
+        self._repository.create(approval, tenant_id=approval.tenant_id)
         self._append_audit(
             approval,
             "APPROVAL_REQUESTED",
@@ -217,6 +224,11 @@ class ApprovalGateService:
                 plan_id=SUPPLIER_QUALITY_PLAN_ID,
                 plan_version=approval.planning_version,
                 timestamp=self._clock(),
+                tenant_id=approval.tenant_id,
+                trace_id=trace_id,
+                actor_id=approval.requester,
+                approval_id=approval.approval_id,
+                arguments_hash=arguments_fingerprint(approval.proposed_arguments),
                 step_id=approval.step_id,
                 tool_name=approval.tool_name,
                 status=status,
@@ -272,7 +284,7 @@ class ApprovalService:
         trace_id: str = "",
     ) -> ApprovalRequest:
         """Return one tenant- and role-authorized approval view for an approval client."""
-        approval = self._load(approval_id)
+        approval = self._load(approval_id, tenant_id=caller.tenant_id)
         if approval.task_id != task_id:
             raise ApprovalNotFoundError("Approval does not belong to the requested task")
         if approval.tenant_id != caller.tenant_id:
@@ -290,7 +302,7 @@ class ApprovalService:
         caller: TrustedCallerContext,
     ) -> ApprovalResolutionResult:
         """Resolve one pending decision and resume only through the normal graph path."""
-        pending = self._get_pending(command.approval_id)
+        pending = self._get_pending(command.approval_id, tenant_id=caller.tenant_id)
         if pending.task_id != command.task_id:
             raise ApprovalNotFoundError("Approval does not belong to the requested task")
         trace_id = ""
@@ -397,14 +409,14 @@ class ApprovalService:
             self._append_audit(approval, decision.reason_code, trace_id=trace_id)
             raise ApprovalPermissionDeniedError("Caller lacks approval permission")
 
-    def _load(self, approval_id: str) -> ApprovalRequest:
+    def _load(self, approval_id: str, *, tenant_id: str) -> ApprovalRequest:
         try:
-            return self._repository.get(approval_id)
+            return self._repository.get(approval_id, tenant_id=tenant_id)
         except KeyError as exc:
             raise ApprovalNotFoundError("Approval was not found") from exc
 
-    def _get_pending(self, approval_id: str) -> ApprovalRequest:
-        approval = self._load(approval_id)
+    def _get_pending(self, approval_id: str, *, tenant_id: str) -> ApprovalRequest:
+        approval = self._load(approval_id, tenant_id=tenant_id)
         if approval.status is not ApprovalStatus.PENDING:
             raise ApprovalAlreadyResolvedError("Approval has already been resolved")
         return approval
@@ -538,7 +550,11 @@ class ApprovalService:
 
     def _resolve_once(self, pending: ApprovalRequest, resolved: ApprovalRequest) -> None:
         try:
-            self._repository.resolve(pending, resolved)
+            self._repository.resolve(
+                pending,
+                resolved,
+                tenant_id=pending.tenant_id,
+            )
         except ValueError as exc:
             raise ApprovalStateConflictError("Approval resolution lost a concurrency race") from exc
 
@@ -557,6 +573,13 @@ class ApprovalService:
                 plan_id=SUPPLIER_QUALITY_PLAN_ID,
                 plan_version=approval.planning_version,
                 timestamp=self._clock(),
+                tenant_id=approval.tenant_id,
+                trace_id=trace_id,
+                actor_id=approval.approver or approval.requester,
+                approval_id=approval.approval_id,
+                arguments_hash=arguments_fingerprint(
+                    approval.resolved_arguments or approval.proposed_arguments
+                ),
                 step_id=approval.step_id,
                 tool_name=approval.tool_name,
                 status=approval.status.value,

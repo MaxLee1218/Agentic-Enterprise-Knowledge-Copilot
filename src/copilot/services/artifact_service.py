@@ -21,9 +21,9 @@ from copilot.services.workflows.ports import IdentifierFactory, WorkflowAuditSin
 class ArtifactRepositoryPort(Protocol):
     """Governed Artifact repository operations used by this service."""
 
-    def get_by_id(self, artifact_id: str) -> Artifact: ...
+    def get_by_id(self, artifact_id: str, *, tenant_id: str) -> Artifact: ...
 
-    def list_by_task(self, task_id: str) -> tuple[Artifact, ...]: ...
+    def list_by_task(self, task_id: str, *, tenant_id: str) -> tuple[Artifact, ...]: ...
 
     def path_for(self, artifact: Artifact) -> Path: ...
 
@@ -120,11 +120,17 @@ class ArtifactService:
         except RuntimeError:
             self._audit_denied(task_id, caller, trace_id)
             raise
-        artifacts = self._repository.list_by_task(task_id)
+        artifacts = self._repository.list_by_task(task_id, tenant_id=caller.tenant_id)
         published = getattr(self._tasks, "is_artifact_published", None)
         if callable(published):
             artifacts = tuple(
-                artifact for artifact in artifacts if published(task_id, artifact.artifact_id)
+                artifact
+                for artifact in artifacts
+                if published(
+                    task_id,
+                    artifact.artifact_id,
+                    tenant_id=caller.tenant_id,
+                )
             )
         self._audit("artifact_listed", task, caller, trace_id)
         return tuple(_artifact_view(artifact) for artifact in artifacts)
@@ -145,7 +151,10 @@ class ArtifactService:
             self._audit_denied(task_id, caller, trace_id, artifact_id=artifact_id)
             raise
         try:
-            artifact = self._repository.get_by_id(artifact_id)
+            artifact = self._repository.get_by_id(
+                artifact_id,
+                tenant_id=caller.tenant_id,
+            )
         except KeyError as exc:
             self._audit_denied(task_id, caller, trace_id, artifact_id=artifact_id)
             raise ArtifactNotFoundError(task_id) from exc
@@ -153,7 +162,11 @@ class ArtifactService:
             self._audit_denied(task_id, caller, trace_id, artifact_id=artifact_id)
             raise ArtifactNotFoundError(task_id)
         published = getattr(self._tasks, "is_artifact_published", None)
-        if callable(published) and not published(task_id, artifact_id):
+        if callable(published) and not published(
+            task_id,
+            artifact_id,
+            tenant_id=caller.tenant_id,
+        ):
             self._audit_denied(task_id, caller, trace_id, artifact_id=artifact_id)
             raise ArtifactNotFoundError(task_id)
         try:
@@ -229,6 +242,10 @@ class ArtifactService:
                 plan_id="supplier-quality-analysis",
                 plan_version=0,
                 timestamp=self._clock(),
+                tenant_id=caller.tenant_id,
+                trace_id=trace_id,
+                actor_id=caller.user_id,
+                scopes=caller.scopes,
                 artifact_id=artifact_id,
                 status="DENIED",
                 metadata=JsonObject(
@@ -261,6 +278,10 @@ class ArtifactService:
                 plan_id="supplier-quality-analysis",
                 plan_version=0,
                 timestamp=self._clock(),
+                tenant_id=caller.tenant_id,
+                trace_id=trace_id,
+                actor_id=caller.user_id,
+                scopes=caller.scopes,
                 artifact_id=artifact_id,
                 metadata=JsonObject(
                     {

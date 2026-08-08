@@ -9,6 +9,8 @@ import pytest
 from copilot.contracts import ArtifactType
 from copilot.persistence.artifact_repository import LocalArtifactRepository
 
+TENANT_ID = "TENANT-DEMO"
+
 
 def _clock() -> datetime:
     return datetime(2026, 7, 22, 8, 0, tzinfo=UTC)
@@ -21,6 +23,7 @@ def test_artifact_repository_creates_directory_and_commits_utf8(tmp_path: Path) 
     artifact = repository.write(
         artifact_id="A-001",
         task_id="T-001",
+        tenant_id=TENANT_ID,
         artifact_type=ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
         filename="supplier-quality-analysis-T-001.json",
         media_type="application/json",
@@ -40,6 +43,7 @@ def test_artifact_repository_rejects_path_traversal(tmp_path: Path, filename: st
         repository.write(
             artifact_id="A-001",
             task_id="T-001",
+            tenant_id=TENANT_ID,
             artifact_type=ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
             filename=filename,
             media_type="application/json",
@@ -54,6 +58,7 @@ def test_artifact_repository_persists_only_the_redacted_json(tmp_path: Path) -> 
     artifact = repository.write(
         artifact_id="A-REDACTED",
         task_id="T-001",
+        tenant_id=TENANT_ID,
         artifact_type=ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
         filename="redacted.json",
         media_type="application/json",
@@ -73,6 +78,7 @@ def test_artifact_repository_blocks_secret_before_creating_a_file(tmp_path: Path
         repository.write(
             artifact_id="A-BLOCKED",
             task_id="T-001",
+            tenant_id=TENANT_ID,
             artifact_type=ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
             filename="blocked.json",
             media_type="application/json",
@@ -82,4 +88,4 @@ def test_artifact_repository_blocks_secret_before_creating_a_file(tmp_path: Path
         )
 
     assert not (tmp_path / "blocked.json").exists()
-    assert repository.list_by_task("T-001") == ()
+    assert repository.list_by_task("T-001", tenant_id=TENANT_ID) == ()

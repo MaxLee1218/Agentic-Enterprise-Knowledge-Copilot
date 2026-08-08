@@ -168,7 +168,7 @@ class KnowledgeTool:
         index_snapshot_id = _required_text(arguments, "index_snapshot_id")
         top_k = _required_int(arguments, "top_k")
         raw_trace_id = context.metadata.root.get("trace_id")
-        trace_id = (
+        trace_id = context.trace_id or (
             raw_trace_id
             if isinstance(raw_trace_id, str) and raw_trace_id.strip()
             else context.call.tool_call_id

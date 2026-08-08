@@ -47,19 +47,19 @@ from copilot.tools.analytics.precision import DECIMAL_PLACES
 class EvidenceLedgerView(Protocol):
     """Task-scoped read operations required by deterministic verifiers."""
 
-    def list(self, task_id: str) -> tuple[EvidenceItem, ...]:
+    def list(self, task_id: str, *, tenant_id: str) -> tuple[EvidenceItem, ...]:
         """List evidence owned by a task."""
         ...
 
-    def get(self, evidence_id: str, *, task_id: str | None = None) -> EvidenceItem:
+    def get(self, evidence_id: str, *, task_id: str, tenant_id: str) -> EvidenceItem:
         """Resolve one evidence item."""
         ...
 
-    def validate_reference(self, task_id: str, evidence_id: str) -> bool:
+    def validate_reference(self, task_id: str, evidence_id: str, *, tenant_id: str) -> bool:
         """Validate task ownership of an identifier."""
         ...
 
-    def trace_lineage(self, task_id: str, evidence_id: str) -> LineageTrace:
+    def trace_lineage(self, task_id: str, evidence_id: str, *, tenant_id: str) -> LineageTrace:
         """Trace all parents of an evidence item."""
         ...
 
@@ -100,9 +100,10 @@ class EvidenceStructureVerifier:
     ) -> tuple[VerificationIssue, ...]:
         del verification_context, candidate_result
         task_id = task_contract.task_id
+        tenant_id = task_contract.constraints.tenant_id
         issues: list[VerificationIssue] = []
         planned_steps = {step.step_id for step in task_plan.steps}
-        evidence = evidence_ledger.list(task_id)
+        evidence = evidence_ledger.list(task_id, tenant_id=tenant_id)
         for item in evidence:
             if item.step_id not in planned_steps:
                 issues.append(
@@ -117,7 +118,9 @@ class EvidenceStructureVerifier:
                 )
             issues.extend(_source_metadata_issues(item, self.name))
             if item.source_type is EvidenceType.CALCULATION:
-                trace = evidence_ledger.trace_lineage(task_id, item.evidence_id)
+                trace = evidence_ledger.trace_lineage(
+                    task_id, item.evidence_id, tenant_id=tenant_id
+                )
                 issues.extend(_lineage_issues(trace, self.name))
                 if not contains_source_type(trace, EvidenceType.DATABASE):
                     issues.append(
@@ -132,7 +135,9 @@ class EvidenceStructureVerifier:
                     )
         for step_id, result in step_results.items():
             for evidence_id in result.evidence:
-                if not evidence_ledger.validate_reference(task_id, evidence_id):
+                if not evidence_ledger.validate_reference(
+                    task_id, evidence_id, tenant_id=tenant_id
+                ):
                     issues.append(
                         _issue(
                             code="STEP_EVIDENCE_REFERENCE_INVALID",
@@ -163,6 +168,7 @@ class DeliverableVerifier:
     ) -> tuple[VerificationIssue, ...]:
         del verification_context
         task_id = task_contract.task_id
+        tenant_id = task_contract.constraints.tenant_id
         issues: list[VerificationIssue] = []
         records: dict[str, DeliverableRecord] = {}
         for deliverable in candidate_result.deliverables:
@@ -234,7 +240,9 @@ class DeliverableVerifier:
                         )
                     )
             for evidence_id in record.evidence_ids:
-                if not evidence_ledger.validate_reference(task_id, evidence_id):
+                if not evidence_ledger.validate_reference(
+                    task_id, evidence_id, tenant_id=tenant_id
+                ):
                     issues.append(
                         _issue(
                             code="DELIVERABLE_EVIDENCE_INVALID",
@@ -265,6 +273,7 @@ class CitationVerifier:
     ) -> tuple[VerificationIssue, ...]:
         del task_plan, step_results, verification_context
         task_id = task_contract.task_id
+        tenant_id = task_contract.constraints.tenant_id
         issues: list[VerificationIssue] = []
         for claim in candidate_result.claims:
             if not claim.evidence_ids:
@@ -281,7 +290,9 @@ class CitationVerifier:
                 continue
             traces: list[LineageTrace] = []
             for evidence_id in claim.evidence_ids:
-                if not evidence_ledger.validate_reference(task_id, evidence_id):
+                if not evidence_ledger.validate_reference(
+                    task_id, evidence_id, tenant_id=tenant_id
+                ):
                     issues.append(
                         _issue(
                             code="CITATION_REFERENCE_INVALID",
@@ -294,9 +305,9 @@ class CitationVerifier:
                         )
                     )
                     continue
-                item = evidence_ledger.get(evidence_id, task_id=task_id)
+                item = evidence_ledger.get(evidence_id, task_id=task_id, tenant_id=tenant_id)
                 issues.extend(_source_metadata_issues(item, self.name, claim.claim_id))
-                trace = evidence_ledger.trace_lineage(task_id, evidence_id)
+                trace = evidence_ledger.trace_lineage(task_id, evidence_id, tenant_id=tenant_id)
                 traces.append(trace)
                 issues.extend(_lineage_issues(trace, self.name, claim.claim_id))
             required_type = {
@@ -368,6 +379,7 @@ class NumericVerifier:
     ) -> tuple[VerificationIssue, ...]:
         del task_plan, step_results, verification_context
         task_id = task_contract.task_id
+        tenant_id = task_contract.constraints.tenant_id
         issues: list[VerificationIssue] = []
         for claim in candidate_result.numeric_claims:
             if not claim.evidence_ids:
@@ -386,6 +398,7 @@ class NumericVerifier:
                 claim.dimensions.root,
                 claim.evidence_ids,
                 evidence_ledger,
+                tenant_id=tenant_id,
             )
             if len(baselines) != 1:
                 issues.append(
@@ -510,6 +523,7 @@ class SafetyVerifier:
         candidate_result: CandidateResult,
     ) -> tuple[VerificationIssue, ...]:
         task_id = task_contract.task_id
+        tenant_id = task_contract.constraints.tenant_id
         issues: list[VerificationIssue] = []
         definitions = {
             definition.tool_name: definition for definition in verification_context.registered_tools
@@ -679,7 +693,7 @@ class SafetyVerifier:
             field.rsplit(".", 1)[-1] for field in sensitive_fields
         }
         output_guard = OutputGuard()
-        for item in evidence_ledger.list(task_id):
+        for item in evidence_ledger.list(task_id, tenant_id=tenant_id):
             reference = item.source_reference.reference.root
             if reference.get("quarantined") is True:
                 issues.append(
@@ -846,7 +860,11 @@ class CompositeVerifier:
         all_issues: list[VerificationIssue] = []
         checks: list[VerificationCheck] = []
         evidence_ids = tuple(
-            item.evidence_id for item in evidence_ledger.list(task_contract.task_id)
+            item.evidence_id
+            for item in evidence_ledger.list(
+                task_contract.task_id,
+                tenant_id=task_contract.constraints.tenant_id,
+            )
         )
         for verifier in self._verifiers:
             issues = verifier.verify(
@@ -961,12 +979,14 @@ def _metric_baselines(
     dimensions: JsonMapping,
     evidence_ids: tuple[str, ...],
     ledger: EvidenceLedgerView,
+    *,
+    tenant_id: str,
 ) -> list[tuple[JsonMapping, str]]:
     matches: list[tuple[JsonMapping, str]] = []
     for evidence_id in evidence_ids:
-        if not ledger.validate_reference(task_id, evidence_id):
+        if not ledger.validate_reference(task_id, evidence_id, tenant_id=tenant_id):
             continue
-        item = ledger.get(evidence_id, task_id=task_id)
+        item = ledger.get(evidence_id, task_id=task_id, tenant_id=tenant_id)
         if item.source_type is not EvidenceType.CALCULATION:
             continue
         raw_metrics = item.content.data.root.get("metrics")

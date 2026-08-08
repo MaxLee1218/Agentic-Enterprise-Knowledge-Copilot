@@ -54,7 +54,7 @@ class SchemaRegistry:
         self._query_templates = frozenset(
             {"supplier_quality_summary_v1", "supplier_quality_trend_v1"}
         )
-        self._functions = frozenset({"strftime", "sum"})
+        self._functions = frozenset({"month_period", "sum"})
 
     @property
     def schema_version(self) -> str:

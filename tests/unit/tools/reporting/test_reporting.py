@@ -20,13 +20,13 @@ from copilot.tools.reporting import (
 )
 from copilot.tools.reporting.exceptions import (
     ReportConsistencyError,
-    ReportInputDeniedError,
     ReportInputError,
     ReportSizeLimitError,
 )
 from copilot.tools.reporting.renderer import extract_pdf_report_model
 from tests.unit.tools.reporting.helpers import (
     TASK_ID,
+    TENANT_ID,
     DictEvidenceReader,
     evidence_items,
     report_context,
@@ -119,12 +119,12 @@ def test_report_tool_commits_both_frozen_formats_idempotently(
 
     assert first.output == second.output
     artifact_id = str(first.output.root["artifact_id"])
-    artifact = repository.get_by_id(artifact_id)
+    artifact = repository.get_by_id(artifact_id, tenant_id=TENANT_ID)
     assert artifact.type is artifact_type
     assert Path(artifact.location).suffix == suffix
     assert artifact.checksum.startswith("sha256:")
-    assert repository.exists(artifact_id)
-    assert repository.list_by_task(TASK_ID) == (artifact,)
+    assert repository.exists(artifact_id, tenant_id=TENANT_ID)
+    assert repository.list_by_task(TASK_ID, tenant_id=TENANT_ID) == (artifact,)
     assert tool.definition.risk_level is RiskLevel.LOW
     assert tool.definition.timeout.attempt_seconds == 30
     assert tool.definition.idempotency.idempotent
@@ -150,12 +150,12 @@ def test_report_tool_rejects_missing_and_cross_task_evidence(tmp_path: Path) -> 
     cross_tool._composer = ReportComposer(  # noqa: SLF001 - controlled boundary fixture
         cross_reader, clock=lambda: cross_items[0].timestamp
     )
-    with pytest.raises(ReportInputDeniedError, match="different task"):
+    with pytest.raises(ReportInputError, match="does not exist"):
         cross_tool.execute(
             JsonObject(request.model_dump(mode="json")),
             report_context(request),
         )
-    assert repository.list_by_task(TASK_ID) == ()
+    assert repository.list_by_task(TASK_ID, tenant_id=TENANT_ID) == ()
 
 
 def test_report_tool_compensates_post_commit_consistency_failure(
@@ -174,7 +174,7 @@ def test_report_tool_compensates_post_commit_consistency_failure(
             JsonObject(request.model_dump(mode="json")),
             report_context(request),
         )
-    assert repository.list_by_task(TASK_ID) == ()
+    assert repository.list_by_task(TASK_ID, tenant_id=TENANT_ID) == ()
     assert list(tmp_path.iterdir()) == []
 
 
@@ -186,4 +186,4 @@ def test_report_tool_maps_artifact_size_limit_to_typed_error(tmp_path: Path) -> 
         tool.execute(JsonObject(request.model_dump(mode="json")), report_context(request))
 
     assert exceeded.value.error.error_code == "ARTIFACT_SIZE_LIMIT_EXCEEDED"
-    assert repository.list_by_task(TASK_ID) == ()
+    assert repository.list_by_task(TASK_ID, tenant_id=TENANT_ID) == ()

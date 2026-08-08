@@ -2,6 +2,7 @@
 
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
+from contextvars import copy_context
 
 from copilot.contracts import JsonObject
 from copilot.tools.base import Tool, ToolExecutionContext, ToolExecutionOutput
@@ -27,10 +28,14 @@ class ThreadPoolToolRunner:
         timeout_seconds: float,
     ) -> ToolExecutionOutput:
         """Return an adapter payload or a safe typed runtime signal."""
-        future: Future[ToolExecutionOutput] = self._pool.submit(tool.execute, arguments, context)
+        inherited = copy_context()
+        future: Future[ToolExecutionOutput] = self._pool.submit(
+            inherited.run, tool.execute, arguments, context
+        )
         try:
             output = future.result(timeout=timeout_seconds)
         except FutureTimeoutError as exc:
+            context.cancellation.request("Tool invocation deadline exceeded")
             future.cancel()
             raise ToolTimeoutError() from exc
         except ToolRuntimeError:

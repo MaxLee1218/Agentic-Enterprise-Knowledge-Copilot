@@ -17,10 +17,12 @@ from copilot.config import Settings
 from copilot.contracts import ApprovalResolutionAction, ApprovalStatus, JsonObject, TaskStatus
 from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.persistence.identifiers import SequentialIdentifierFactory
+from copilot.security.identity import DemoIdentityProvider
 from copilot.services.approval_service import (
     ApprovalAlreadyResolvedError,
     ApprovalArgumentsInvalidError,
     ApprovalExpiredError,
+    ApprovalNotFoundError,
     ApprovalPermissionDeniedError,
     ApprovalResolutionCommand,
 )
@@ -32,13 +34,14 @@ from copilot.services.task_intake import (
 from tests.workflow_helpers import build_test_container, fixed_clock
 
 TASK_TEXT = "Analyze supplier quality in Q2 2026 and generate a JSON report."
+TENANT_ID = "TENANT-DEMO"
 
 
 def caller(*, authorized: bool = True) -> TrustedCallerContext:
     """Return the trusted demo identity with an optional approval role."""
     return TrustedCallerContext(
         user_id="U-DEMO",
-        tenant_id="TENANT-DEMO",
+        tenant_id=TENANT_ID,
         data_scope=("quality.v1", "supplier-quality-policy-v1"),
         roles=(("quality_data_approver",) if authorized else ()),
     )
@@ -68,7 +71,7 @@ def edited_command(
     limit: int,
 ) -> ApprovalResolutionCommand:
     """Build a complete replacement payload from the persisted proposal."""
-    approval = container.approval_repository.get(approval_id)
+    approval = container.approval_repository.get(approval_id, tenant_id=TENANT_ID)
     arguments = dict(approval.proposed_arguments.root)
     arguments["row_limit"] = limit
     return ApprovalResolutionCommand(
@@ -83,7 +86,7 @@ def edited_command(
 def test_edit_resumes_with_final_arguments_without_replaying_knowledge(tmp_path: Path) -> None:
     with build_test_container(tmp_path / "artifacts", llm_provider=OfflineMockLLM()) as container:
         task_id, approval_id = submit_for_approval(container)
-        pending = container.approval_repository.get(approval_id)
+        pending = container.approval_repository.get(approval_id, tenant_id=TENANT_ID)
 
         assert pending.status is ApprovalStatus.PENDING
         assert pending.tool_name == "database_query"
@@ -103,8 +106,14 @@ def test_edit_resumes_with_final_arguments_without_replaying_knowledge(tmp_path:
                 ),
                 caller(),
             )
-        assert container.approval_repository.get(approval_id).status is ApprovalStatus.PENDING
-        assert container.repository.state_for(task_id).state is TaskStatus.WAITING_APPROVAL
+        assert (
+            container.approval_repository.get(approval_id, tenant_id=TENANT_ID).status
+            is ApprovalStatus.PENDING
+        )
+        assert (
+            container.repository.state_for(task_id, tenant_id=TENANT_ID).state
+            is TaskStatus.WAITING_APPROVAL
+        )
         assert container.database_tool.call_count == 0
 
         result = container.approval_service.resolve(
@@ -121,10 +130,10 @@ def test_edit_resumes_with_final_arguments_without_replaying_knowledge(tmp_path:
         assert len(database_calls) == 1
         assert database_calls[0].input.root["row_limit"] == 5000
         assert database_calls[0].approval_id == approval_id
-        resolved = container.approval_repository.get(approval_id)
+        resolved = container.approval_repository.get(approval_id, tenant_id=TENANT_ID)
         assert resolved.status is ApprovalStatus.APPROVED
         assert resolved.resolution_action is ApprovalResolutionAction.EDIT
-        audit_records = container.workflow_audit.list()
+        audit_records = container.workflow_audit.list(tenant_id=TENANT_ID)
         events = {record.event for record in audit_records}
         assert {
             "APPROVAL_REQUESTED",
@@ -185,7 +194,10 @@ def test_reject_cancels_without_calling_the_target_or_downstream_tools(tmp_path:
         assert container.database_tool.call_count == 0
         assert container.analytics_tool.call_count == 0
         assert container.report_tool.call_count == 0
-        assert container.approval_repository.get(approval_id).status is ApprovalStatus.REJECTED
+        assert (
+            container.approval_repository.get(approval_id, tenant_id=TENANT_ID).status
+            is ApprovalStatus.REJECTED
+        )
 
 
 def test_unauthorized_role_cannot_resolve_an_approval(tmp_path: Path) -> None:
@@ -200,10 +212,13 @@ def test_unauthorized_role_cannot_resolve_an_approval(tmp_path: Path) -> None:
                 ),
                 caller(authorized=False),
             )
-        assert container.approval_repository.get(approval_id).status is ApprovalStatus.PENDING
+        assert (
+            container.approval_repository.get(approval_id, tenant_id=TENANT_ID).status
+            is ApprovalStatus.PENDING
+        )
 
         cross_tenant = caller().model_copy(update={"tenant_id": "TENANT-OTHER"})
-        with pytest.raises(ApprovalPermissionDeniedError):
+        with pytest.raises(ApprovalNotFoundError):
             container.approval_service.resolve(
                 ApprovalResolutionCommand(
                     task_id=task_id,
@@ -212,9 +227,14 @@ def test_unauthorized_role_cannot_resolve_an_approval(tmp_path: Path) -> None:
                 ),
                 cross_tenant,
             )
-        assert container.approval_repository.get(approval_id).status is ApprovalStatus.PENDING
+        assert (
+            container.approval_repository.get(approval_id, tenant_id=TENANT_ID).status
+            is ApprovalStatus.PENDING
+        )
         denied = {
-            record.event for record in container.workflow_audit.list() if record.task_id == task_id
+            record.event
+            for record in container.workflow_audit.list(tenant_id=TENANT_ID)
+            if record.task_id == task_id
         }
         assert "APPROVAL_PERMISSION_DENIED" in denied
 
@@ -235,7 +255,10 @@ def test_restart_recovers_persisted_approval_and_checkpoint(tmp_path: Path) -> N
         ids=ids,
         llm_provider=OfflineMockLLM(),
     ) as restarted:
-        assert restarted.approval_repository.get(approval_id).status is ApprovalStatus.PENDING
+        assert (
+            restarted.approval_repository.get(approval_id, tenant_id=TENANT_ID).status
+            is ApprovalStatus.PENDING
+        )
         result = restarted.approval_service.resolve(
             edited_command(restarted, task_id, approval_id, 5000), caller()
         )
@@ -276,8 +299,14 @@ def test_expired_approval_cancels_without_executing_target(tmp_path: Path) -> No
                 caller(),
             )
 
-        assert container.approval_repository.get(approval_id).status is ApprovalStatus.EXPIRED
-        assert container.repository.state_for(task_id).state is TaskStatus.CANCELLED
+        assert (
+            container.approval_repository.get(approval_id, tenant_id=TENANT_ID).status
+            is ApprovalStatus.EXPIRED
+        )
+        assert (
+            container.repository.state_for(task_id, tenant_id=TENANT_ID).state
+            is TaskStatus.CANCELLED
+        )
         assert container.database_tool.call_count == 0
 
 
@@ -286,6 +315,7 @@ def test_approval_api_validates_actions_and_resumes_the_graph(tmp_path: Path) ->
         database_url="sqlite:///unused-approval-api.db",
         artifact_dir=tmp_path / "api" / "artifacts",
         checkpoint_database_path=tmp_path / "api" / "checkpoints.db",
+        demo_approval_roles=("quality_data_approver",),
     )
     container = build_workflow_container(
         settings,
@@ -299,6 +329,7 @@ def test_approval_api_validates_actions_and_resumes_the_graph(tmp_path: Path) ->
             task_service=container.task_service,
             approval_service=container.approval_service,
             settings=settings,
+            identity_provider=DemoIdentityProvider(settings),
         )
     )
     try:

@@ -15,6 +15,7 @@ from copilot.persistence.audit_repository import InMemoryToolAuditRepository
 from copilot.policies.offline import OfflineSupplierQualityAuthorizer
 from copilot.tools import ToolExecutor, ToolRegistry
 from copilot.tools.knowledge import KnowledgeTool
+from tests.execution_helpers import execution_context
 
 pytestmark = [
     pytest.mark.integration,
@@ -68,7 +69,7 @@ def test_live_health_ask_and_governed_evidence() -> None:
             "What is the supplier quality deviation procedure?",
             trace_id="live-ask",
         )
-        tool_result = executor.execute(call)
+        tool_result = executor.execute(call, execution_context(call))
     finally:
         executor.close()
         client.close()
@@ -78,4 +79,6 @@ def test_live_health_ask_and_governed_evidence() -> None:
     assert answer.answer.strip()
     assert answer.rag_trace_id
     assert tool_result.status is ToolResultStatus.SUCCESS
-    assert len(tool_result.evidence_ids) == len(ledger.list_for_task("T-LIVE-RAG"))
+    assert len(tool_result.evidence_ids) == len(
+        ledger.list_for_task("T-LIVE-RAG", tenant_id="live-verification")
+    )

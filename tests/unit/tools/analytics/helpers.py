@@ -91,7 +91,13 @@ def analytics_context(
             deadline_at=datetime.now(UTC) + timedelta(seconds=10),
             tenant_id="TENANT-A",
             user_id="U-QUALITY",
-        )
+        ),
+        trace_id=f"TRACE-{call_id}",
+        tenant_id="TENANT-A",
+        user_id="U-QUALITY",
+        roles=("quality_analyst",),
+        scopes=("quality.read", "tool.execute"),
+        purpose="supplier_quality_analysis.v1",
     )
 
 

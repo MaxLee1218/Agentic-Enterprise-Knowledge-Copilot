@@ -79,7 +79,7 @@ FORBIDDEN_DOMAIN_EXTERNALS: Final = frozenset(
 )
 FORBIDDEN_APPLICATION_EXTERNALS: Final = FORBIDDEN_DOMAIN_EXTERNALS
 GENERIC_TOOL_MODULES: Final = frozenset(
-    {"base", "exceptions", "executor", "registry", "runner", "schema"}
+    {"base", "cancellation", "exceptions", "executor", "registry", "runner", "schema"}
 )
 CONCRETE_TOOL_PREFIXES: Final = tuple(
     f"copilot.tools.{capability}"
@@ -93,7 +93,7 @@ def classify_path(path: Path, source_root: Path = SOURCE_ROOT) -> Layer:
     first = relative.parts[0]
     if first == "contracts":
         return Layer.DOMAIN
-    if first in {"agent", "policies", "services"}:
+    if first in {"agent", "policies", "security", "services"}:
         return Layer.APPLICATION
     if first == "tools":
         if len(relative.parts) == 2 and relative.stem in GENERIC_TOOL_MODULES | {"__init__"}:
@@ -118,7 +118,7 @@ def classify_module(module: str) -> Layer | None:
     first = parts[1]
     if first == "contracts":
         return Layer.DOMAIN
-    if first in {"agent", "policies", "services"}:
+    if first in {"agent", "policies", "security", "services"}:
         return Layer.APPLICATION
     if first == "tools":
         if len(parts) == 2 or parts[2] in GENERIC_TOOL_MODULES:

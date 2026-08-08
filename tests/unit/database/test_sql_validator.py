@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import Column, Integer, MetaData, Table, func, literal_column, select
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.orm import aliased
 
 from copilot.tools.database.errors import DatabaseQueryValidationError
@@ -24,6 +25,24 @@ def test_approved_parameterized_select_is_validated() -> None:
 
     assert validated.table_names == ("incoming_inspections", "suppliers")
     assert "suppliers.tenant_id" in validated.column_names
+
+
+def test_summary_template_compiles_portably_for_sqlite_and_postgresql() -> None:
+    template = QueryTemplateRegistry(SchemaRegistry()).build(
+        "supplier_quality_summary_v1",
+        filter_supplier_ids=False,
+    )
+
+    sqlite_sql = str(template.statement.compile(dialect=sqlite.dialect()))
+    postgres_sql = str(
+        template.statement.compile(
+            dialect=postgresql.dialect()  # type: ignore[no-untyped-call]
+        )
+    )
+
+    assert "strftime('%Y-%m'" in sqlite_sql
+    assert "to_char(" in postgres_sql
+    assert "'YYYY-MM'" in postgres_sql
 
 
 @pytest.mark.parametrize(

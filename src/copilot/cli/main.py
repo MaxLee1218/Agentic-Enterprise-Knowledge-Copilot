@@ -65,6 +65,16 @@ def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
             bool,
             typer.Option("--dry-run", help="Parse the command without executing a task."),
         ] = False,
+        demo: Annotated[
+            bool,
+            typer.Option(
+                "--demo",
+                help=(
+                    "Explicitly use the configured local demo identity "
+                    "(never allowed in production)."
+                ),
+            ),
+        ] = False,
     ) -> None:
         """Submit one natural-language task to the governed workflow."""
         if task_text is not None and task_option is not None:
@@ -85,6 +95,7 @@ def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
                 read_only=True if read_only else None,
                 require_approval=True if require_approval else None,
                 session_id=session_id,
+                metadata={"cli_demo_identity": demo},
                 source=RequestSource.CLI,
             )
         except ValidationError as exc:

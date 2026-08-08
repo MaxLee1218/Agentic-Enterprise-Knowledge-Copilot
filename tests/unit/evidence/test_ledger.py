@@ -13,34 +13,39 @@ from copilot.evidence.ledger import (
     InMemoryEvidenceLedger,
     evidence_fingerprint,
 )
-from tests.unit.evidence.helpers import DB_ID, TASK_ID, evidence_item, valid_ledger
+from tests.unit.evidence.helpers import DB_ID, TASK_ID, TENANT_ID, evidence_item, valid_ledger
 
 
 def test_add_get_list_and_stable_queries() -> None:
     ledger = valid_ledger()
 
-    assert [item.evidence_id for item in ledger.list(TASK_ID)] == [
+    assert [item.evidence_id for item in ledger.list(TASK_ID, tenant_id=TENANT_ID)] == [
         "E-DOC-001",
         "E-DB-001",
         "E-CALC-001",
     ]
-    assert ledger.get(DB_ID, task_id=TASK_ID).source_type is EvidenceType.DATABASE
-    assert [item.evidence_id for item in ledger.find_by_step(TASK_ID, "S-DB")] == [DB_ID]
-    assert [item.evidence_id for item in ledger.find_by_type(TASK_ID, EvidenceType.DOCUMENT)] == [
-        "E-DOC-001"
-    ]
-    assert ledger.validate_reference(TASK_ID, DB_ID)
+    assert (
+        ledger.get(DB_ID, task_id=TASK_ID, tenant_id=TENANT_ID).source_type is EvidenceType.DATABASE
+    )
+    assert [
+        item.evidence_id for item in ledger.find_by_step(TASK_ID, "S-DB", tenant_id=TENANT_ID)
+    ] == [DB_ID]
+    assert [
+        item.evidence_id
+        for item in ledger.find_by_type(TASK_ID, EvidenceType.DOCUMENT, tenant_id=TENANT_ID)
+    ] == ["E-DOC-001"]
+    assert ledger.validate_reference(TASK_ID, DB_ID, tenant_id=TENANT_ID)
 
 
 def test_missing_and_cross_task_reference_are_scoped_as_not_found() -> None:
     ledger = valid_ledger()
 
     with pytest.raises(EvidenceNotFoundError) as missing:
-        ledger.get("E-MISSING", task_id=TASK_ID)
+        ledger.get("E-MISSING", task_id=TASK_ID, tenant_id=TENANT_ID)
     assert missing.value.error.error_code == "EVIDENCE_NOT_FOUND"
     with pytest.raises(EvidenceNotFoundError):
-        ledger.get(DB_ID, task_id="T-OTHER")
-    assert not ledger.validate_reference("T-OTHER", DB_ID)
+        ledger.get(DB_ID, task_id="T-OTHER", tenant_id=TENANT_ID)
+    assert not ledger.validate_reference("T-OTHER", DB_ID, tenant_id=TENANT_ID)
 
 
 @pytest.mark.parametrize(
@@ -57,7 +62,7 @@ def test_type_aware_duplicate_returns_canonical_item(
 ) -> None:
     ledger = InMemoryEvidenceLedger()
     if parents:
-        ledger.add(evidence_item(DB_ID, EvidenceType.DATABASE))
+        ledger.add(evidence_item(DB_ID, EvidenceType.DATABASE), tenant_id=TENANT_ID)
     first = evidence_item("E-FIRST", source_type, parents=parents)
     duplicate = first.model_copy(
         update={
@@ -67,14 +72,14 @@ def test_type_aware_duplicate_returns_canonical_item(
         }
     )
 
-    created = ledger.add(first)
-    repeated = ledger.add(duplicate)
+    created = ledger.add(first, tenant_id=TENANT_ID)
+    repeated = ledger.add(duplicate, tenant_id=TENANT_ID)
 
     assert created.created
     assert not repeated.created
     assert repeated.duplicate_of == first.evidence_id
     expected_count = 2 if parents else 1
-    assert len(ledger.list(TASK_ID)) == expected_count
+    assert len(ledger.list(TASK_ID, tenant_id=TENANT_ID)) == expected_count
     assert evidence_fingerprint(first) == evidence_fingerprint(duplicate)
 
 
@@ -83,18 +88,22 @@ def test_identical_content_in_different_tasks_is_not_deduplicated() -> None:
     first = evidence_item("E-A", EvidenceType.DOCUMENT, task_id="T-A")
     second = evidence_item("E-B", EvidenceType.DOCUMENT, task_id="T-B")
 
-    assert ledger.add(first).created
-    assert ledger.add(second).created
-    assert len(ledger.list("T-A")) == len(ledger.list("T-B")) == 1
+    assert ledger.add(first, tenant_id=TENANT_ID).created
+    assert ledger.add(second, tenant_id=TENANT_ID).created
+    assert (
+        len(ledger.list("T-A", tenant_id=TENANT_ID))
+        == len(ledger.list("T-B", tenant_id=TENANT_ID))
+        == 1
+    )
 
 
 def test_evidence_limit_rejects_unique_items_but_allows_duplicate_lookup() -> None:
     ledger = InMemoryEvidenceLedger(max_items_per_task=1)
     first = evidence_item("E-LIMIT-1", EvidenceType.DOCUMENT)
-    assert ledger.add(first).created
+    assert ledger.add(first, tenant_id=TENANT_ID).created
 
     duplicate = first.model_copy(update={"evidence_id": "E-LIMIT-DUPLICATE"})
-    assert not ledger.add(duplicate).created
+    assert not ledger.add(duplicate, tenant_id=TENANT_ID).created
     with pytest.raises(EvidenceValidationError) as exceeded:
         ledger.add(
             evidence_item(
@@ -105,49 +114,53 @@ def test_evidence_limit_rejects_unique_items_but_allows_duplicate_lookup() -> No
                     "document_version": "v1",
                     "chunk_id": "chunk-2",
                 },
-            )
+            ),
+            tenant_id=TENANT_ID,
         )
     assert exceeded.value.error.error_code == "EVIDENCE_LIMIT_EXCEEDED"
 
 
 def test_returned_nested_content_cannot_mutate_ledger_state() -> None:
     ledger = valid_ledger()
-    detached = ledger.get(DB_ID, task_id=TASK_ID)
+    detached = ledger.get(DB_ID, task_id=TASK_ID, tenant_id=TENANT_ID)
     detached.content.data.root["row_count"] = 999
-    listed = ledger.list(TASK_ID)
+    listed = ledger.list(TASK_ID, tenant_id=TENANT_ID)
     listed[1].source_reference.reference.root["query_fingerprint"] = "changed"
 
-    authoritative = ledger.get(DB_ID, task_id=TASK_ID)
+    authoritative = ledger.get(DB_ID, task_id=TASK_ID, tenant_id=TENANT_ID)
     assert authoritative.content.data.root["row_count"] == 2
     assert authoritative.source_reference.reference.root["query_fingerprint"] == "sha256:query"
 
 
 def test_snapshot_json_round_trip_preserves_order_and_deduplication() -> None:
     ledger = valid_ledger()
-    serialized = ledger.snapshot().model_dump_json()
+    serialized = ledger.snapshot(tenant_id=TENANT_ID).model_dump_json()
     restored = InMemoryEvidenceLedger.from_snapshot(
-        EvidenceLedgerSnapshot.model_validate_json(serialized)
+        EvidenceLedgerSnapshot.model_validate_json(serialized), tenant_id=TENANT_ID
     )
 
-    assert restored.snapshot().model_dump(mode="json") == ledger.snapshot().model_dump(mode="json")
+    assert restored.snapshot(tenant_id=TENANT_ID).model_dump(mode="json") == ledger.snapshot(
+        tenant_id=TENANT_ID
+    ).model_dump(mode="json")
     duplicate = evidence_item("E-DOC-NEW", EvidenceType.DOCUMENT, step_id="S-KB")
-    assert not restored.add(duplicate).created
+    assert not restored.add(duplicate, tenant_id=TENANT_ID).created
 
 
 def test_restore_validates_lineage_independent_of_snapshot_item_order() -> None:
-    snapshot = valid_ledger().snapshot()
+    snapshot = valid_ledger().snapshot(tenant_id=TENANT_ID)
     restored = InMemoryEvidenceLedger.from_snapshot(
-        snapshot.model_copy(update={"items": tuple(reversed(snapshot.items))})
+        snapshot.model_copy(update={"items": tuple(reversed(snapshot.items))}),
+        tenant_id=TENANT_ID,
     )
 
-    trace = restored.trace_lineage(TASK_ID, "E-CALC-001")
+    trace = restored.trace_lineage(TASK_ID, "E-CALC-001", tenant_id=TENANT_ID)
     assert trace.is_complete
     assert trace.ordered_evidence_ids == ("E-CALC-001", DB_ID)
 
 
 def test_lineage_trace_is_root_first_complete_and_deduplicated() -> None:
     ledger = valid_ledger()
-    trace = ledger.trace_lineage(TASK_ID, "E-CALC-001")
+    trace = ledger.trace_lineage(TASK_ID, "E-CALC-001", tenant_id=TENANT_ID)
 
     assert trace.is_complete
     assert trace.ordered_evidence_ids == ("E-CALC-001", DB_ID)
@@ -164,17 +177,19 @@ def test_multi_parent_lineage_has_stable_lexical_parent_order() -> None:
             EvidenceType.DATABASE,
             step_id="S-DB",
             reference={"query_fingerprint": "sha256:query-2"},
-        )
+        ),
+        tenant_id=TENANT_ID,
     )
     ledger.add(
         evidence_item(
             "E-CALC-002",
             EvidenceType.CALCULATION,
             parents=("E-DB-002", DB_ID),
-        )
+        ),
+        tenant_id=TENANT_ID,
     )
 
-    trace = ledger.trace_lineage(TASK_ID, "E-CALC-002")
+    trace = ledger.trace_lineage(TASK_ID, "E-CALC-002", tenant_id=TENANT_ID)
     assert trace.ordered_evidence_ids == ("E-CALC-002", DB_ID, "E-DB-002")
 
 
@@ -186,18 +201,23 @@ def test_missing_and_cross_task_lineage_parents_are_rejected() -> None:
                 "E-CALC-MISSING",
                 EvidenceType.CALCULATION,
                 parents=("E-NOT-THERE",),
-            )
+            ),
+            tenant_id=TENANT_ID,
         )
     assert missing.value.error.error_code == "LINEAGE_PARENT_NOT_FOUND"
 
-    ledger.add(evidence_item("E-OTHER", EvidenceType.DATABASE, task_id="T-OTHER"))
+    ledger.add(
+        evidence_item("E-OTHER", EvidenceType.DATABASE, task_id="T-OTHER"),
+        tenant_id=TENANT_ID,
+    )
     with pytest.raises(EvidenceValidationError) as cross_task:
         ledger.add(
             evidence_item(
                 "E-CALC-CROSS",
                 EvidenceType.CALCULATION,
                 parents=("E-OTHER",),
-            )
+            ),
+            tenant_id=TENANT_ID,
         )
     assert cross_task.value.error.error_code == "LINEAGE_CROSS_TASK_REFERENCE"
 
@@ -210,7 +230,8 @@ def test_self_reference_and_duplicate_parent_edges_are_rejected() -> None:
                 "E-SELF",
                 EvidenceType.CALCULATION,
                 parents=("E-SELF",),
-            )
+            ),
+            tenant_id=TENANT_ID,
         )
     assert self_reference.value.error.error_code == "LINEAGE_SELF_REFERENCE"
     with pytest.raises(EvidenceValidationError) as duplicate:
@@ -219,7 +240,8 @@ def test_self_reference_and_duplicate_parent_edges_are_rejected() -> None:
                 "E-DUPLICATE",
                 EvidenceType.CALCULATION,
                 parents=(DB_ID, DB_ID),
-            )
+            ),
+            tenant_id=TENANT_ID,
         )
     assert duplicate.value.error.error_code == "LINEAGE_DUPLICATE_EDGE"
 
@@ -264,7 +286,7 @@ def test_two_and_multi_node_cycles_are_rejected_during_restore(
     snapshot = EvidenceLedgerSnapshot(items=items)
 
     with pytest.raises(EvidenceValidationError) as cycle:
-        InMemoryEvidenceLedger.from_snapshot(snapshot)
+        InMemoryEvidenceLedger.from_snapshot(snapshot, tenant_id=TENANT_ID)
     assert cycle.value.error.error_code == "LINEAGE_CYCLE"
 
 

@@ -87,6 +87,12 @@ class WorkflowAuditRecord:
     plan_id: str
     plan_version: int
     timestamp: datetime
+    tenant_id: str
+    trace_id: str
+    actor_id: str | None = None
+    scopes: tuple[str, ...] = ()
+    approval_id: str | None = None
+    arguments_hash: str | None = None
     step_id: str | None = None
     tool_name: str | None = None
     attempt: int | None = None

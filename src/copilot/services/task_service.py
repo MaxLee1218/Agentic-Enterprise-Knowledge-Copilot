@@ -60,6 +60,7 @@ from copilot.services.workflows.models import (
 )
 from copilot.services.workflows.ports import IdentifierFactory, WorkflowAuditSink
 from copilot.services.workflows.state_machine import TaskStateMachine
+from copilot.tools.cancellation import InvocationCancellationRegistry
 
 
 class NaturalLanguageWorkflowEngine(Protocol):
@@ -77,52 +78,60 @@ class NaturalLanguageWorkflowEngine(Protocol):
 class TaskManagementRepository(Protocol):
     """Read/write task persistence required by the management use cases."""
 
-    def state_for(self, task_id: str) -> TaskState: ...
+    def state_for(self, task_id: str, *, tenant_id: str) -> TaskState: ...
 
-    def request_for(self, task_id: str) -> TaskRequest: ...
+    def request_for(self, task_id: str, *, tenant_id: str) -> TaskRequest: ...
 
-    def contract_for(self, task_id: str) -> TaskContract | None: ...
+    def contract_for(self, task_id: str, *, tenant_id: str) -> TaskContract | None: ...
 
-    def plan_for(self, task_id: str) -> TaskPlan | None: ...
+    def plan_for(self, task_id: str, *, tenant_id: str) -> TaskPlan | None: ...
 
-    def task_result_for(self, task_id: str) -> TaskResult | None: ...
+    def task_result_for(self, task_id: str, *, tenant_id: str) -> TaskResult | None: ...
 
-    def step_results_for(self, task_id: str) -> tuple[StepResult, ...]: ...
+    def step_results_for(self, task_id: str, *, tenant_id: str) -> tuple[StepResult, ...]: ...
 
-    def step_execution_for(self, step_id: str) -> StepExecutionRecord | None: ...
+    def step_execution_for(
+        self, task_id: str, step_id: str, *, tenant_id: str
+    ) -> StepExecutionRecord | None: ...
 
-    def tool_results_for(self, task_id: str) -> tuple[ToolResult, ...]: ...
+    def tool_results_for(self, task_id: str, *, tenant_id: str) -> tuple[ToolResult, ...]: ...
 
-    def state_events_for(self, task_id: str) -> tuple[TaskStateEvent, ...]: ...
+    def state_events_for(self, task_id: str, *, tenant_id: str) -> tuple[TaskStateEvent, ...]: ...
 
     def commit_transition(
         self,
         previous: TaskState,
         current: TaskState,
         event: TaskStateEvent,
+        *,
+        tenant_id: str,
     ) -> None: ...
 
-    def save_task_result(self, result: TaskResult) -> None: ...
+    def save_task_result(self, result: TaskResult, *, tenant_id: str) -> None: ...
 
 
 class TaskEvidenceReader(Protocol):
     """Task-scoped evidence query port."""
 
-    def list_for_task(self, task_id: str) -> tuple[EvidenceItem, ...]: ...
+    def list_for_task(self, task_id: str, *, tenant_id: str) -> tuple[EvidenceItem, ...]: ...
 
 
 class TaskArtifactReader(Protocol):
     """Task-scoped Artifact metadata query port."""
 
-    def list_by_task(self, task_id: str) -> tuple[Artifact, ...]: ...
+    def list_by_task(self, task_id: str, *, tenant_id: str) -> tuple[Artifact, ...]: ...
 
 
 class TaskApprovalRepository(Protocol):
     """Approval persistence needed to invalidate pending grants on cancellation."""
 
-    def get_pending_for_task(self, task_id: str) -> tuple[ApprovalRequest, ...]: ...
+    def get_pending_for_task(
+        self, task_id: str, *, tenant_id: str
+    ) -> tuple[ApprovalRequest, ...]: ...
 
-    def resolve(self, pending: ApprovalRequest, resolved: ApprovalRequest) -> None: ...
+    def resolve(
+        self, pending: ApprovalRequest, resolved: ApprovalRequest, *, tenant_id: str
+    ) -> None: ...
 
 
 class TaskServiceError(RuntimeError):
@@ -186,6 +195,7 @@ class NaturalLanguageTaskService:
         output_guard: OutputGuard | None = None,
         permission_matrix: PermissionMatrix | None = None,
         observability: ObservabilityPort | None = None,
+        cancellations: InvocationCancellationRegistry | None = None,
     ) -> None:
         self._engine = engine
         self._ids = ids
@@ -201,6 +211,7 @@ class NaturalLanguageTaskService:
         self._output_guard = output_guard or OutputGuard()
         self._permission_matrix = permission_matrix or PermissionMatrix()
         self._observability = observability or NoopObservability()
+        self._cancellations = cancellations or InvocationCancellationRegistry()
 
     def submit(
         self,
@@ -208,6 +219,8 @@ class NaturalLanguageTaskService:
         caller: TrustedCallerContext,
     ) -> WorkflowExecution:
         """Create TaskRequest and trusted context, then enter the existing LangGraph."""
+        if not caller.authenticated:
+            raise TaskPermissionDeniedError("TASK-UNAUTHENTICATED")
         request, context = self.prepare(command, caller)
         with self._observability.bind_context(
             task_id=context.task_id,
@@ -305,7 +318,9 @@ class NaturalLanguageTaskService:
             data_scope=caller.data_scope,
             authorized_supplier_ids=caller.supplier_ids,
             roles=caller.roles,
+            scopes=caller.scopes,
             authentication_source=caller.authentication_source,
+            authenticated=caller.authenticated,
             is_demo_identity=caller.is_demo_identity,
             purpose=caller.purpose,
             output_format=(
@@ -332,7 +347,7 @@ class NaturalLanguageTaskService:
         request, state, contract, plan = self._load_authorized(
             task_id, caller, trace_id=trace_id, permission=Permission.READ_TASK
         )
-        return self._task_view(request, state, contract, plan)
+        return self._task_view(request, state, contract, plan, tenant_id=caller.tenant_id)
 
     def list_task_steps(
         self,
@@ -348,11 +363,18 @@ class NaturalLanguageTaskService:
         if plan is None:
             return ()
         repository = self._require_repository()
-        results = {result.step_id: result for result in repository.step_results_for(task_id)}
+        results = {
+            result.step_id: result
+            for result in repository.step_results_for(task_id, tenant_id=caller.tenant_id)
+        }
         views: list[TaskStepView] = []
         for step in plan.steps:
             result = results.get(step.step_id)
-            execution = repository.step_execution_for(step.step_id)
+            execution = repository.step_execution_for(
+                task_id,
+                step.step_id,
+                tenant_id=caller.tenant_id,
+            )
             error = result.error if result is not None else None
             views.append(
                 TaskStepView(
@@ -390,10 +412,11 @@ class NaturalLanguageTaskService:
             return ()
         repository = self._require_repository()
         producers = {
-            result.tool_call_id: result.tool_name for result in repository.tool_results_for(task_id)
+            result.tool_call_id: result.tool_name
+            for result in repository.tool_results_for(task_id, tenant_id=caller.tenant_id)
         }
         items = sorted(
-            self._evidence.list_for_task(task_id),
+            self._evidence.list_for_task(task_id, tenant_id=caller.tenant_id),
             key=lambda item: (item.timestamp, item.evidence_id),
         )
         views = tuple(_evidence_view(item, producers.get(item.tool_call_id)) for item in items)
@@ -412,10 +435,14 @@ class NaturalLanguageTaskService:
             task_id, caller, trace_id=trace_id, permission=Permission.CANCEL_TASK
         )
         if state.state is TaskStatus.CANCELLED:
-            return self._task_view(request, state, contract, plan)
+            return self._task_view(request, state, contract, plan, tenant_id=caller.tenant_id)
         if state.state in {TaskStatus.COMPLETED, TaskStatus.FAILED}:
             self._audit("task_cancellation_rejected", task_id, plan, caller, trace_id)
             raise TaskNotCancellableError(task_id)
+        self._cancellations.cancel_task(
+            task_id,
+            reason="Cancellation requested by an authorized task owner",
+        )
         if self._state_machine is None:
             raise RuntimeError("Task cancellation is not composed")
         current, event = self._state_machine.transition(
@@ -424,9 +451,16 @@ class NaturalLanguageTaskService:
             reason="Cancellation requested by an authorized task owner",
         )
         repository = self._require_repository()
-        repository.commit_transition(state, current, event)
+        repository.commit_transition(
+            state,
+            current,
+            event,
+            tenant_id=caller.tenant_id,
+        )
         if self._approvals is not None:
-            for pending in self._approvals.get_pending_for_task(task_id):
+            for pending in self._approvals.get_pending_for_task(
+                task_id, tenant_id=caller.tenant_id
+            ):
                 revoked = pending.model_copy(
                     update={
                         "status": ApprovalStatus.REVOKED,
@@ -434,8 +468,12 @@ class NaturalLanguageTaskService:
                         "version": pending.version + 1,
                     }
                 )
-                self._approvals.resolve(pending, revoked)
-        if repository.task_result_for(task_id) is None:
+                self._approvals.resolve(
+                    pending,
+                    revoked,
+                    tenant_id=caller.tenant_id,
+                )
+        if repository.task_result_for(task_id, tenant_id=caller.tenant_id) is None:
             repository.save_task_result(
                 TaskResult(
                     task_id=task_id,
@@ -448,14 +486,17 @@ class NaturalLanguageTaskService:
                     evidence=tuple(
                         item.evidence_id
                         for item in (
-                            self._evidence.list_for_task(task_id) if self._evidence else ()
+                            self._evidence.list_for_task(task_id, tenant_id=caller.tenant_id)
+                            if self._evidence
+                            else ()
                         )
                     ),
-                )
+                ),
+                tenant_id=caller.tenant_id,
             )
         self._audit("task_cancellation_requested", task_id, plan, caller, trace_id)
         self._audit("task_cancelled", task_id, plan, caller, trace_id)
-        return self._task_view(request, current, contract, plan)
+        return self._task_view(request, current, contract, plan, tenant_id=caller.tenant_id)
 
     def _load_authorized(
         self,
@@ -467,12 +508,11 @@ class NaturalLanguageTaskService:
     ) -> tuple[TaskRequest, TaskState, TaskContract | None, TaskPlan | None]:
         repository = self._require_repository()
         try:
-            request = repository.request_for(task_id)
-            state = repository.state_for(task_id)
+            request = repository.request_for(task_id, tenant_id=caller.tenant_id)
+            state = repository.state_for(task_id, tenant_id=caller.tenant_id)
         except KeyError as exc:
             raise TaskNotFoundError(task_id) from exc
-        contract = repository.contract_for(task_id)
-        tenant_matches = contract is None or contract.constraints.tenant_id == caller.tenant_id
+        contract = repository.contract_for(task_id, tenant_id=caller.tenant_id)
         decision = self._permission_matrix.evaluate(
             AuthorizationRequest(
                 action=permission,
@@ -484,17 +524,26 @@ class NaturalLanguageTaskService:
                 is_demo_identity=caller.is_demo_identity,
             )
         )
-        if request.user_id != caller.user_id or not tenant_matches or not decision.allowed:
+        if request.user_id != caller.user_id or not decision.allowed:
             self._audit(
-                "permission_denied", task_id, repository.plan_for(task_id), caller, trace_id
+                "permission_denied",
+                task_id,
+                repository.plan_for(task_id, tenant_id=caller.tenant_id),
+                caller,
+                trace_id,
             )
             raise TaskPermissionDeniedError(task_id)
-        return request, state, contract, repository.plan_for(task_id)
+        return (
+            request,
+            state,
+            contract,
+            repository.plan_for(task_id, tenant_id=caller.tenant_id),
+        )
 
-    def is_artifact_published(self, task_id: str, artifact_id: str) -> bool:
+    def is_artifact_published(self, task_id: str, artifact_id: str, *, tenant_id: str) -> bool:
         """Return whether finalization explicitly published an Artifact for a completed Task."""
         repository = self._require_repository()
-        result = repository.task_result_for(task_id)
+        result = repository.task_result_for(task_id, tenant_id=tenant_id)
         return (
             result is not None
             and result.final_status is TaskStatus.COMPLETED
@@ -507,13 +556,19 @@ class NaturalLanguageTaskService:
         state: TaskState,
         contract: TaskContract | None,
         plan: TaskPlan | None,
+        *,
+        tenant_id: str,
     ) -> TaskSummaryView:
         repository = self._require_repository()
         task_id = state.task_id
-        steps = repository.step_results_for(task_id)
-        events = repository.state_events_for(task_id)
-        task_result = repository.task_result_for(task_id)
-        pending = self._approvals.get_pending_for_task(task_id) if self._approvals else ()
+        steps = repository.step_results_for(task_id, tenant_id=tenant_id)
+        events = repository.state_events_for(task_id, tenant_id=tenant_id)
+        task_result = repository.task_result_for(task_id, tenant_id=tenant_id)
+        pending = (
+            self._approvals.get_pending_for_task(task_id, tenant_id=tenant_id)
+            if self._approvals
+            else ()
+        )
         completed_at = state.updated_at if state.state in _TERMINAL_STATES else None
         current_step = next(
             (
@@ -541,10 +596,14 @@ class NaturalLanguageTaskService:
             pending_approval_id=pending[0].approval_id if pending else None,
             step_count=len(plan.steps) if plan is not None else 0,
             evidence_count=(
-                len(self._evidence.list_for_task(task_id)) if self._evidence is not None else 0
+                len(self._evidence.list_for_task(task_id, tenant_id=tenant_id))
+                if self._evidence is not None
+                else 0
             ),
             artifact_count=(
-                len(self._artifacts.list_by_task(task_id)) if self._artifacts is not None else 0
+                len(self._artifacts.list_by_task(task_id, tenant_id=tenant_id))
+                if self._artifacts is not None
+                else 0
             ),
             error_summary=(redact_text(error_summary) if error_summary is not None else None),
         )
@@ -572,6 +631,10 @@ class NaturalLanguageTaskService:
                 plan_id="supplier-quality-analysis",
                 plan_version=plan.planning_version if plan is not None else 0,
                 timestamp=self._clock(),
+                tenant_id=caller.tenant_id,
+                trace_id=trace_id,
+                actor_id=caller.user_id,
+                scopes=caller.scopes,
                 metadata=JsonObject(
                     {
                         "actor_id": caller.user_id,
@@ -599,6 +662,10 @@ class NaturalLanguageTaskService:
                 plan_id="supplier-quality-analysis",
                 plan_version=0,
                 timestamp=self._clock(),
+                tenant_id=context.tenant_id,
+                trace_id=context.trace_id,
+                actor_id=caller.user_id,
+                scopes=caller.scopes,
                 status=str(security.get("maximum_severity", "NONE")),
                 metadata=JsonObject(
                     {

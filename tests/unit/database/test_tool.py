@@ -157,3 +157,16 @@ def test_missing_database_is_reported_as_unavailable(tmp_path: Path) -> None:
         assert unavailable.value.error.error_code == "DATABASE_UNAVAILABLE"
     finally:
         tool.close()
+
+
+def test_business_database_readiness_checks_registered_schema(tmp_path: Path) -> None:
+    ready_tool = seeded_tool(tmp_path)
+    missing_tool = DatabaseTool(
+        DatabaseConnection(f"sqlite:///{tmp_path / 'missing-readiness.db'}", read_only=True)
+    )
+    try:
+        assert ready_tool.check_ready() is True
+        assert missing_tool.check_ready() is False
+    finally:
+        ready_tool.close()
+        missing_tool.close()

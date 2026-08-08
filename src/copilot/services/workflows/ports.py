@@ -37,7 +37,7 @@ class IdentifierFactory(Protocol):
 class EvidenceReader(Protocol):
     """Read immutable evidence already committed by ToolExecutor."""
 
-    def get(self, evidence_id: str) -> EvidenceItem:
+    def get(self, evidence_id: str, *, task_id: str, tenant_id: str) -> EvidenceItem:
         """Return one evidence item."""
         ...
 
@@ -58,6 +58,7 @@ class ArtifactStore(Protocol):
         *,
         artifact_id: str,
         task_id: str,
+        tenant_id: str,
         artifact_type: ArtifactType,
         filename: str,
         media_type: str,
@@ -68,7 +69,7 @@ class ArtifactStore(Protocol):
         """Atomically commit immutable artifact bytes and metadata."""
         ...
 
-    def get(self, artifact_id: str) -> Artifact:
+    def get(self, artifact_id: str, *, tenant_id: str) -> Artifact:
         """Return committed artifact metadata."""
         ...
 
@@ -76,7 +77,7 @@ class ArtifactStore(Protocol):
         """Resolve an artifact to a controlled local path."""
         ...
 
-    def delete(self, artifact_id: str) -> None:
+    def delete(self, artifact_id: str, *, tenant_id: str) -> None:
         """Compensate one invalid, unpublished Artifact."""
         ...
 
@@ -95,6 +96,7 @@ class WorkflowRepository(Protocol):
         plan: TaskPlan | None,
         state: TaskState,
         *,
+        tenant_id: str,
         task_id: str | None = None,
     ) -> None:
         """Persist the initial immutable workflow objects."""
@@ -105,47 +107,56 @@ class WorkflowRepository(Protocol):
         previous: TaskState,
         current: TaskState,
         event: TaskStateEvent,
+        *,
+        tenant_id: str,
     ) -> None:
         """Compare-and-swap a state and append its event atomically."""
         ...
 
-    def save_contract(self, contract: TaskContract) -> None:
+    def save_contract(self, contract: TaskContract, *, tenant_id: str) -> None:
         """Persist a validated understanding result before planning."""
         ...
 
-    def save_plan(self, plan: TaskPlan) -> None:
+    def save_plan(self, plan: TaskPlan, *, tenant_id: str) -> None:
         """Persist the current validated candidate while retaining prior versions."""
         ...
 
-    def save_tool_result(self, result: ToolResult) -> None:
+    def save_tool_result(self, result: ToolResult, *, tenant_id: str) -> None:
         """Append one immutable tool attempt result."""
         ...
 
-    def save_step_result(self, result: StepResult, execution: StepExecutionRecord) -> None:
+    def save_step_result(
+        self,
+        task_id: str,
+        result: StepResult,
+        execution: StepExecutionRecord,
+        *,
+        tenant_id: str,
+    ) -> None:
         """Save the final step result and its operational envelope."""
         ...
 
-    def save_task_result(self, result: TaskResult) -> None:
+    def save_task_result(self, result: TaskResult, *, tenant_id: str) -> None:
         """Save the one terminal task result."""
         ...
 
-    def save_verification_result(self, result: VerificationResult) -> None:
+    def save_verification_result(self, result: VerificationResult, *, tenant_id: str) -> None:
         """Append the task's deterministic verification result."""
         ...
 
-    def state_for(self, task_id: str) -> TaskState:
+    def state_for(self, task_id: str, *, tenant_id: str) -> TaskState:
         """Return the authoritative persisted domain-state snapshot."""
         ...
 
-    def request_for(self, task_id: str) -> TaskRequest:
+    def request_for(self, task_id: str, *, tenant_id: str) -> TaskRequest:
         """Return the immutable original request."""
         ...
 
-    def acquire_execution(self, task_id: str, owner_id: str) -> None:
+    def acquire_execution(self, task_id: str, owner_id: str, *, tenant_id: str) -> None:
         """Acquire the single-task execution lease or raise on a conflict."""
         ...
 
-    def release_execution(self, task_id: str, owner_id: str) -> None:
+    def release_execution(self, task_id: str, owner_id: str, *, tenant_id: str) -> None:
         """Release a lease owned by the current workflow engine."""
         ...
 

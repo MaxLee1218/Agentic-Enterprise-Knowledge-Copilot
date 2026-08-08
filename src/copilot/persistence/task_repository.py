@@ -36,8 +36,8 @@ from copilot.persistence.models import (
 from copilot.services.workflows.models import StepExecutionRecord, TaskStateEvent
 
 
-class InMemoryWorkflowRepository:
-    """Preserve the application port while optionally persisting through SQLAlchemy."""
+class WorkflowRepository:
+    """Tenant-scoped workflow repository with in-memory and SQLAlchemy storage modes."""
 
     def __init__(
         self,
@@ -46,13 +46,14 @@ class InMemoryWorkflowRepository:
         initialize_schema: bool = True,
     ) -> None:
         self._requests: dict[str, TaskRequest] = {}
+        self._tenants: dict[str, str] = {}
         self._contracts: dict[str, TaskContract] = {}
         self._plans: dict[str, TaskPlan] = {}
         self._states: dict[str, TaskState] = {}
         self._state_events: list[TaskStateEvent] = []
         self._tool_results: list[ToolResult] = []
-        self._step_results: dict[str, StepResult] = {}
-        self._step_executions: dict[str, StepExecutionRecord] = {}
+        self._step_results: dict[tuple[str, str, str], StepResult] = {}
+        self._step_executions: dict[tuple[str, str, str], StepExecutionRecord] = {}
         self._task_results: dict[str, TaskResult] = {}
         self._verification_results: dict[str, VerificationResult] = {}
         self._execution_leases: dict[str, str] = {}
@@ -69,15 +70,21 @@ class InMemoryWorkflowRepository:
         plan: TaskPlan | None,
         state: TaskState,
         *,
+        tenant_id: str,
         task_id: str | None = None,
     ) -> None:
         """Persist initial values exactly once per task."""
         resolved_task_id = task_id or (contract.task_id if contract is not None else state.task_id)
+        if not tenant_id:
+            raise ValueError("tenant_id is required")
+        if contract is not None and contract.constraints.tenant_id != tenant_id:
+            raise ValueError("workflow contract tenant does not match persistence scope")
         with self._lock:
             if self._database is None:
                 if resolved_task_id in self._states:
                     raise ValueError("workflow task already exists")
                 self._requests[resolved_task_id] = request
+                self._tenants[resolved_task_id] = tenant_id
                 if contract is not None:
                     self._contracts[resolved_task_id] = contract
                 if plan is not None:
@@ -89,6 +96,7 @@ class InMemoryWorkflowRepository:
                     session.add(
                         WorkflowTaskRow(
                             task_id=resolved_task_id,
+                            tenant_id=tenant_id,
                             request_json=request.model_dump_json(),
                             contract_json=(contract.model_dump_json() if contract else None),
                             plan_json=plan.model_dump_json() if plan else None,
@@ -103,6 +111,8 @@ class InMemoryWorkflowRepository:
         previous: TaskState,
         current: TaskState,
         event: TaskStateEvent,
+        *,
+        tenant_id: str,
     ) -> None:
         """Atomically compare state version, append event, and replace the snapshot."""
         if current.version != previous.version + 1:
@@ -111,6 +121,7 @@ class InMemoryWorkflowRepository:
             raise ValueError("state event does not produce the supplied snapshot")
         with self._lock:
             if self._database is None:
+                self._require_in_memory_tenant(previous.task_id, tenant_id)
                 authoritative = self._states.get(previous.task_id)
                 if authoritative != previous:
                     raise ValueError("task state compare-and-swap conflict")
@@ -125,6 +136,7 @@ class InMemoryWorkflowRepository:
                             update(WorkflowTaskRow)
                             .where(
                                 WorkflowTaskRow.task_id == previous.task_id,
+                                WorkflowTaskRow.tenant_id == tenant_id,
                                 WorkflowTaskRow.state_json == previous.model_dump_json(),
                             )
                             .values(state_json=current.model_dump_json())
@@ -136,16 +148,18 @@ class InMemoryWorkflowRepository:
                         WorkflowStateEventRow(
                             event_id=event.event_id,
                             task_id=event.task_id,
+                            tenant_id=tenant_id,
                             payload_json=_event_json(event),
                         )
                     )
             except IntegrityError as exc:
                 raise ValueError("task state compare-and-swap conflict") from exc
 
-    def save_contract(self, contract: TaskContract) -> None:
+    def save_contract(self, contract: TaskContract, *, tenant_id: str) -> None:
         """Persist the understanding result before any business tool execution."""
         with self._lock:
             if self._database is None:
+                self._require_in_memory_tenant(contract.task_id, tenant_id)
                 if contract.task_id not in self._states:
                     raise ValueError("workflow task was not initialized")
                 if any(result.task_id == contract.task_id for result in self._tool_results):
@@ -156,12 +170,18 @@ class InMemoryWorkflowRepository:
                 self._contracts[contract.task_id] = contract
                 return
             with self._database.session() as session:
-                row = session.get(WorkflowTaskRow, contract.task_id)
+                row = session.scalar(
+                    select(WorkflowTaskRow).where(
+                        WorkflowTaskRow.task_id == contract.task_id,
+                        WorkflowTaskRow.tenant_id == tenant_id,
+                    )
+                )
                 if row is None:
                     raise ValueError("workflow task was not initialized")
                 attempt = session.scalar(
                     select(WorkflowToolResultRow.sequence_id).where(
-                        WorkflowToolResultRow.task_id == contract.task_id
+                        WorkflowToolResultRow.task_id == contract.task_id,
+                        WorkflowToolResultRow.tenant_id == tenant_id,
                     )
                 )
                 if attempt is not None:
@@ -172,10 +192,11 @@ class InMemoryWorkflowRepository:
                         raise ValueError("contract version cannot decrease")
                 row.contract_json = contract.model_dump_json()
 
-    def save_plan(self, plan: TaskPlan) -> None:
+    def save_plan(self, plan: TaskPlan, *, tenant_id: str) -> None:
         """Persist the current plan while retaining immutable prior versions."""
         with self._lock:
             if self._database is None:
+                self._require_in_memory_tenant(plan.task_id, tenant_id)
                 if plan.task_id not in self._states:
                     raise ValueError("workflow task was not initialized")
                 existing = self._plans.get(plan.task_id)
@@ -197,7 +218,12 @@ class InMemoryWorkflowRepository:
                 self._plans[plan.task_id] = plan
                 return
             with self._database.session() as session:
-                row = session.get(WorkflowTaskRow, plan.task_id)
+                row = session.scalar(
+                    select(WorkflowTaskRow).where(
+                        WorkflowTaskRow.task_id == plan.task_id,
+                        WorkflowTaskRow.tenant_id == tenant_id,
+                    )
+                )
                 if row is None:
                     raise ValueError("workflow task was not initialized")
                 existing = TaskPlan.model_validate_json(row.plan_json) if row.plan_json else None
@@ -205,7 +231,8 @@ class InMemoryWorkflowRepository:
                     return
                 executed = session.scalar(
                     select(WorkflowToolResultRow.sequence_id).where(
-                        WorkflowToolResultRow.task_id == plan.task_id
+                        WorkflowToolResultRow.task_id == plan.task_id,
+                        WorkflowToolResultRow.tenant_id == tenant_id,
                     )
                 )
                 if (
@@ -224,6 +251,7 @@ class InMemoryWorkflowRepository:
                     prior = session.scalar(
                         select(WorkflowPlanHistoryRow.sequence_id).where(
                             WorkflowPlanHistoryRow.task_id == existing.task_id,
+                            WorkflowPlanHistoryRow.tenant_id == tenant_id,
                             WorkflowPlanHistoryRow.planning_version == existing.planning_version,
                             WorkflowPlanHistoryRow.plan_json == existing.model_dump_json(),
                         )
@@ -232,16 +260,18 @@ class InMemoryWorkflowRepository:
                         session.add(
                             WorkflowPlanHistoryRow(
                                 task_id=existing.task_id,
+                                tenant_id=tenant_id,
                                 planning_version=existing.planning_version,
                                 plan_json=existing.model_dump_json(),
                             )
                         )
                 row.plan_json = plan.model_dump_json()
 
-    def save_tool_result(self, result: ToolResult) -> None:
+    def save_tool_result(self, result: ToolResult, *, tenant_id: str) -> None:
         """Append one unique immutable tool attempt."""
         with self._lock:
             if self._database is None:
+                self._require_in_memory_tenant(result.task_id, tenant_id)
                 existing = next(
                     (
                         item
@@ -259,7 +289,9 @@ class InMemoryWorkflowRepository:
             with self._database.session() as session:
                 payload = session.scalar(
                     select(WorkflowToolResultRow.payload_json).where(
-                        WorkflowToolResultRow.tool_call_id == result.tool_call_id
+                        WorkflowToolResultRow.tool_call_id == result.tool_call_id,
+                        WorkflowToolResultRow.task_id == result.task_id,
+                        WorkflowToolResultRow.tenant_id == tenant_id,
                     )
                 )
                 if payload is not None:
@@ -270,26 +302,38 @@ class InMemoryWorkflowRepository:
                     WorkflowToolResultRow(
                         tool_call_id=result.tool_call_id,
                         task_id=result.task_id,
+                        tenant_id=tenant_id,
                         payload_json=result.model_dump_json(),
                     )
                 )
 
-    def save_step_result(self, result: StepResult, execution: StepExecutionRecord) -> None:
+    def save_step_result(
+        self,
+        task_id: str,
+        result: StepResult,
+        execution: StepExecutionRecord,
+        *,
+        tenant_id: str,
+    ) -> None:
         """Save exactly one final result per planned step."""
         with self._lock:
             if self._database is None:
-                existing = self._step_results.get(result.step_id)
+                self._require_in_memory_tenant(task_id, tenant_id)
+                key = (tenant_id, task_id, result.step_id)
+                existing = self._step_results.get(key)
                 if existing is not None:
-                    if existing == result and self._step_executions[result.step_id] == execution:
+                    if existing == result and self._step_executions[key] == execution:
                         return
                     raise ValueError("step result already exists")
-                self._step_results[result.step_id] = result
-                self._step_executions[result.step_id] = execution
+                self._step_results[key] = result
+                self._step_executions[key] = execution
                 return
             with self._database.session() as session:
                 row = session.scalar(
                     select(WorkflowStepResultRow).where(
-                        WorkflowStepResultRow.step_id == result.step_id
+                        WorkflowStepResultRow.step_id == result.step_id,
+                        WorkflowStepResultRow.task_id == task_id,
+                        WorkflowStepResultRow.tenant_id == tenant_id,
                     )
                 )
                 if row is not None:
@@ -299,20 +343,22 @@ class InMemoryWorkflowRepository:
                     ):
                         return
                     raise ValueError("step result already exists")
-                task_id = self._task_id_for_step(session, result.step_id)
+                self._validate_step_for_task(session, tenant_id, task_id, result.step_id)
                 session.add(
                     WorkflowStepResultRow(
                         step_id=result.step_id,
                         task_id=task_id,
+                        tenant_id=tenant_id,
                         result_json=result.model_dump_json(),
                         execution_json=_execution_json(execution),
                     )
                 )
 
-    def save_task_result(self, result: TaskResult) -> None:
+    def save_task_result(self, result: TaskResult, *, tenant_id: str) -> None:
         """Save exactly one terminal result per task."""
         with self._lock:
             if self._database is None:
+                self._require_in_memory_tenant(result.task_id, tenant_id)
                 existing = self._task_results.get(result.task_id)
                 if existing == result:
                     return
@@ -321,7 +367,12 @@ class InMemoryWorkflowRepository:
                 self._task_results[result.task_id] = result
                 return
             with self._database.session() as session:
-                row = session.get(WorkflowTaskRow, result.task_id)
+                row = session.scalar(
+                    select(WorkflowTaskRow).where(
+                        WorkflowTaskRow.task_id == result.task_id,
+                        WorkflowTaskRow.tenant_id == tenant_id,
+                    )
+                )
                 if row is None:
                     raise ValueError("workflow task was not initialized")
                 if row.task_result_json is not None:
@@ -330,16 +381,22 @@ class InMemoryWorkflowRepository:
                     raise ValueError("task result already exists")
                 row.task_result_json = result.model_dump_json()
 
-    def save_verification_result(self, result: VerificationResult) -> None:
+    def save_verification_result(self, result: VerificationResult, *, tenant_id: str) -> None:
         """Append verification history and retain the latest result for recovery."""
         with self._lock:
             if self._database is None:
+                self._require_in_memory_tenant(result.task_id, tenant_id)
                 if self._verification_results.get(result.task_id) == result:
                     return
                 self._verification_results[result.task_id] = result
                 return
             with self._database.session() as session:
-                row = session.get(WorkflowTaskRow, result.task_id)
+                row = session.scalar(
+                    select(WorkflowTaskRow).where(
+                        WorkflowTaskRow.task_id == result.task_id,
+                        WorkflowTaskRow.tenant_id == tenant_id,
+                    )
+                )
                 if row is None:
                     raise ValueError("workflow task was not initialized")
                 if row.verification_json == result.model_dump_json():
@@ -348,6 +405,7 @@ class InMemoryWorkflowRepository:
                     prior = session.scalar(
                         select(WorkflowVerificationHistoryRow.sequence_id).where(
                             WorkflowVerificationHistoryRow.task_id == result.task_id,
+                            WorkflowVerificationHistoryRow.tenant_id == tenant_id,
                             WorkflowVerificationHistoryRow.verification_json
                             == row.verification_json,
                         )
@@ -356,15 +414,17 @@ class InMemoryWorkflowRepository:
                         session.add(
                             WorkflowVerificationHistoryRow(
                                 task_id=result.task_id,
+                                tenant_id=tenant_id,
                                 verification_json=row.verification_json,
                             )
                         )
                 row.verification_json = result.model_dump_json()
 
-    def acquire_execution(self, task_id: str, owner_id: str) -> None:
+    def acquire_execution(self, task_id: str, owner_id: str, *, tenant_id: str) -> None:
         """Prevent concurrent start/resume for one task with a bounded lease."""
         with self._lock:
             if self._database is None:
+                self._require_in_memory_tenant(task_id, tenant_id)
                 owner = self._execution_leases.get(task_id)
                 if owner is not None and owner != owner_id:
                     raise ValueError("task execution lease conflict")
@@ -375,7 +435,12 @@ class InMemoryWorkflowRepository:
             now = datetime.now(UTC)
             try:
                 with self._database.session() as session:
-                    task = session.get(WorkflowTaskRow, task_id)
+                    task = session.scalar(
+                        select(WorkflowTaskRow).where(
+                            WorkflowTaskRow.task_id == task_id,
+                            WorkflowTaskRow.tenant_id == tenant_id,
+                        )
+                    )
                     if task is None:
                         raise ValueError("workflow task was not initialized")
                     if task.task_result_json is not None:
@@ -386,6 +451,7 @@ class InMemoryWorkflowRepository:
                     session.add(
                         WorkflowLeaseRow(
                             task_id=task_id,
+                            tenant_id=tenant_id,
                             owner_id=owner_id,
                             expires_at=now + timedelta(minutes=10),
                         )
@@ -393,10 +459,11 @@ class InMemoryWorkflowRepository:
             except IntegrityError as exc:
                 raise ValueError("task execution lease conflict") from exc
 
-    def release_execution(self, task_id: str, owner_id: str) -> None:
+    def release_execution(self, task_id: str, owner_id: str, *, tenant_id: str) -> None:
         """Release only the caller's task lease."""
         with self._lock:
             if self._database is None:
+                self._require_in_memory_tenant(task_id, tenant_id)
                 if self._execution_leases.get(task_id) == owner_id:
                     del self._execution_leases[task_id]
                 return
@@ -404,36 +471,40 @@ class InMemoryWorkflowRepository:
                 session.execute(
                     delete(WorkflowLeaseRow).where(
                         WorkflowLeaseRow.task_id == task_id,
+                        WorkflowLeaseRow.tenant_id == tenant_id,
                         WorkflowLeaseRow.owner_id == owner_id,
                     )
                 )
 
-    def state_for(self, task_id: str) -> TaskState:
+    def state_for(self, task_id: str, *, tenant_id: str) -> TaskState:
         with self._lock:
             if self._database is None:
+                self._require_in_memory_tenant(task_id, tenant_id)
                 return self._states[task_id]
             with self._database.session() as session:
-                row = session.get(WorkflowTaskRow, task_id)
+                row = self._task_row(session, task_id, tenant_id)
                 if row is None:
                     raise KeyError(task_id)
                 return TaskState.model_validate_json(row.state_json)
 
-    def request_for(self, task_id: str) -> TaskRequest:
+    def request_for(self, task_id: str, *, tenant_id: str) -> TaskRequest:
         with self._lock:
             if self._database is None:
+                self._require_in_memory_tenant(task_id, tenant_id)
                 return self._requests[task_id]
             with self._database.session() as session:
-                row = session.get(WorkflowTaskRow, task_id)
+                row = self._task_row(session, task_id, tenant_id)
                 if row is None:
                     raise KeyError(task_id)
                 return TaskRequest.model_validate_json(row.request_json)
 
-    def contract_for(self, task_id: str) -> TaskContract | None:
+    def contract_for(self, task_id: str, *, tenant_id: str) -> TaskContract | None:
         with self._lock:
             if self._database is None:
+                self._require_in_memory_tenant(task_id, tenant_id)
                 return self._contracts.get(task_id)
             with self._database.session() as session:
-                row = session.get(WorkflowTaskRow, task_id)
+                row = self._task_row(session, task_id, tenant_id)
                 if row is None:
                     raise KeyError(task_id)
                 return (
@@ -442,22 +513,24 @@ class InMemoryWorkflowRepository:
                     else None
                 )
 
-    def plan_for(self, task_id: str) -> TaskPlan | None:
+    def plan_for(self, task_id: str, *, tenant_id: str) -> TaskPlan | None:
         with self._lock:
             if self._database is None:
+                self._require_in_memory_tenant(task_id, tenant_id)
                 return self._plans.get(task_id)
             with self._database.session() as session:
-                row = session.get(WorkflowTaskRow, task_id)
+                row = self._task_row(session, task_id, tenant_id)
                 if row is None:
                     raise KeyError(task_id)
                 return TaskPlan.model_validate_json(row.plan_json) if row.plan_json else None
 
-    def task_result_for(self, task_id: str) -> TaskResult | None:
+    def task_result_for(self, task_id: str, *, tenant_id: str) -> TaskResult | None:
         with self._lock:
             if self._database is None:
+                self._require_in_memory_tenant(task_id, tenant_id)
                 return self._task_results.get(task_id)
             with self._database.session() as session:
-                row = session.get(WorkflowTaskRow, task_id)
+                row = self._task_row(session, task_id, tenant_id)
                 if row is None:
                     raise KeyError(task_id)
                 return (
@@ -466,91 +539,85 @@ class InMemoryWorkflowRepository:
                     else None
                 )
 
-    def step_results_for(self, task_id: str) -> tuple[StepResult, ...]:
-        plan = self.plan_for(task_id)
-        if plan is None:
-            return ()
-        by_id = {item.step_id: item for item in self.step_results()}
-        return tuple(by_id[step.step_id] for step in plan.steps if step.step_id in by_id)
-
-    def step_execution_for(self, step_id: str) -> StepExecutionRecord | None:
+    def step_results_for(self, task_id: str, *, tenant_id: str) -> tuple[StepResult, ...]:
         with self._lock:
             if self._database is None:
-                return self._step_executions.get(step_id)
+                self._require_in_memory_tenant(task_id, tenant_id)
+                plan = self._plans.get(task_id)
+                if plan is None:
+                    return ()
+                return tuple(
+                    self._step_results[(tenant_id, task_id, step.step_id)]
+                    for step in plan.steps
+                    if (tenant_id, task_id, step.step_id) in self._step_results
+                )
+            with self._database.session() as session:
+                payloads = session.scalars(
+                    select(WorkflowStepResultRow.result_json)
+                    .where(
+                        WorkflowStepResultRow.task_id == task_id,
+                        WorkflowStepResultRow.tenant_id == tenant_id,
+                    )
+                    .order_by(WorkflowStepResultRow.sequence_id)
+                )
+                return tuple(StepResult.model_validate_json(payload) for payload in payloads)
+
+    def step_execution_for(
+        self, task_id: str, step_id: str, *, tenant_id: str
+    ) -> StepExecutionRecord | None:
+        with self._lock:
+            if self._database is None:
+                self._require_in_memory_tenant(task_id, tenant_id)
+                return self._step_executions.get((tenant_id, task_id, step_id))
             with self._database.session() as session:
                 payload = session.scalar(
                     select(WorkflowStepResultRow.execution_json).where(
-                        WorkflowStepResultRow.step_id == step_id
+                        WorkflowStepResultRow.step_id == step_id,
+                        WorkflowStepResultRow.task_id == task_id,
+                        WorkflowStepResultRow.tenant_id == tenant_id,
                     )
                 )
                 return _execution_from_json(payload) if payload else None
 
-    def tool_results_for(self, task_id: str) -> tuple[ToolResult, ...]:
+    def tool_results_for(self, task_id: str, *, tenant_id: str) -> tuple[ToolResult, ...]:
         with self._lock:
             if self._database is None:
+                self._require_in_memory_tenant(task_id, tenant_id)
                 return tuple(result for result in self._tool_results if result.task_id == task_id)
             with self._database.session() as session:
                 payloads = session.scalars(
                     select(WorkflowToolResultRow.payload_json)
-                    .where(WorkflowToolResultRow.task_id == task_id)
+                    .where(
+                        WorkflowToolResultRow.task_id == task_id,
+                        WorkflowToolResultRow.tenant_id == tenant_id,
+                    )
                     .order_by(WorkflowToolResultRow.sequence_id)
                 )
                 return tuple(ToolResult.model_validate_json(payload) for payload in payloads)
 
-    def state_events_for(self, task_id: str) -> tuple[TaskStateEvent, ...]:
+    def state_events_for(self, task_id: str, *, tenant_id: str) -> tuple[TaskStateEvent, ...]:
         with self._lock:
             if self._database is None:
+                self._require_in_memory_tenant(task_id, tenant_id)
                 return tuple(event for event in self._state_events if event.task_id == task_id)
             with self._database.session() as session:
                 payloads = session.scalars(
                     select(WorkflowStateEventRow.payload_json)
-                    .where(WorkflowStateEventRow.task_id == task_id)
+                    .where(
+                        WorkflowStateEventRow.task_id == task_id,
+                        WorkflowStateEventRow.tenant_id == tenant_id,
+                    )
                     .order_by(WorkflowStateEventRow.sequence_id)
                 )
                 return tuple(_event_from_json(payload) for payload in payloads)
 
-    def step_results(self) -> tuple[StepResult, ...]:
+    def verification_result_for(self, task_id: str, *, tenant_id: str) -> VerificationResult:
         with self._lock:
             if self._database is None:
-                return tuple(self._step_results.values())
-            with self._database.session() as session:
-                payloads = session.scalars(
-                    select(WorkflowStepResultRow.result_json).order_by(
-                        WorkflowStepResultRow.sequence_id
-                    )
-                )
-                return tuple(StepResult.model_validate_json(payload) for payload in payloads)
-
-    def tool_results(self) -> tuple[ToolResult, ...]:
-        with self._lock:
-            if self._database is None:
-                return tuple(self._tool_results)
-            with self._database.session() as session:
-                payloads = session.scalars(
-                    select(WorkflowToolResultRow.payload_json).order_by(
-                        WorkflowToolResultRow.sequence_id
-                    )
-                )
-                return tuple(ToolResult.model_validate_json(payload) for payload in payloads)
-
-    def state_events(self) -> tuple[TaskStateEvent, ...]:
-        with self._lock:
-            if self._database is None:
-                return tuple(self._state_events)
-            with self._database.session() as session:
-                payloads = session.scalars(
-                    select(WorkflowStateEventRow.payload_json).order_by(
-                        WorkflowStateEventRow.sequence_id
-                    )
-                )
-                return tuple(_event_from_json(payload) for payload in payloads)
-
-    def verification_result_for(self, task_id: str) -> VerificationResult:
-        with self._lock:
-            if self._database is None:
+                self._require_in_memory_tenant(task_id, tenant_id)
                 return self._verification_results[task_id]
             with self._database.session() as session:
-                row = session.get(WorkflowTaskRow, task_id)
+                row = self._task_row(session, task_id, tenant_id)
                 if row is None or row.verification_json is None:
                     raise KeyError(task_id)
                 return VerificationResult.model_validate_json(row.verification_json)
@@ -560,19 +627,34 @@ class InMemoryWorkflowRepository:
             self._database.dispose()
             self._database = None
 
-    def _task_id_for_step(self, session: object, step_id: str) -> str:
-        # Kept local to avoid exposing ORM types through the application port.
+    def _validate_step_for_task(
+        self, session: object, tenant_id: str, task_id: str, step_id: str
+    ) -> None:
         from sqlalchemy.orm import Session
 
         assert isinstance(session, Session)
-        rows = session.scalars(select(WorkflowTaskRow)).all()
-        for row in rows:
-            if row.plan_json is None:
-                continue
+        row = self._task_row(session, task_id, tenant_id)
+        if row is not None and row.plan_json is not None:
             plan = TaskPlan.model_validate_json(row.plan_json)
             if any(step.step_id == step_id for step in plan.steps):
-                return row.task_id
+                return
         raise ValueError("step does not belong to a persisted plan")
+
+    def _require_in_memory_tenant(self, task_id: str, tenant_id: str) -> None:
+        if self._tenants.get(task_id) != tenant_id:
+            raise KeyError(task_id)
+
+    @staticmethod
+    def _task_row(session: object, task_id: str, tenant_id: str) -> WorkflowTaskRow | None:
+        from sqlalchemy.orm import Session
+
+        assert isinstance(session, Session)
+        return session.scalar(
+            select(WorkflowTaskRow).where(
+                WorkflowTaskRow.task_id == task_id,
+                WorkflowTaskRow.tenant_id == tenant_id,
+            )
+        )
 
 
 def _event_json(event: TaskStateEvent) -> str:
@@ -650,4 +732,7 @@ def _execution_from_json(payload: str) -> StepExecutionRecord:
     )
 
 
-__all__ = ["InMemoryWorkflowRepository"]
+# Compatibility alias for older imports.  The implementation is no longer memory-specific.
+InMemoryWorkflowRepository = WorkflowRepository
+
+__all__ = ["InMemoryWorkflowRepository", "WorkflowRepository"]

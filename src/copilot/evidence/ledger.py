@@ -46,7 +46,7 @@ class EvidenceLedgerError(DomainError):
     """Typed evidence storage or reference failure."""
 
 
-class EvidenceNotFoundError(EvidenceLedgerError):
+class EvidenceNotFoundError(EvidenceLedgerError, LookupError):
     """Raised when a scoped evidence reference cannot be resolved."""
 
 
@@ -81,14 +81,13 @@ class InMemoryEvidenceLedger:
         self._injection_detector = injection_detector or PromptInjectionDetector()
         self._max_items_per_task = max_items_per_task
         self._items: dict[str, EvidenceItem] = {}
-        self._fingerprints: dict[tuple[str, str], str] = {}
+        self._item_tenants: dict[str, str] = {}
+        self._fingerprints: dict[tuple[str, str, str], str] = {}
         self._lock = RLock()
         self._database, self._owns_database = coerce_database(
             database_path,
             initialize_schema=initialize_schema,
         )
-        if self._database is not None:
-            self._refresh_database_items()
 
     def record(self, call: ToolCall, drafts: tuple[EvidenceDraft, ...]) -> tuple[EvidenceItem, ...]:
         """Bind drafts to one governed call and atomically append canonical evidence."""
@@ -96,8 +95,12 @@ class InMemoryEvidenceLedger:
             return ()
         with self._lock:
             if self._database is not None:
-                self._refresh_database_items()
-            existing_count = sum(item.task_id == call.task_id for item in self._items.values())
+                self._refresh_database_items(call.tenant_id)
+            existing_count = sum(
+                item.task_id == call.task_id
+                and self._item_tenants.get(item.evidence_id) == call.tenant_id
+                for item in self._items.values()
+            )
             if existing_count + len(drafts) > self._max_items_per_task:
                 raise self._validation_error(
                     call.task_id,
@@ -128,11 +131,11 @@ class InMemoryEvidenceLedger:
                         timestamp=self._clock(),
                     )
                 )
-            results = self._add_many_locked(tuple(pending), call.task_id)
+            results = self._add_many_locked(tuple(pending), call.task_id, call.tenant_id)
             try:
-                self._persist_created(results)
+                self._persist_created(results, tenant_id=call.tenant_id)
             except Exception:
-                self._rollback_created(results)
+                self._rollback_created(results, tenant_id=call.tenant_id)
                 raise
             return tuple(_copy_item(result.evidence) for result in results)
 
@@ -238,92 +241,128 @@ class InMemoryEvidenceLedger:
             ),
         )
 
-    def add(self, evidence: EvidenceItem) -> EvidenceAddResult:
+    def add(self, evidence: EvidenceItem, *, tenant_id: str) -> EvidenceAddResult:
         """Append one item or return the existing canonical logical duplicate."""
         with self._lock:
             if self._database is not None:
-                self._refresh_database_items()
+                self._refresh_database_items(tenant_id)
             detached = _copy_item(evidence)
             fingerprint = evidence_fingerprint(detached)
-            existing_count = sum(item.task_id == detached.task_id for item in self._items.values())
+            existing_count = sum(
+                item.task_id == detached.task_id
+                and self._item_tenants.get(item.evidence_id) == tenant_id
+                for item in self._items.values()
+            )
             if (
                 existing_count >= self._max_items_per_task
-                and (detached.task_id, fingerprint) not in self._fingerprints
+                and (tenant_id, detached.task_id, fingerprint) not in self._fingerprints
             ):
                 raise self._validation_error(
                     detached.task_id,
                     "EVIDENCE_LIMIT_EXCEEDED",
                     "Task evidence exceeds the configured item limit",
                 )
-            result = self._add_locked(detached)
+            result = self._add_locked(detached, tenant_id=tenant_id)
             try:
-                self._persist_created((result,))
+                self._persist_created((result,), tenant_id=tenant_id)
             except Exception:
-                self._rollback_created((result,))
+                self._rollback_created((result,), tenant_id=tenant_id)
                 raise
             return result.model_copy(deep=True)
 
-    def get(self, evidence_id: str, *, task_id: str | None = None) -> EvidenceItem:
-        """Return a detached immutable item, optionally enforcing task ownership."""
+    def get(self, evidence_id: str, *, task_id: str, tenant_id: str) -> EvidenceItem:
+        """Return a detached immutable item only in the exact task and tenant scope."""
         with self._lock:
+            if self._database is not None:
+                self._refresh_database_items(tenant_id)
             item = self._items.get(evidence_id)
-            if item is None or (task_id is not None and item.task_id != task_id):
+            if (
+                item is None
+                or item.task_id != task_id
+                or self._item_tenants.get(evidence_id) != tenant_id
+            ):
                 raise self._not_found_error(task_id, evidence_id)
             return _copy_item(item)
 
-    def list(self, task_id: str) -> tuple[EvidenceItem, ...]:
+    def list(self, task_id: str, *, tenant_id: str) -> tuple[EvidenceItem, ...]:
         """Return a detached task-scoped snapshot in append order."""
         with self._lock:
+            if self._database is not None:
+                self._refresh_database_items(tenant_id)
             return tuple(
-                _copy_item(item) for item in self._items.values() if item.task_id == task_id
+                _copy_item(item)
+                for item in self._items.values()
+                if item.task_id == task_id and self._item_tenants.get(item.evidence_id) == tenant_id
             )
 
-    def list_for_task(self, task_id: str) -> tuple[EvidenceItem, ...]:
+    def list_for_task(self, task_id: str, *, tenant_id: str) -> tuple[EvidenceItem, ...]:
         """Backward-compatible alias for task-scoped listing."""
-        return self.list(task_id)
+        return self.list(task_id, tenant_id=tenant_id)
 
-    def list_for_call(self, tool_call_id: str) -> tuple[EvidenceItem, ...]:
+    def list_for_call(
+        self, tool_call_id: str, *, task_id: str, tenant_id: str
+    ) -> tuple[EvidenceItem, ...]:
         """Return detached evidence for a call in insertion order."""
         with self._lock:
+            if self._database is not None:
+                self._refresh_database_items(tenant_id)
             return tuple(
                 _copy_item(item)
                 for item in self._items.values()
                 if item.tool_call_id == tool_call_id
+                and item.task_id == task_id
+                and self._item_tenants.get(item.evidence_id) == tenant_id
             )
 
-    def find_by_step(self, task_id: str, step_id: str) -> tuple[EvidenceItem, ...]:
+    def find_by_step(
+        self, task_id: str, step_id: str, *, tenant_id: str
+    ) -> tuple[EvidenceItem, ...]:
         """Return task-local evidence produced by one step."""
         with self._lock:
             return tuple(
                 _copy_item(item)
                 for item in self._items.values()
-                if item.task_id == task_id and item.step_id == step_id
+                if item.task_id == task_id
+                and item.step_id == step_id
+                and self._item_tenants.get(item.evidence_id) == tenant_id
             )
 
     def find_by_type(
         self,
         task_id: str,
         source_type: EvidenceType,
+        *,
+        tenant_id: str,
     ) -> tuple[EvidenceItem, ...]:
         """Return task-local evidence of one frozen source type."""
         with self._lock:
             return tuple(
                 _copy_item(item)
                 for item in self._items.values()
-                if item.task_id == task_id and item.source_type is source_type
+                if item.task_id == task_id
+                and item.source_type is source_type
+                and self._item_tenants.get(item.evidence_id) == tenant_id
             )
 
-    def validate_reference(self, task_id: str, evidence_id: str) -> bool:
+    def validate_reference(self, task_id: str, evidence_id: str, *, tenant_id: str) -> bool:
         """Return whether an evidence identifier exists and belongs to the task."""
         with self._lock:
             item = self._items.get(evidence_id)
-            return item is not None and item.task_id == task_id
+            return (
+                item is not None
+                and item.task_id == task_id
+                and self._item_tenants.get(evidence_id) == tenant_id
+            )
 
-    def trace_lineage(self, task_id: str, evidence_id: str) -> LineageTrace:
+    def trace_lineage(self, task_id: str, evidence_id: str, *, tenant_id: str) -> LineageTrace:
         """Return a deterministic root-first graph and all safe structural issues."""
         with self._lock:
             root = self._items.get(evidence_id)
-            if root is None or root.task_id != task_id:
+            if (
+                root is None
+                or root.task_id != task_id
+                or self._item_tenants.get(evidence_id) != tenant_id
+            ):
                 raise self._not_found_error(task_id, evidence_id)
 
             nodes: dict[str, EvidenceItem] = {}
@@ -388,7 +427,7 @@ class InMemoryEvidenceLedger:
                             )
                         )
                         continue
-                    if parent.task_id != task_id:
+                    if parent.task_id != task_id or self._item_tenants.get(parent_id) != tenant_id:
                         issues.append(
                             LineageIssue(
                                 code="LINEAGE_CROSS_TASK_REFERENCE",
@@ -433,13 +472,16 @@ class InMemoryEvidenceLedger:
                 issues=tuple(issues),
             )
 
-    def snapshot(self, task_id: str | None = None) -> EvidenceLedgerSnapshot:
+    def snapshot(self, *, tenant_id: str, task_id: str | None = None) -> EvidenceLedgerSnapshot:
         """Create a detached serializable ledger snapshot, optionally task-scoped."""
         with self._lock:
+            if self._database is not None:
+                self._refresh_database_items(tenant_id)
             items = tuple(
                 _copy_item(item)
                 for item in self._items.values()
-                if task_id is None or item.task_id == task_id
+                if self._item_tenants.get(item.evidence_id) == tenant_id
+                and (task_id is None or item.task_id == task_id)
             )
             return EvidenceLedgerSnapshot(items=items)
 
@@ -448,6 +490,7 @@ class InMemoryEvidenceLedger:
         cls,
         snapshot: EvidenceLedgerSnapshot,
         *,
+        tenant_id: str,
         id_factory: Callable[[], str] | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> InMemoryEvidenceLedger:
@@ -465,7 +508,7 @@ class InMemoryEvidenceLedger:
                         "Evidence snapshot contains duplicate identifiers",
                     )
                 fingerprint = evidence_fingerprint(stored)
-                key = (stored.task_id, fingerprint)
+                key = (tenant_id, stored.task_id, fingerprint)
                 if key in ledger._fingerprints:
                     raise ledger._validation_error(
                         stored.task_id,
@@ -473,6 +516,7 @@ class InMemoryEvidenceLedger:
                         "Evidence snapshot contains duplicate logical records",
                     )
                 ledger._items[stored.evidence_id] = stored
+                ledger._item_tenants[stored.evidence_id] = tenant_id
                 ledger._fingerprints[key] = stored.evidence_id
             ledger._validate_restored_lineage()
         return ledger
@@ -481,14 +525,15 @@ class InMemoryEvidenceLedger:
         self,
         items: tuple[EvidenceItem, ...],
         task_id: str,
+        tenant_id: str,
     ) -> tuple[EvidenceAddResult, ...]:
         """Validate a batch before committing any newly created logical records."""
-        pending_fingerprints: dict[tuple[str, str], EvidenceItem] = {}
+        pending_fingerprints: dict[tuple[str, str, str], EvidenceItem] = {}
         results: list[EvidenceAddResult] = []
         for item in items:
-            self._validate_new_item(item)
+            self._validate_new_item(item, tenant_id=tenant_id)
             fingerprint = evidence_fingerprint(item)
-            key = (item.task_id, fingerprint)
+            key = (tenant_id, item.task_id, fingerprint)
             duplicate_id = self._fingerprints.get(key)
             if duplicate_id is not None:
                 canonical = self._items[duplicate_id]
@@ -521,6 +566,7 @@ class InMemoryEvidenceLedger:
         for key, item in pending_fingerprints.items():
             stored = _copy_item(item)
             self._items[stored.evidence_id] = stored
+            self._item_tenants[stored.evidence_id] = tenant_id
             self._fingerprints[key] = stored.evidence_id
         return tuple(results)
 
@@ -531,7 +577,7 @@ class InMemoryEvidenceLedger:
                 self._database.dispose()
                 self._database = None
 
-    def _persist_created(self, results: tuple[EvidenceAddResult, ...]) -> None:
+    def _persist_created(self, results: tuple[EvidenceAddResult, ...], *, tenant_id: str) -> None:
         if self._database is None:
             return
         with self._database.session() as session:
@@ -542,42 +588,57 @@ class InMemoryEvidenceLedger:
                         WorkflowEvidenceRow(
                             evidence_id=item.evidence_id,
                             task_id=item.task_id,
+                            tenant_id=tenant_id,
                             fingerprint=evidence_fingerprint(item),
                             payload_json=item.model_dump_json(),
                         )
                     )
 
-    def _refresh_database_items(self) -> None:
+    def _refresh_database_items(self, tenant_id: str) -> None:
         assert self._database is not None
-        self._items.clear()
-        self._fingerprints.clear()
+        stale_ids = [
+            evidence_id for evidence_id, owner in self._item_tenants.items() if owner == tenant_id
+        ]
+        for evidence_id in stale_ids:
+            item = self._items.pop(evidence_id)
+            self._item_tenants.pop(evidence_id, None)
+            self._fingerprints.pop(
+                (tenant_id, item.task_id, evidence_fingerprint(item)),
+                None,
+            )
         with self._database.session() as session:
             payloads = session.scalars(
-                select(WorkflowEvidenceRow.payload_json).order_by(WorkflowEvidenceRow.sequence_id)
+                select(WorkflowEvidenceRow.payload_json)
+                .where(WorkflowEvidenceRow.tenant_id == tenant_id)
+                .order_by(WorkflowEvidenceRow.sequence_id)
             )
             for payload in payloads:
                 item = EvidenceItem.model_validate_json(payload)
                 self._items[item.evidence_id] = item
-                self._fingerprints[(item.task_id, evidence_fingerprint(item))] = item.evidence_id
+                self._item_tenants[item.evidence_id] = tenant_id
+                self._fingerprints[(tenant_id, item.task_id, evidence_fingerprint(item))] = (
+                    item.evidence_id
+                )
 
-    def _rollback_created(self, results: tuple[EvidenceAddResult, ...]) -> None:
+    def _rollback_created(self, results: tuple[EvidenceAddResult, ...], *, tenant_id: str) -> None:
         for result in results:
             if not result.created:
                 continue
             item = self._items.pop(result.evidence.evidence_id, None)
             if item is not None:
-                self._fingerprints.pop((item.task_id, evidence_fingerprint(item)), None)
+                self._item_tenants.pop(item.evidence_id, None)
+                self._fingerprints.pop((tenant_id, item.task_id, evidence_fingerprint(item)), None)
 
-    def _add_locked(self, item: EvidenceItem) -> EvidenceAddResult:
+    def _add_locked(self, item: EvidenceItem, *, tenant_id: str) -> EvidenceAddResult:
         if item.evidence_id in self._items:
             raise self._validation_error(
                 item.task_id,
                 "EVIDENCE_ID_CONFLICT",
                 "Evidence identifier already exists",
             )
-        self._validate_new_item(item)
+        self._validate_new_item(item, tenant_id=tenant_id)
         fingerprint = evidence_fingerprint(item)
-        key = (item.task_id, fingerprint)
+        key = (tenant_id, item.task_id, fingerprint)
         duplicate_id = self._fingerprints.get(key)
         if duplicate_id is not None:
             canonical = self._items[duplicate_id]
@@ -588,10 +649,11 @@ class InMemoryEvidenceLedger:
             )
         stored = _copy_item(item)
         self._items[stored.evidence_id] = stored
+        self._item_tenants[stored.evidence_id] = tenant_id
         self._fingerprints[key] = stored.evidence_id
         return EvidenceAddResult(evidence=_copy_item(stored), created=True)
 
-    def _validate_new_item(self, item: EvidenceItem) -> None:
+    def _validate_new_item(self, item: EvidenceItem, *, tenant_id: str) -> None:
         parent_ids = item.source_reference.input_evidence_ids
         if len(set(parent_ids)) != len(parent_ids):
             raise self._validation_error(
@@ -613,7 +675,7 @@ class InMemoryEvidenceLedger:
                     "LINEAGE_PARENT_NOT_FOUND",
                     "Evidence lineage parent does not exist",
                 )
-            if parent.task_id != item.task_id:
+            if parent.task_id != item.task_id or self._item_tenants.get(parent_id) != tenant_id:
                 raise self._validation_error(
                     item.task_id,
                     "LINEAGE_CROSS_TASK_REFERENCE",

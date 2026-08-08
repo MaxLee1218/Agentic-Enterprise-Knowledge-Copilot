@@ -122,7 +122,12 @@ def test_run_task_business_failure_uses_stderr_and_exit_one(tmp_path: Path) -> N
         }
     )
     result = subprocess.run(
-        [sys.executable, "scripts/run_task.py", "Analyze supplier quality and report."],
+        [
+            sys.executable,
+            "scripts/run_task.py",
+            "Analyze supplier quality and report.",
+            "--demo",
+        ],
         cwd=project_root,
         env=environment,
         capture_output=True,
@@ -132,6 +137,37 @@ def test_run_task_business_failure_uses_stderr_and_exit_one(tmp_path: Path) -> N
     assert result.returncode == 1
     assert "Task status: FAILED" in result.stdout
     assert "TASK_INFORMATION_MISSING" in result.stderr
+
+
+def test_cli_execution_requires_explicit_demo_identity(tmp_path: Path) -> None:
+    """Local execution cannot silently synthesize a demo caller."""
+    project_root = Path(__file__).resolve().parents[2]
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "APP_ENV": "test",
+            "PYTHONPATH": str(project_root / "src"),
+            "DATABASE_URL": "sqlite:///unused-explicit-demo.db",
+            "ARTIFACT_DIR": str(tmp_path / "artifacts"),
+            "CHECKPOINT_DATABASE_PATH": str(tmp_path / "workflow.db"),
+            "LLM_PROVIDER": "mock",
+        }
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_task.py",
+            "Analyze Q2 2026 supplier quality and generate a JSON report.",
+        ],
+        cwd=project_root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 3
+    assert "CLI execution requires --demo" in result.stderr
 
 
 def test_run_supplier_quality_workflow_offline(tmp_path: Path) -> None:
@@ -157,6 +193,7 @@ def test_run_supplier_quality_workflow_offline(tmp_path: Path) -> None:
                 "Analyze Q1 2026 supplier quality deviations for SUP-001 "
                 "and generate a JSON management report."
             ),
+            "--demo",
         ],
         cwd=project_root,
         env=environment,

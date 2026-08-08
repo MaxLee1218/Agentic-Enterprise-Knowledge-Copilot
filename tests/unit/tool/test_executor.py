@@ -22,6 +22,7 @@ from copilot.observability import (
 )
 from copilot.persistence.audit_repository import InMemoryToolAuditRepository
 from copilot.policies.offline import OfflineSupplierQualityAuthorizer
+from copilot.services.execution import ExecutionContext
 from copilot.services.task_intake import RequestSource, TrustedTaskContext
 from copilot.tools import (
     EvidenceDraft,
@@ -46,14 +47,25 @@ class ApprovedAuthorizer:
     def __init__(self) -> None:
         self.call_count = 0
 
-    def authorize(self, call: ToolCall, definition: ToolDefinition) -> None:
+    def authorize_with_context(
+        self,
+        call: ToolCall,
+        definition: ToolDefinition,
+        execution_context: ExecutionContext,
+    ) -> None:
         self.call_count += 1
         assert call.tool_name == definition.tool_name
+        assert execution_context.task_id == call.task_id
 
 
 class DeniedAuthorizer:
-    def authorize(self, call: ToolCall, definition: ToolDefinition) -> None:
-        del call, definition
+    def authorize_with_context(
+        self,
+        call: ToolCall,
+        definition: ToolDefinition,
+        execution_context: ExecutionContext,
+    ) -> None:
+        del call, definition, execution_context
         raise ToolAuthorizationError("Approval does not cover this invocation")
 
 
@@ -118,8 +130,7 @@ class InjectedDocumentKnowledgeTool(MockKnowledgeTool):
         )
 
 
-def _security_context(*, roles: tuple[str, ...]) -> TrustedTaskContext:
-    now = datetime.now(UTC)
+def _security_context(*, roles: tuple[str, ...], deadline_at: datetime) -> TrustedTaskContext:
     return TrustedTaskContext(
         task_id="T-001",
         trace_id="TRACE-001",
@@ -128,17 +139,35 @@ def _security_context(*, roles: tuple[str, ...]) -> TrustedTaskContext:
         tenant_id="TENANT-A",
         data_scope=("quality.v1",),
         roles=roles,
+        scopes=("quality.read", "tool.execute"),
         authentication_source="test",
+        authenticated=True,
         is_demo_identity=False,
         purpose="supplier_quality_analysis.v1",
         max_steps=4,
         read_only=True,
         require_approval=False,
-        deadline_at=now + timedelta(seconds=10),
+        deadline_at=deadline_at,
         request_source=RequestSource.INTERNAL,
         task_text_hash="a" * 64,
         task_text_length=10,
     )
+
+
+def _execution_context(
+    call: ToolCall,
+    *,
+    roles: tuple[str, ...] = ("quality_analyst",),
+) -> ExecutionContext:
+    return ExecutionContext.from_task_context(
+        _security_context(roles=roles, deadline_at=call.deadline_at),
+        call,
+        approval_required=False,
+    )
+
+
+def _execute(executor: ToolExecutor, call: ToolCall) -> object:
+    return executor.execute(call, _execution_context(call))
 
 
 def make_call(
@@ -189,16 +218,20 @@ def test_successful_execution_collects_evidence_and_writes_audit() -> None:
     executor, ledger, audit = make_runtime(tool)
 
     try:
-        result = executor.execute(make_call())
+        call = make_call()
+        result = executor.execute(call, _execution_context(call))
     finally:
         executor.close()
 
     assert result.status is ToolResultStatus.SUCCESS
     assert result.output is not None
     assert len(result.evidence_ids) == 1
-    assert ledger.get(result.evidence_ids[0]).tool_call_id == result.tool_call_id
+    assert (
+        ledger.get(result.evidence_ids[0], task_id="T-001", tenant_id="TENANT-A").tool_call_id
+        == result.tool_call_id
+    )
     assert tool.call_count == 1
-    records = audit.list()
+    records = audit.list(tenant_id="TENANT-A")
     assert len(records) == 1
     assert records[0].status is ToolResultStatus.SUCCESS
     assert records[0].latency_ms >= 0
@@ -208,7 +241,8 @@ def test_unknown_tool_is_rejected_before_execution() -> None:
     executor, _, _ = make_runtime(MockKnowledgeTool())
     try:
         with pytest.raises(ToolNotFoundError):
-            executor.execute(make_call(tool_name="database_query"))
+            call = make_call(tool_name="database_query")
+            executor.execute(call, _execution_context(call))
     finally:
         executor.close()
 
@@ -220,20 +254,22 @@ def test_invalid_input_is_audited_and_never_calls_tool_or_policy() -> None:
 
     try:
         with pytest.raises(ToolValidationError):
-            executor.execute(make_call(input_payload={}))
+            call = make_call(input_payload={})
+            executor.execute(call, _execution_context(call))
     finally:
         executor.close()
 
     assert tool.call_count == 0
     assert authorizer.call_count == 0
-    assert audit.list()[0].error_code == "TOOL_INPUT_INVALID"
+    assert audit.list(tenant_id="TENANT-A")[0].error_code == "TOOL_INPUT_INVALID"
 
 
 def test_tool_exception_becomes_safe_typed_technical_result() -> None:
     executor, _, audit = make_runtime(FailingKnowledgeTool())
 
     try:
-        result = executor.execute(make_call())
+        call = make_call()
+        result = executor.execute(call, _execution_context(call))
     finally:
         executor.close()
 
@@ -241,14 +277,15 @@ def test_tool_exception_becomes_safe_typed_technical_result() -> None:
     assert result.error is not None
     assert result.error.error_code == "TOOL_EXECUTION_FAILED"
     assert "sensitive" not in result.error.message
-    assert audit.list()[0].error_code == "TOOL_EXECUTION_FAILED"
+    assert audit.list(tenant_id="TENANT-A")[0].error_code == "TOOL_EXECUTION_FAILED"
 
 
 def test_timeout_becomes_typed_result_and_late_output_is_not_recorded() -> None:
     executor, ledger, audit = make_runtime(SleepingKnowledgeTool())
 
     try:
-        result = executor.execute(make_call(deadline_after=0.02))
+        call = make_call(deadline_after=0.02)
+        result = executor.execute(call, _execution_context(call))
         sleep(0.25)
     finally:
         executor.close()
@@ -257,8 +294,8 @@ def test_timeout_becomes_typed_result_and_late_output_is_not_recorded() -> None:
     assert result.error is not None
     assert result.error.error_code == "TOOL_TIMEOUT"
     assert result.evidence_ids == ()
-    assert ledger.list_for_call(result.tool_call_id) == ()
-    assert audit.list()[0].status is ToolResultStatus.TIMEOUT
+    assert ledger.list_for_call(result.tool_call_id, task_id="T-001", tenant_id="TENANT-A") == ()
+    assert audit.list(tenant_id="TENANT-A")[0].status is ToolResultStatus.TIMEOUT
 
 
 def test_configured_step_duration_limit_bounds_a_longer_tool_timeout() -> None:
@@ -276,7 +313,8 @@ def test_configured_step_duration_limit_bounds_a_longer_tool_timeout() -> None:
     )
 
     try:
-        result = executor.execute(make_call(deadline_after=5))
+        call = make_call(deadline_after=5)
+        result = executor.execute(call, _execution_context(call))
     finally:
         executor.close()
 
@@ -329,7 +367,7 @@ def test_database_limit_returns_typed_result_metric_and_event(
 
     caplog.set_level(logging.ERROR, logger=logger.name)
     try:
-        result = executor.execute(call)
+        result = executor.execute(call, _execution_context(call))
     finally:
         executor.close()
 
@@ -350,7 +388,8 @@ def test_policy_denial_prevents_execution_and_is_audited() -> None:
     executor, _, audit = make_runtime(tool, authorizer=DeniedAuthorizer())
 
     try:
-        result = executor.execute(make_call())
+        call = make_call()
+        result = executor.execute(call, _execution_context(call))
     finally:
         executor.close()
 
@@ -358,7 +397,7 @@ def test_policy_denial_prevents_execution_and_is_audited() -> None:
     assert result.error is not None
     assert result.error.error_code == "TOOL_ACCESS_DENIED"
     assert tool.call_count == 0
-    assert audit.list()[0].status is ToolResultStatus.PERMISSION_DENIED
+    assert audit.list(tenant_id="TENANT-A")[0].status is ToolResultStatus.PERMISSION_DENIED
 
 
 def test_executor_reauthorizes_against_current_context_before_calling_tool() -> None:
@@ -375,10 +414,8 @@ def test_executor_reauthorizes_against_current_context_before_calling_tool() -> 
     )
 
     try:
-        result = executor.execute(
-            make_call(call_id="TC-REAUTHORIZE"),
-            security_context=_security_context(roles=("revoked_role",)),
-        )
+        call = make_call(call_id="TC-REAUTHORIZE")
+        result = executor.execute(call, _execution_context(call, roles=("revoked_role",)))
     finally:
         executor.close()
 
@@ -386,8 +423,8 @@ def test_executor_reauthorizes_against_current_context_before_calling_tool() -> 
     assert result.error is not None
     assert result.error.error_code == "UNKNOWN_ROLE"
     assert tool.call_count == 0
-    assert audit.list()[0].policy_decision == "DENY"
-    assert audit.list()[0].reason_code == "UNKNOWN_ROLE"
+    assert audit.list(tenant_id="TENANT-A")[0].policy_decision == "DENY"
+    assert audit.list(tenant_id="TENANT-A")[0].reason_code == "UNKNOWN_ROLE"
 
 
 def test_secret_tool_output_is_blocked_before_schema_evidence_or_artifact_use() -> None:
@@ -395,7 +432,8 @@ def test_secret_tool_output_is_blocked_before_schema_evidence_or_artifact_use() 
     executor, ledger, audit = make_runtime(tool)
 
     try:
-        result = executor.execute(make_call(call_id="TC-SECRET-OUTPUT"))
+        call = make_call(call_id="TC-SECRET-OUTPUT")
+        result = executor.execute(call, _execution_context(call))
     finally:
         executor.close()
 
@@ -403,8 +441,8 @@ def test_secret_tool_output_is_blocked_before_schema_evidence_or_artifact_use() 
     assert result.output is None
     assert result.error is not None
     assert result.error.error_code == "SENSITIVE_OUTPUT_BLOCKED"
-    assert ledger.list("T-001") == ()
-    assert "SECRET_FIELD" in audit.list()[0].security_finding_codes
+    assert ledger.list("T-001", tenant_id="TENANT-A") == ()
+    assert "SECRET_FIELD" in audit.list(tenant_id="TENANT-A")[0].security_finding_codes
 
 
 def test_secret_evidence_is_rejected_with_stable_code_and_no_persistence() -> None:
@@ -412,15 +450,16 @@ def test_secret_evidence_is_rejected_with_stable_code_and_no_persistence() -> No
     executor, ledger, audit = make_runtime(tool)
 
     try:
-        result = executor.execute(make_call(call_id="TC-SECRET-EVIDENCE"))
+        call = make_call(call_id="TC-SECRET-EVIDENCE")
+        result = executor.execute(call, _execution_context(call))
     finally:
         executor.close()
 
     assert result.status is ToolResultStatus.PERMISSION_DENIED
     assert result.error is not None
     assert result.error.error_code == "SECRET_DETECTED"
-    assert ledger.list("T-001") == ()
-    assert audit.list()[0].security_finding_codes == ("SECRET_DETECTED",)
+    assert ledger.list("T-001", tenant_id="TENANT-A") == ()
+    assert audit.list(tenant_id="TENANT-A")[0].security_finding_codes == ("SECRET_DETECTED",)
 
 
 def test_retrieved_document_instructions_are_isolated_but_facts_remain_usable() -> None:
@@ -428,7 +467,8 @@ def test_retrieved_document_instructions_are_isolated_but_facts_remain_usable() 
     executor, ledger, audit = make_runtime(tool)
 
     try:
-        result = executor.execute(make_call(call_id="TC-INJECTED-DOCUMENT"))
+        call = make_call(call_id="TC-INJECTED-DOCUMENT")
+        result = executor.execute(call, _execution_context(call))
     finally:
         executor.close()
 
@@ -438,7 +478,7 @@ def test_retrieved_document_instructions_are_isolated_but_facts_remain_usable() 
     assert "Supplier A" in rendered_output
     assert "Supplier B" in rendered_output
     assert "database_write" not in rendered_output
-    evidence = ledger.get(result.evidence_ids[0], task_id="T-001")
+    evidence = ledger.get(result.evidence_ids[0], task_id="T-001", tenant_id="TENANT-A")
     rendered_evidence = repr(evidence.content.data.root)
     assert "Supplier A" in rendered_evidence
     assert "Supplier B" in rendered_evidence
@@ -447,7 +487,7 @@ def test_retrieved_document_instructions_are_isolated_but_facts_remain_usable() 
     assert reference["trust_level"] == "SANITIZED"
     assert reference["quarantined"] is False
     assert reference["injection_findings"]
-    assert "INSTRUCTION_OVERRIDE" in audit.list()[0].security_finding_codes
+    assert "INSTRUCTION_OVERRIDE" in audit.list(tenant_id="TENANT-A")[0].security_finding_codes
 
 
 def test_all_four_frozen_mock_capabilities_run_without_executor_changes() -> None:
@@ -470,34 +510,32 @@ def test_all_four_frozen_mock_capabilities_run_without_executor_changes() -> Non
     )
 
     try:
-        knowledge = executor.execute(make_call(call_id="TC-KB-CHAIN"))
-        database = executor.execute(
-            make_call(
-                tool_name="database_query",
-                input_payload={"query_template_id": "supplier_quality_summary_v1"},
-                call_id="TC-DB-CHAIN",
-            )
+        knowledge_call = make_call(call_id="TC-KB-CHAIN")
+        knowledge = executor.execute(knowledge_call, _execution_context(knowledge_call))
+        database_call = make_call(
+            tool_name="database_query",
+            input_payload={"query_template_id": "supplier_quality_summary_v1"},
+            call_id="TC-DB-CHAIN",
         )
-        analytics = executor.execute(
-            make_call(
-                tool_name="analysis_engine",
-                input_payload={"dataset_evidence_id": database.evidence_ids[0]},
-                call_id="TC-AN-CHAIN",
-            )
+        database = executor.execute(database_call, _execution_context(database_call))
+        analytics_call = make_call(
+            tool_name="analysis_engine",
+            input_payload={"dataset_evidence_id": database.evidence_ids[0]},
+            call_id="TC-AN-CHAIN",
         )
-        report = executor.execute(
-            make_call(
-                tool_name="report_generator",
-                input_payload={
-                    "evidence_refs": [
-                        knowledge.evidence_ids[0],
-                        database.evidence_ids[0],
-                        analytics.evidence_ids[0],
-                    ]
-                },
-                call_id="TC-RP-CHAIN",
-            )
+        analytics = executor.execute(analytics_call, _execution_context(analytics_call))
+        report_call = make_call(
+            tool_name="report_generator",
+            input_payload={
+                "evidence_refs": [
+                    knowledge.evidence_ids[0],
+                    database.evidence_ids[0],
+                    analytics.evidence_ids[0],
+                ]
+            },
+            call_id="TC-RP-CHAIN",
         )
+        report = executor.execute(report_call, _execution_context(report_call))
     finally:
         executor.close()
 
@@ -508,4 +546,4 @@ def test_all_four_frozen_mock_capabilities_run_without_executor_changes() -> Non
         ToolResultStatus.SUCCESS,
     ]
     assert report.evidence_ids == ()
-    assert len(audit.list()) == 4
+    assert len(audit.list(tenant_id="TENANT-A")) == 4

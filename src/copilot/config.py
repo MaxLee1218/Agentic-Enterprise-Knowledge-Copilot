@@ -102,9 +102,12 @@ class Settings(BaseSettings):
     max_task_metadata_items: int = Field(default=100, ge=0, le=10_000)
     task_force_read_only: bool = True
     task_require_approval_by_default: bool = False
+    identity_provider: Literal["demo", "trusted_headers"] = "demo"
+    identity_signing_secret: SecretStr | None = None
+    identity_assertion_max_age_seconds: int = Field(default=60, ge=5, le=300)
     demo_user_id: str = Field(default="U-DEMO", min_length=1, max_length=200)
     demo_tenant_id: str = Field(default="TENANT-DEMO", min_length=1, max_length=200)
-    demo_approval_roles: tuple[str, ...] = ("quality_data_approver",)
+    demo_approval_roles: tuple[str, ...] = ("quality_analyst",)
     approval_ttl_seconds: int = Field(default=86_400, ge=60, le=604_800)
     workflow_max_retries: int = Field(default=2, ge=0, le=2)
     workflow_retry_delay_seconds: float = Field(default=0, ge=0)
@@ -124,6 +127,13 @@ class Settings(BaseSettings):
             return self
         if self.debug:
             raise ValueError("DEBUG must be disabled in production")
+        if self.identity_provider != "trusted_headers":
+            raise ValueError("IDENTITY_PROVIDER must be trusted_headers in production")
+        if (
+            self.identity_signing_secret is None
+            or len(self.identity_signing_secret.get_secret_value().encode("utf-8")) < 32
+        ):
+            raise ValueError("IDENTITY_SIGNING_SECRET with at least 32 bytes is required")
         if self.persistence_database_url is None:
             raise ValueError("PERSISTENCE_DATABASE_URL is required in production")
         if make_url(self.persistence_database_url).get_backend_name() != "postgresql":
@@ -138,6 +148,10 @@ class Settings(BaseSettings):
             raise ValueError("KNOWLEDGE_PROVIDER must be http in production")
         if self.database_provider != "sqlalchemy":
             raise ValueError("DATABASE_PROVIDER must be sqlalchemy in production")
+        if self.llm_provider != "deepseek":
+            raise ValueError("LLM_PROVIDER must not use a mock provider in production")
+        if self.llm_api_key is None or not self.llm_api_key.get_secret_value().strip():
+            raise ValueError("LLM_API_KEY is required in production")
         rag_host = self.rag_base_url.host
         if rag_host in {"127.0.0.1", "localhost", "::1"}:
             raise ValueError("RAG_BASE_URL must not use a loopback address in production")
@@ -186,6 +200,19 @@ class Settings(BaseSettings):
         if self.llm_api_key is None or not self.llm_api_key.get_secret_value().strip():
             raise ConfigurationError("Missing required configuration: LLM_API_KEY")
         return self.llm_api_key
+
+    def require_identity_signing_secret(self) -> SecretStr:
+        """Return the configured trusted-gateway signing secret without fallback."""
+        if self.identity_provider != "trusted_headers":
+            raise ConfigurationError(
+                "IDENTITY_SIGNING_SECRET is only used by IDENTITY_PROVIDER=trusted_headers"
+            )
+        if (
+            self.identity_signing_secret is None
+            or len(self.identity_signing_secret.get_secret_value().encode("utf-8")) < 32
+        ):
+            raise ConfigurationError("Missing required configuration: IDENTITY_SIGNING_SECRET")
+        return self.identity_signing_secret
 
     @property
     def artifact_path(self) -> Path:

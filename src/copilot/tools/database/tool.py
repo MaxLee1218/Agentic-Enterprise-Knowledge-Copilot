@@ -172,6 +172,10 @@ class DatabaseTool:
         self._statement_timeout_seconds = statement_timeout_seconds
         self.call_count = 0
 
+    def check_ready(self) -> bool:
+        """Return whether the approved business schema is currently reachable."""
+        return self._connection.check_ready(self._schema_registry.list_tables())
+
     def execute(self, arguments: JsonObject, context: ToolExecutionContext) -> ToolExecutionOutput:
         """Run one already-authorized template and prepare minimized DATABASE evidence."""
         self.call_count += 1

@@ -59,6 +59,7 @@ def _artifact(repository: LocalArtifactRepository, task_id: str = "T-001") -> Ar
     return repository.write(
         artifact_id="A-001",
         task_id=task_id,
+        tenant_id="TENANT-001",
         artifact_type=ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
         filename="safe.json",
         media_type="application/json",

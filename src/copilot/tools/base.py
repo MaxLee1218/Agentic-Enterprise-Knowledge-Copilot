@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
 from copilot.contracts import (
     EvidenceContent,
@@ -21,9 +21,8 @@ from copilot.contracts import (
     ToolDefinition,
     ToolResultStatus,
 )
-
-if TYPE_CHECKING:
-    from copilot.services.task_intake import TrustedTaskContext
+from copilot.services.execution import ExecutionContext
+from copilot.tools.cancellation import CancellationToken
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +30,13 @@ class ToolExecutionContext:
     """Trusted execution context supplied by the runtime, never by model output."""
 
     call: ToolCall
+    trace_id: str = ""
+    tenant_id: str = ""
+    user_id: str = ""
+    roles: tuple[str, ...] = ()
+    scopes: tuple[str, ...] = ()
+    purpose: str = ""
+    cancellation: CancellationToken = field(default_factory=CancellationToken)
     metadata: JsonObject = field(default_factory=lambda: JsonObject({}))
 
 
@@ -57,6 +63,8 @@ class ToolAuditRecord:
 
     tool_call_id: str
     task_id: str
+    tenant_id: str
+    trace_id: str
     step_id: str
     tool_name: str
     tool_version: str
@@ -66,6 +74,12 @@ class ToolAuditRecord:
     attempt: int = 1
     error_code: str | None = None
     principal_id: str | None = None
+    scopes: tuple[str, ...] = ()
+    purpose: str | None = None
+    approval_id: str | None = None
+    arguments_hash: str | None = None
+    tool_origin: str = "local"
+    tool_provenance: str = "built-in"
     policy_decision: str | None = None
     reason_code: str | None = None
     security_finding_codes: tuple[str, ...] = ()
@@ -96,21 +110,13 @@ class ToolRunner(Protocol):
 
 
 class ToolAuthorizer(Protocol):
-    """Pre-execution policy and approval boundary."""
-
-    def authorize(self, call: ToolCall, definition: ToolDefinition) -> None:
-        """Return only when policy and any required approval cover the exact call."""
-        ...
-
-
-class ContextualToolAuthorizer(Protocol):
-    """Optional stronger authorizer that consumes the explicit trusted task context."""
+    """Mandatory contextual pre-execution policy and approval boundary."""
 
     def authorize_with_context(
         self,
         call: ToolCall,
         definition: ToolDefinition,
-        security_context: TrustedTaskContext,
+        execution_context: ExecutionContext,
     ) -> None:
         """Return only when current identity, purpose, policy, and scope authorize the call."""
         ...

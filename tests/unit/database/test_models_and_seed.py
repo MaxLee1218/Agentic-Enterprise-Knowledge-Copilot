@@ -9,6 +9,7 @@ from sqlalchemy import inspect, select
 from sqlalchemy.exc import DBAPIError
 
 from copilot.tools.database import DatabaseConnection
+from copilot.tools.database.errors import DatabaseConfigurationError
 from copilot.tools.database.models import Base, IncomingInspection, Supplier
 from copilot.tools.database.seed import seed_demo_database
 
@@ -29,6 +30,23 @@ def test_schema_creates_required_tables_and_relationship_foreign_keys(tmp_path: 
         assert foreign_keys[0]["referred_table"] == "suppliers"
     finally:
         connection.dispose()
+
+
+def test_connection_accepts_postgresql_without_exposing_credentials() -> None:
+    connection = DatabaseConnection(
+        "postgresql+psycopg://readonly:secret@127.0.0.1:5432/quality",
+        read_only=True,
+    )
+    try:
+        assert connection.database_name == "quality"
+        assert connection.database_path is None
+    finally:
+        connection.dispose()
+
+
+def test_connection_rejects_unapproved_database_backend() -> None:
+    with pytest.raises(DatabaseConfigurationError, match="SQLite and PostgreSQL"):
+        DatabaseConnection("mysql+pymysql://readonly:secret@127.0.0.1/quality")
 
 
 def test_seed_is_deterministic_repeatable_and_contains_boundary_cases(tmp_path: Path) -> None:

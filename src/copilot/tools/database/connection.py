@@ -10,7 +10,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Any
 
-from sqlalchemy import Engine, Select, create_engine, event, inspect
+from sqlalchemy import Engine, Select, create_engine, event, func, inspect, select
 from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -42,18 +42,26 @@ class DatabaseConnection:
         base_directory: Path | None = None,
     ) -> None:
         url = make_url(database_url)
-        if url.get_backend_name() != "sqlite":
-            raise DatabaseConfigurationError("Demo Database Tool supports SQLite only")
-        self._database_path = _database_path(url.database, base_directory)
+        self._backend_name = url.get_backend_name()
+        if self._backend_name not in {"sqlite", "postgresql"}:
+            raise DatabaseConfigurationError(
+                "Database Tool supports approved SQLite and PostgreSQL connections only"
+            )
+        self._database_path = (
+            _database_path(url.database, base_directory) if self._backend_name == "sqlite" else None
+        )
         normalized_url = (
-            url.set(database=str(self._database_path)) if self._database_path is not None else url
+            url.set(database=str(self._database_path))
+            if self._backend_name == "sqlite" and self._database_path is not None
+            else url
         )
         engine_kwargs: dict[str, Any] = {
             "future": True,
             "pool_pre_ping": True,
-            "connect_args": {"check_same_thread": False},
         }
-        if self._database_path is None:
+        if self._backend_name == "sqlite":
+            engine_kwargs["connect_args"] = {"check_same_thread": False}
+        if self._backend_name == "sqlite" and self._database_path is None:
             engine_kwargs["poolclass"] = StaticPool
         self._engine = create_engine(normalized_url, **engine_kwargs)
         self._read_only = read_only
@@ -62,7 +70,8 @@ class DatabaseConnection:
             expire_on_commit=False,
             autoflush=False,
         )
-        event.listen(self._engine, "connect", self._configure_sqlite_connection)
+        if self._backend_name == "sqlite":
+            event.listen(self._engine, "connect", self._configure_sqlite_connection)
 
     @property
     def engine(self) -> Engine:
@@ -72,7 +81,10 @@ class DatabaseConnection:
     @property
     def database_name(self) -> str:
         """Return a safe database identity without connection credentials or paths."""
-        return self._database_path.name if self._database_path is not None else ":memory:"
+        if self._database_path is not None:
+            return self._database_path.name
+        database = make_url(str(self._engine.url)).database
+        return database or ":memory:"
 
     @property
     def database_path(self) -> Path | None:
@@ -102,16 +114,24 @@ class DatabaseConnection:
         *,
         timeout_seconds: float,
     ) -> DatabaseRows:
-        """Execute one validated SELECT with a SQLite progress deadline."""
+        """Execute one validated SELECT with a driver-enforced read-only deadline."""
         self._ensure_readable_database()
         try:
             with self._engine.connect() as connection:
-                rows = self._execute_with_deadline(
-                    connection,
-                    statement,
-                    parameters,
-                    timeout_seconds,
-                )
+                if self._backend_name == "postgresql":
+                    rows = self._execute_postgresql_read_only(
+                        connection,
+                        statement,
+                        parameters,
+                        timeout_seconds,
+                    )
+                else:
+                    rows = self._execute_sqlite_with_deadline(
+                        connection,
+                        statement,
+                        parameters,
+                        timeout_seconds,
+                    )
         except DatabaseStatementTimeoutError:
             raise
         except (DBAPIError, SQLAlchemyError) as exc:
@@ -127,6 +147,14 @@ class DatabaseConnection:
             raise DatabaseConnectionError("Database schema could not be inspected") from exc
         if not set(table_names).issubset(existing):
             raise DatabaseSchemaNotFoundError("Registered quality.v1 schema is unavailable")
+
+    def check_ready(self, table_names: tuple[str, ...]) -> bool:
+        """Verify connectivity and the approved schema without returning database details."""
+        try:
+            self.require_tables(table_names)
+        except (DatabaseConnectionError, DatabaseSchemaNotFoundError):
+            return False
+        return True
 
     def dispose(self) -> None:
         """Release pooled connections owned by this adapter."""
@@ -146,7 +174,7 @@ class DatabaseConnection:
             cursor.close()
 
     @staticmethod
-    def _execute_with_deadline(
+    def _execute_sqlite_with_deadline(
         connection: Connection,
         statement: Select[Any],
         parameters: Mapping[str, Any],
@@ -176,6 +204,36 @@ class DatabaseConnection:
         finally:
             raw_connection.set_progress_handler(None, 0)
 
+    def _execute_postgresql_read_only(
+        self,
+        connection: Connection,
+        statement: Select[Any],
+        parameters: Mapping[str, Any],
+        timeout_seconds: float,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Execute one statement in a server-enforced read-only, time-bounded transaction."""
+        timeout_milliseconds = max(1, int(timeout_seconds * 1000))
+        try:
+            with connection.begin():
+                connection.exec_driver_sql("SET TRANSACTION READ ONLY")
+                connection.execute(
+                    select(
+                        func.set_config(
+                            "statement_timeout",
+                            f"{timeout_milliseconds}ms",
+                            True,
+                        )
+                    )
+                )
+                result = connection.execute(statement, dict(parameters))
+                return tuple(dict(row) for row in result.mappings())
+        except DBAPIError as exc:
+            if _postgres_error_code(exc) == "57014":
+                raise DatabaseStatementTimeoutError(
+                    "Database statement exceeded its configured timeout"
+                ) from exc
+            raise
+
     def _ensure_readable_database(self) -> None:
         if self._database_path is not None and not self._database_path.is_file():
             raise DatabaseConnectionError("Configured demo database is unavailable")
@@ -189,6 +247,11 @@ def _database_path(database: str | None, base_directory: Path | None) -> Path | 
     if not path.is_absolute():
         path = (base_directory or Path.cwd()) / path
     return path.resolve()
+
+
+def _postgres_error_code(exc: DBAPIError) -> str | None:
+    original = exc.orig
+    return getattr(original, "sqlstate", None) or getattr(original, "pgcode", None)
 
 
 __all__ = ["DatabaseConnection", "DatabaseRows"]

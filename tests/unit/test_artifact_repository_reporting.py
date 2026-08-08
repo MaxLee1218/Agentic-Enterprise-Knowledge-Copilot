@@ -9,6 +9,8 @@ from copilot.contracts import ArtifactType
 from copilot.persistence.artifact_repository import LocalArtifactRepository
 from copilot.services.workflows.ports import ArtifactSizeLimitError
 
+TENANT_ID = "TENANT-DEMO"
+
 
 def _repository(tmp_path: Path, *, max_size_bytes: int = 1024) -> LocalArtifactRepository:
     return LocalArtifactRepository(
@@ -22,6 +24,7 @@ def _write(repository: LocalArtifactRepository, *, artifact_id: str = "A-001") -
     repository.write(
         artifact_id=artifact_id,
         task_id="T-001",
+        tenant_id=TENANT_ID,
         artifact_type=ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
         filename=f"{artifact_id}.json",
         media_type="application/json",
@@ -37,6 +40,7 @@ def test_repository_enforces_extension_and_size_limit(tmp_path: Path) -> None:
         repository.write(
             artifact_id="A-001",
             task_id="T-001",
+            tenant_id=TENANT_ID,
             artifact_type=ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
             filename="report.pdf",
             media_type="application/json",
@@ -48,6 +52,7 @@ def test_repository_enforces_extension_and_size_limit(tmp_path: Path) -> None:
         repository.write(
             artifact_id="A-002",
             task_id="T-001",
+            tenant_id=TENANT_ID,
             artifact_type=ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
             filename="report.json",
             media_type="application/json",
@@ -63,11 +68,12 @@ def test_repository_compensates_metadata_failure(
 ) -> None:
     repository = _repository(tmp_path)
 
-    def fail_metadata(_artifact: object) -> None:
+    def fail_metadata(_artifact: object, *, tenant_id: str) -> None:
+        assert tenant_id == TENANT_ID
         raise OSError("controlled metadata failure")
 
     monkeypatch.setattr(repository, "_save_metadata", fail_metadata)
     with pytest.raises(OSError, match="metadata failure"):
         _write(repository)
-    assert not repository.exists("A-001")
+    assert not repository.exists("A-001", tenant_id=TENANT_ID)
     assert list(tmp_path.iterdir()) == []

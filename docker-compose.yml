@@ -1,3 +1,4 @@
+# Development/demo topology only. Production expectations live in docker-compose.production.yml.
 name: agentic-enterprise-knowledge-copilot
 
 services:

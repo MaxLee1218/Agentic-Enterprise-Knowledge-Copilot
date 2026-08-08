@@ -31,6 +31,7 @@ from copilot.contracts import SpanKind, SpanStatus
 from copilot.services.approval_service import ApprovalService, ApprovalServiceError
 from copilot.services.artifact_service import ArtifactService, ArtifactServiceError
 from copilot.services.health import ReadinessService
+from copilot.services.identity import IdentityProvider
 from copilot.services.observability import (
     EventName,
     NoopObservability,
@@ -69,6 +70,7 @@ def create_app(
     settings: Settings | None = None,
     observability: ObservabilityPort | None = None,
     readiness: ReadinessService | None = None,
+    identity_provider: IdentityProvider | None = None,
     lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] | None = None,
 ) -> FastAPI:
     """Create a framework adapter; concrete runtime ownership remains in bootstrap."""
@@ -85,6 +87,8 @@ def create_app(
         application.state.artifact_service = artifact_service
     if settings is not None:
         application.state.settings = settings
+    if identity_provider is not None:
+        application.state.identity_provider = identity_provider
     application.state.observability = observability or NoopObservability()
     application.state.readiness = readiness
 

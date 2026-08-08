@@ -32,10 +32,12 @@ class ApprovalRepository:
             initialize_schema=initialize_schema,
         )
 
-    def create(self, approval: ApprovalRequest) -> None:
+    def create(self, approval: ApprovalRequest, *, tenant_id: str) -> None:
         """Create one pending approval exactly once."""
         if approval.status is not ApprovalStatus.PENDING or approval.version != 1:
             raise ValueError("new approval must be pending at version 1")
+        if approval.tenant_id != tenant_id:
+            raise ValueError("approval tenant does not match persistence scope")
         stored = _snapshot(approval)
         with self._lock:
             if self._database is None:
@@ -49,6 +51,7 @@ class ApprovalRepository:
                     session.add(
                         WorkflowApprovalRow(
                             approval_id=stored.approval_id,
+                            tenant_id=tenant_id,
                             task_id=stored.task_id,
                             step_id=stored.step_id,
                             status=stored.status.value,
@@ -56,69 +59,83 @@ class ApprovalRepository:
                             payload_json=stored.model_dump_json(),
                         )
                     )
+                    session.flush()
                     session.add(
                         WorkflowApprovalHistoryRow(
                             approval_id=stored.approval_id,
                             version=stored.version,
+                            tenant_id=tenant_id,
                             payload_json=stored.model_dump_json(),
                         )
                     )
             except IntegrityError as exc:
                 raise ValueError("approval already exists") from exc
 
-    def get(self, approval_id: str) -> ApprovalRequest:
+    def get(self, approval_id: str, *, tenant_id: str) -> ApprovalRequest:
         """Return the current immutable approval version."""
         with self._lock:
             if self._database is None:
                 try:
-                    return _snapshot(self._approvals[approval_id])
+                    approval = self._approvals[approval_id]
+                    if approval.tenant_id != tenant_id:
+                        raise KeyError(approval_id)
+                    return _snapshot(approval)
                 except KeyError as exc:
                     raise KeyError("approval was not found") from exc
             with self._database.session() as session:
-                row = session.get(WorkflowApprovalRow, approval_id)
+                row = session.scalar(
+                    select(WorkflowApprovalRow).where(
+                        WorkflowApprovalRow.approval_id == approval_id,
+                        WorkflowApprovalRow.tenant_id == tenant_id,
+                    )
+                )
                 if row is None:
                     raise KeyError("approval was not found")
                 return ApprovalRequest.model_validate_json(row.payload_json)
 
-    def get_pending_for_task(self, task_id: str) -> tuple[ApprovalRequest, ...]:
+    def get_pending_for_task(self, task_id: str, *, tenant_id: str) -> tuple[ApprovalRequest, ...]:
         """Return pending approvals for a task in deterministic creation order."""
         return tuple(
             approval
-            for approval in self.list_by_task(task_id)
+            for approval in self.list_by_task(task_id, tenant_id=tenant_id)
             if approval.status is ApprovalStatus.PENDING
         )
 
-    def list_by_task(self, task_id: str) -> tuple[ApprovalRequest, ...]:
+    def list_by_task(self, task_id: str, *, tenant_id: str) -> tuple[ApprovalRequest, ...]:
         """Return current approval versions for one task."""
         with self._lock:
             if self._database is None:
                 return tuple(
                     _snapshot(approval)
                     for approval in self._approvals.values()
-                    if approval.task_id == task_id
+                    if approval.task_id == task_id and approval.tenant_id == tenant_id
                 )
             with self._database.session() as session:
                 payloads = session.scalars(
                     select(WorkflowApprovalRow.payload_json)
                     .where(WorkflowApprovalRow.task_id == task_id)
+                    .where(WorkflowApprovalRow.tenant_id == tenant_id)
                     .order_by(WorkflowApprovalRow.approval_id)
                 )
                 return tuple(ApprovalRequest.model_validate_json(item) for item in payloads)
 
-    def exists(self, approval_id: str) -> bool:
+    def exists(self, approval_id: str, *, tenant_id: str) -> bool:
         """Return whether an approval identifier is present."""
         try:
-            self.get(approval_id)
+            self.get(approval_id, tenant_id=tenant_id)
         except KeyError:
             return False
         return True
 
-    def history(self, approval_id: str) -> tuple[ApprovalRequest, ...]:
+    def history(self, approval_id: str, *, tenant_id: str) -> tuple[ApprovalRequest, ...]:
         """Return every immutable version from pending through final resolution."""
         with self._lock:
             if self._database is None:
                 try:
-                    return tuple(_snapshot(item) for item in self._history[approval_id])
+                    items = self._history[approval_id]
+                    if not items or items[0].tenant_id != tenant_id:
+                        raise KeyError(approval_id)
+                    return tuple(_snapshot(item) for item in items)
                 except KeyError as exc:
                     raise KeyError("approval was not found") from exc
             with self._database.session() as session:
@@ -126,6 +143,7 @@ class ApprovalRepository:
                     session.scalars(
                         select(WorkflowApprovalHistoryRow.payload_json)
                         .where(WorkflowApprovalHistoryRow.approval_id == approval_id)
+                        .where(WorkflowApprovalHistoryRow.tenant_id == tenant_id)
                         .order_by(WorkflowApprovalHistoryRow.version)
                     )
                 )
@@ -133,7 +151,13 @@ class ApprovalRepository:
                     raise KeyError("approval was not found")
                 return tuple(ApprovalRequest.model_validate_json(item) for item in payloads)
 
-    def resolve(self, pending: ApprovalRequest, resolved: ApprovalRequest) -> None:
+    def resolve(
+        self,
+        pending: ApprovalRequest,
+        resolved: ApprovalRequest,
+        *,
+        tenant_id: str,
+    ) -> None:
         """Compare-and-swap one pending version into exactly one resolved version."""
         if pending.approval_id != resolved.approval_id or resolved.version != pending.version + 1:
             raise ValueError("approval resolution version is invalid")
@@ -142,6 +166,8 @@ class ApprovalRepository:
             or resolved.status is ApprovalStatus.PENDING
         ):
             raise ValueError("approval resolution requires pending to terminal transition")
+        if pending.tenant_id != tenant_id or resolved.tenant_id != tenant_id:
+            raise ValueError("approval tenant does not match persistence scope")
         stored = _snapshot(resolved)
         with self._lock:
             if self._database is None:
@@ -159,6 +185,7 @@ class ApprovalRepository:
                             update(WorkflowApprovalRow)
                             .where(
                                 WorkflowApprovalRow.approval_id == pending.approval_id,
+                                WorkflowApprovalRow.tenant_id == tenant_id,
                                 WorkflowApprovalRow.status == ApprovalStatus.PENDING.value,
                                 WorkflowApprovalRow.version == pending.version,
                                 WorkflowApprovalRow.payload_json == pending.model_dump_json(),
@@ -176,6 +203,7 @@ class ApprovalRepository:
                         WorkflowApprovalHistoryRow(
                             approval_id=stored.approval_id,
                             version=stored.version,
+                            tenant_id=tenant_id,
                             payload_json=stored.model_dump_json(),
                         )
                     )

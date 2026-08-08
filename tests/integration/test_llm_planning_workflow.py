@@ -71,7 +71,7 @@ def test_llm_plan_repair_is_checkpointed_and_invalid_plan_never_executes(
     ) as container:
         execution = container.service.execute(COMMAND)
         state = container.engine.get_state("T-0001", "TENANT-DEMO")
-        events = [record.event for record in container.workflow_audit.list()]
+        events = [record.event for record in container.workflow_audit.list(tenant_id="TENANT-DEMO")]
 
     assert execution.final_state.state is TaskStatus.COMPLETED
     assert state["plan_repair_count"] == 1
@@ -99,7 +99,7 @@ def test_missing_year_fails_before_planner_or_tools(tmp_path: Path) -> None:
         execution = container.service.execute(COMMAND)
 
         assert execution.final_state.state is TaskStatus.FAILED
-        assert container.tool_audit.list() == ()
+        assert container.tool_audit.list(tenant_id="TENANT-DEMO") == ()
         assert [call.context.node_name for call in provider.calls] == ["understand_task"]
 
 
@@ -118,5 +118,5 @@ def test_prompt_injection_is_data_and_cannot_expand_scope(tmp_path: Path) -> Non
         execution = container.service.execute(COMMAND)
 
         assert execution.final_state.state is TaskStatus.FAILED
-        assert container.tool_audit.list() == ()
+        assert container.tool_audit.list(tenant_id="TENANT-DEMO") == ()
         assert provider.calls[0].context.prompt_version == "task-understanding-v1"

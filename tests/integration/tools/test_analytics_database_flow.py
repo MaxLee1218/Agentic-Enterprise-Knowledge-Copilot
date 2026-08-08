@@ -17,6 +17,7 @@ from copilot.tools import ToolExecutor, ToolRegistry
 from copilot.tools.analytics import AnalyticsTool
 from copilot.tools.database import DatabaseConnection, DatabaseTool
 from copilot.tools.database.seed import seed_demo_database
+from tests.execution_helpers import execution_context
 from tests.unit.database.helpers import database_arguments
 
 
@@ -59,19 +60,22 @@ def test_database_output_becomes_traceable_calculation_evidence(tmp_path: Path) 
         audit_sink=InMemoryToolAuditRepository(),
     )
     try:
-        database_result = executor.execute(
-            _call(
-                call_id="TC-DB-FLOW",
-                step_id="S-DB-FLOW",
-                tool_name=database.definition.tool_name,
-                tool_version=database.definition.tool_version,
-                arguments=database_arguments(),
-            )
+        database_call = _call(
+            call_id="TC-DB-FLOW",
+            step_id="S-DB-FLOW",
+            tool_name=database.definition.tool_name,
+            tool_version=database.definition.tool_version,
+            arguments=database_arguments(),
         )
+        database_result = executor.execute(database_call, execution_context(database_call))
         assert database_result.status is ToolResultStatus.SUCCESS
         assert database_result.output is not None
         database_evidence_id = database_result.evidence_ids[0]
-        database_evidence = ledger.get(database_evidence_id)
+        database_evidence = ledger.get(
+            database_evidence_id,
+            task_id=database_call.task_id,
+            tenant_id=database_call.tenant_id,
+        )
         rows = cast(list[JsonMapping], database_result.output.root["rows"])
         analytics_arguments = JsonObject(
             {
@@ -89,15 +93,14 @@ def test_database_output_becomes_traceable_calculation_evidence(tmp_path: Path) 
             }
         )
 
-        analytics_result = executor.execute(
-            _call(
-                call_id="TC-AN-FLOW",
-                step_id="S-AN-FLOW",
-                tool_name=analytics.definition.tool_name,
-                tool_version=analytics.definition.tool_version,
-                arguments=analytics_arguments,
-            )
+        analytics_call = _call(
+            call_id="TC-AN-FLOW",
+            step_id="S-AN-FLOW",
+            tool_name=analytics.definition.tool_name,
+            tool_version=analytics.definition.tool_version,
+            arguments=analytics_arguments,
         )
+        analytics_result = executor.execute(analytics_call, execution_context(analytics_call))
     finally:
         executor.close()
         database.close()
@@ -105,7 +108,11 @@ def test_database_output_becomes_traceable_calculation_evidence(tmp_path: Path) 
     assert analytics_result.status is ToolResultStatus.SUCCESS
     assert analytics_result.output is not None
     assert analytics_result.output.root["input_row_count"] == 3
-    calculation = ledger.get(analytics_result.evidence_ids[0])
+    calculation = ledger.get(
+        analytics_result.evidence_ids[0],
+        task_id=analytics_call.task_id,
+        tenant_id=analytics_call.tenant_id,
+    )
     assert calculation.source_type is EvidenceType.CALCULATION
     assert calculation.source_reference.input_evidence_ids == (database_evidence_id,)
     assert calculation.task_id == database_evidence.task_id

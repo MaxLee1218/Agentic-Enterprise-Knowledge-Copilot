@@ -11,6 +11,7 @@ from copilot.bootstrap.container import WorkflowContainer, build_workflow_contai
 from copilot.config import Settings
 from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.persistence.identifiers import SequentialIdentifierFactory
+from copilot.security.identity import DemoIdentityProvider
 from tests.workflow_helpers import fixed_clock
 
 
@@ -27,7 +28,16 @@ def _client(tmp_path: Path) -> tuple[TestClient, WorkflowContainer]:
         sleeper=lambda _seconds: None,
         llm_provider=OfflineMockLLM(),
     )
-    return TestClient(create_app(task_service=container.task_service, settings=settings)), container
+    return (
+        TestClient(
+            create_app(
+                task_service=container.task_service,
+                settings=settings,
+                identity_provider=DemoIdentityProvider(settings),
+            )
+        ),
+        container,
+    )
 
 
 def test_post_tasks_requires_only_task_and_returns_correlation_ids(tmp_path: Path) -> None:

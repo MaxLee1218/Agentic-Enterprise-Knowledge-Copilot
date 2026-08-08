@@ -28,7 +28,7 @@ def test_graph_executes_every_explicit_node_and_persists_checkpoint(tmp_path: Pa
         )
         node_names = {
             record.metadata.root["node_name"]
-            for record in container.workflow_audit.list()
+            for record in container.workflow_audit.list(tenant_id="TENANT-DEMO")
             if record.event == "node_completed"
         }
 
@@ -188,10 +188,11 @@ def test_approval_required_stops_before_controlled_database_execution(tmp_path: 
         assert state["domain_state"].state is TaskStatus.WAITING_APPROVAL
         assert gated.knowledge_tool.call_count == 1
         assert gated.database_tool.call_count == 0
-        assert tuple(result.tool_name for result in gated.repository.tool_results()) == (
-            "knowledge_search",
-        )
-        pending = gated.approval_repository.get_pending_for_task("T-0001")
+        assert tuple(
+            result.tool_name
+            for result in gated.repository.tool_results_for("T-0001", tenant_id="TENANT-DEMO")
+        ) == ("knowledge_search",)
+        pending = gated.approval_repository.get_pending_for_task("T-0001", tenant_id="TENANT-DEMO")
         assert len(pending) == 1
         assert pending[0].tool_name == "database_query"
 
@@ -215,17 +216,20 @@ def test_missing_information_stops_and_checkpoints_without_defaults(tmp_path: Pa
         )
 
         assert execution.task_result.final_status is TaskStatus.FAILED
-        assert stopped.repository.state_for("T-0001").state is TaskStatus.FAILED
+        assert (
+            stopped.repository.state_for("T-0001", tenant_id="TENANT-DEMO").state
+            is TaskStatus.FAILED
+        )
         assert any(
             event.metadata.root.get("route") == "missing_information"
-            for event in stopped.workflow_audit.list()
+            for event in stopped.workflow_audit.list(tenant_id="TENANT-DEMO")
         )
         assert stopped.checkpoint_connection is not None
         checkpoint_count = stopped.checkpoint_connection.execute(
             "SELECT COUNT(*) FROM checkpoints"
         ).fetchone()
         assert checkpoint_count is not None and checkpoint_count[0] > 0
-        assert stopped.repository.tool_results() == ()
+        assert stopped.repository.tool_results_for("T-0001", tenant_id="TENANT-DEMO") == ()
 
 
 def test_invalid_plan_never_enters_tool_execution(tmp_path: Path) -> None:
@@ -248,7 +252,7 @@ def test_invalid_plan_never_enters_tool_execution(tmp_path: Path) -> None:
 
         assert execution.task_result.final_status is TaskStatus.FAILED
         assert any(error.error_code == "PLAN_INVALID" for error in state["errors"])
-        assert rejected.repository.tool_results() == ()
+        assert rejected.repository.tool_results_for("T-0001", tenant_id="TENANT-DEMO") == ()
 
 
 def test_execution_lease_rejects_concurrent_resume(tmp_path: Path) -> None:
@@ -261,14 +265,14 @@ def test_execution_lease_rejects_concurrent_resume(tmp_path: Path) -> None:
     ) as owner:
         with pytest.raises(WorkflowInterrupted):
             owner.service.execute(COMMAND)
-        owner.repository.acquire_execution("T-0001", "OWNER-1")
+        owner.repository.acquire_execution("T-0001", "OWNER-1", tenant_id="TENANT-DEMO")
         try:
             with build_test_container(artifact_dir, ids=ids) as competitor:
                 with pytest.raises(ValueError, match="lease conflict"):
                     competitor.engine.resume("T-0001", "TENANT-DEMO")
                 assert competitor.knowledge_tool.call_count == 0
         finally:
-            owner.repository.release_execution("T-0001", "OWNER-1")
+            owner.repository.release_execution("T-0001", "OWNER-1", tenant_id="TENANT-DEMO")
 
 
 @pytest.mark.parametrize(

@@ -229,14 +229,16 @@ def test_document_without_source_and_database_without_query_id_fail() -> None:
             "E-DOC-BAD",
             EvidenceType.DOCUMENT,
             reference={"document_id": "DOC-1"},
-        )
+        ),
+        tenant_id="TENANT-A",
     )
     ledger.add(
         evidence_item(
             "E-DB-BAD",
             EvidenceType.DATABASE,
             reference={"query_template_id": "supplier_quality_summary_v1"},
-        )
+        ),
+        tenant_id="TENANT-A",
     )
     arguments = verifier_arguments()
     arguments["evidence_ledger"] = ledger
@@ -483,7 +485,8 @@ def test_safety_detects_unauthorized_table_and_sensitive_output() -> None:
                 "statement_type": "SELECT",
                 "read_only": True,
             },
-        )
+        ),
+        tenant_id="TENANT-A",
     )
     arguments = verifier_arguments()
     arguments["evidence_ledger"] = ledger
@@ -518,7 +521,8 @@ def test_safety_rejects_database_write_metadata_as_error() -> None:
                 "statement_type": "UPDATE",
                 "read_only": False,
             },
-        )
+        ),
+        tenant_id="TENANT-A",
     )
     arguments = verifier_arguments()
     arguments["evidence_ledger"] = ledger

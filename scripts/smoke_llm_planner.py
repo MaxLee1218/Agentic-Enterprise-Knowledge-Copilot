@@ -52,7 +52,7 @@ def main() -> int:
                 container.service.execute(command)
             task_id = next(
                 record.task_id
-                for record in container.workflow_audit.list()
+                for record in container.workflow_audit.list(tenant_id=command.tenant_id)
                 if record.event == "workflow_started"
             )
             state = container.engine.get_state(task_id, command.tenant_id)

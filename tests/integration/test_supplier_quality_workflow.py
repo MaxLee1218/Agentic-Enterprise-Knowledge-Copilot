@@ -39,8 +39,11 @@ def test_success_path_runs_four_tools_and_creates_evidence_backed_report(tmp_pat
         ] * 4
         assert [record.attempt_count for record in execution.step_executions] == [1, 1, 1, 1]
         assert all(record.duration_ms >= 0 for record in execution.step_executions)
-        assert len(container.repository.tool_results()) == 4
-        assert [item.tool_name for item in container.repository.tool_results()] == [
+        tool_results = container.repository.tool_results_for(
+            execution.task_result.task_id, tenant_id="TENANT-DEMO"
+        )
+        assert len(tool_results) == 4
+        assert [item.tool_name for item in tool_results] == [
             "knowledge_search",
             "database_query",
             "analysis_engine",
@@ -67,7 +70,9 @@ def test_success_path_runs_four_tools_and_creates_evidence_backed_report(tmp_pat
         assert {item["evidence_id"] for item in report["evidence_references"]} == {
             item.evidence_id for item in execution.evidence
         }
-        audit_events = [item.event for item in container.workflow_audit.list()]
+        audit_events = [
+            item.event for item in container.workflow_audit.list(tenant_id="TENANT-DEMO")
+        ]
         assert "workflow_started" in audit_events
         assert "artifact_created" in audit_events
         assert audit_events[-1] == "workflow_completed"
@@ -143,7 +148,8 @@ def test_transient_database_failure_retries_once_then_completes(tmp_path: Path) 
         assert database_record.attempt_count == 2
         assert [item.attempt for item in database_record.attempts] == [1, 2]
         assert any(
-            event.status == TaskStatus.RETRYING.value for event in container.workflow_audit.list()
+            event.status == TaskStatus.RETRYING.value
+            for event in container.workflow_audit.list(tenant_id="TENANT-DEMO")
         )
 
 
@@ -247,11 +253,13 @@ def test_structured_verification_result_is_persisted_on_success(tmp_path: Path) 
 
         assert execution.verification_result is not None
         assert execution.verification_result.status is VerificationStatus.PASSED
-        persisted = container.repository.verification_result_for(execution.task_result.task_id)
+        persisted = container.repository.verification_result_for(
+            execution.task_result.task_id, tenant_id="TENANT-DEMO"
+        )
         assert persisted == execution.verification_result
         verification_events = [
             event
-            for event in container.workflow_audit.list()
+            for event in container.workflow_audit.list(tenant_id="TENANT-DEMO")
             if event.event == "verification_completed"
         ]
         assert len(verification_events) == 1
@@ -294,7 +302,7 @@ def test_numeric_verification_failure_prevents_completed_state(
             issue.code for issue in execution.verification_result.issues
         }
         assert "workflow_completed" not in {
-            event.event for event in container.workflow_audit.list()
+            event.event for event in container.workflow_audit.list(tenant_id="TENANT-DEMO")
         }
 
 

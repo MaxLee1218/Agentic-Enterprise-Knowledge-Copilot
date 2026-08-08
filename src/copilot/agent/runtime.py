@@ -28,6 +28,7 @@ from copilot.contracts import (
 from copilot.policies.approval import PolicyOutcome, SupplierQualityApprovalPolicy
 from copilot.policies.permissions import AuthorizationRequest, Permission, PermissionMatrix
 from copilot.services.approval_service import ApprovalGateService, ApprovalRepositoryPort
+from copilot.services.execution import ExecutionContext
 from copilot.services.llm import LLMErrorCode, LLMProviderError
 from copilot.services.observability import NoopObservability, ObservabilityPort
 from copilot.services.workflows.dependency import DependencyChecker
@@ -225,7 +226,10 @@ class GraphNodeRuntime:
                     errors=[error],
                 )
             contract = outcome.contract
-            self._repository.save_contract(contract)
+            self._repository.save_contract(
+                contract,
+                tenant_id=state["intake_context"].tenant_id,
+            )
         elif contract is None:
             error = self._error(
                 state,
@@ -345,7 +349,10 @@ class GraphNodeRuntime:
                 )
             plan = outcome.plan
             repair_count = outcome.repair_attempts
-            self._repository.save_plan(plan)
+            self._repository.save_plan(
+                plan,
+                tenant_id=state["intake_context"].tenant_id,
+            )
             self._emit(state, "PLAN_GENERATED", status="GENERATED")
             if repair_count:
                 self._emit(state, "PLAN_REPAIRED", status="REPAIRED")
@@ -600,7 +607,10 @@ class GraphNodeRuntime:
                 domain_state=domain_state,
                 errors=[error],
             )
-        self._repository.save_plan(outcome.plan)
+        self._repository.save_plan(
+            outcome.plan,
+            tenant_id=state["intake_context"].tenant_id,
+        )
         self._emit(state, "PLAN_REPAIRED", status=f"ATTEMPT_{attempt}")
         return self._node_result(
             state,
@@ -682,7 +692,10 @@ class GraphNodeRuntime:
                 domain_state=domain_state,
                 errors=[error],
             )
-        self._repository.save_plan(outcome.plan)
+        self._repository.save_plan(
+            outcome.plan,
+            tenant_id=state["intake_context"].tenant_id,
+        )
         count = state["replan_count"] + 1
         self._emit(state, "REPLAN_COMPLETED", status=f"ATTEMPT_{count}")
         return self._node_result(
@@ -837,7 +850,10 @@ class GraphNodeRuntime:
         has_current_plan_approval = any(
             approval.status.value == "APPROVED"
             and approval.planning_version == state["plan"].planning_version
-            for approval in self._approval_repository.list_by_task(state["task_id"])
+            for approval in self._approval_repository.list_by_task(
+                state["task_id"],
+                tenant_id=state["contract"].constraints.tenant_id,
+            )
         )
         decision = self._approval_policy.evaluate(
             contract=state["contract"],
@@ -948,7 +964,11 @@ class GraphNodeRuntime:
             )
         step = self._current_step(state)
         for evidence_id in final.evidence_ids:
-            self._evidence_reader.get(evidence_id)
+            self._evidence_reader.get(
+                evidence_id,
+                task_id=state["task_id"],
+                tenant_id=state["contract"].constraints.tenant_id,
+            )
         result = StepResult(
             step_id=step.step_id,
             status=StepResultStatus.SUCCESS,
@@ -958,7 +978,12 @@ class GraphNodeRuntime:
         )
         attempts = [item for item in state["tool_results"] if item.step_id == step.step_id]
         record = self._execution_record(state, step, arguments, attempts, final)
-        self._repository.save_step_result(result, record)
+        self._repository.save_step_result(
+            state["task_id"],
+            result,
+            record,
+            tenant_id=state["intake_context"].tenant_id,
+        )
         artifacts = []
         if step.tool_name == "report_generator" and final.output is not None:
             artifact_id = final.output.root.get("artifact_id")
@@ -980,7 +1005,12 @@ class GraphNodeRuntime:
                     domain_state=domain_state,
                     errors=[error],
                 )
-            artifacts.append(self._artifact_store.get(artifact_id))
+            artifacts.append(
+                self._artifact_store.get(
+                    artifact_id,
+                    tenant_id=state["contract"].constraints.tenant_id,
+                )
+            )
             self._emit(state, "artifact_created", status="CREATED")
         projected_results = [*state["step_results"], result]
         current_step_ids = {item.step_id for item in state["plan"].steps}
@@ -1042,7 +1072,10 @@ class GraphNodeRuntime:
             )
         context = self._context(state)
         result = self._verifier.verify(context)
-        self._repository.save_verification_result(result)
+        self._repository.save_verification_result(
+            result,
+            tenant_id=state["intake_context"].tenant_id,
+        )
         self._emit(state, "verification_completed", status=result.status.value)
         if result.status is VerificationStatus.FAILED:
             reason = result.issues[0].code if result.issues else "VERIFICATION_FAILED"
@@ -1166,7 +1199,12 @@ class GraphNodeRuntime:
                     output_summary=JsonObject({}),
                     failed_dependencies=step.dependency,
                 )
-                self._repository.save_step_result(step_result, record)
+                self._repository.save_step_result(
+                    state["task_id"],
+                    step_result,
+                    record,
+                    tenant_id=state["intake_context"].tenant_id,
+                )
                 cancelled_results.append(step_result)
                 cancelled_records.append(record)
         successful = sum(item.status is StepResultStatus.SUCCESS for item in state["step_results"])
@@ -1187,7 +1225,10 @@ class GraphNodeRuntime:
             ),
             evidence=tuple(state["evidence_ids"]),
         )
-        self._repository.save_task_result(result)
+        self._repository.save_task_result(
+            result,
+            tenant_id=state["intake_context"].tenant_id,
+        )
         updates = self._node_result(
             state,
             "persist_result",
@@ -1289,12 +1330,19 @@ class GraphNodeRuntime:
         try:
             result = self._tool_executor.execute(
                 call,
+                ExecutionContext.from_task_context(
+                    state["intake_context"],
+                    call,
+                    approval_required=(state["approval_step_id"] == step.step_id),
+                ),
                 attempt=attempt,
-                security_context=state["intake_context"],
             )
         except (ToolValidationError, ToolRuntimeError) as exc:
             result = self._exception_result(call, attempt, exc)
-        self._repository.save_tool_result(result)
+        self._repository.save_tool_result(
+            result,
+            tenant_id=state["intake_context"].tenant_id,
+        )
         updates: dict[str, object] = {
             "domain_state": domain_state,
             "last_tool_result": result,
@@ -1357,7 +1405,12 @@ class GraphNodeRuntime:
             result,
         ]
         record = self._execution_record(state, step, arguments, attempts, result)
-        self._repository.save_step_result(step_result, record)
+        self._repository.save_step_result(
+            state["task_id"],
+            step_result,
+            record,
+            tenant_id=state["intake_context"].tenant_id,
+        )
         reason = result.error.message if result.error is not None else "Tool execution failed"
         error_code = (
             result.error.error_code if result.error is not None else "TOOL_EXECUTION_FAILED"
@@ -1433,7 +1486,10 @@ class GraphNodeRuntime:
             retry_counts=dict(state["retry_counts"]),
             metadata={"registered_tools": tuple(self._registry.list())},
             verification_result=state["verification_result"],
-            approvals=self._approval_repository.list_by_task(state["task_id"]),
+            approvals=self._approval_repository.list_by_task(
+                state["task_id"],
+                tenant_id=state["contract"].constraints.tenant_id,
+            ),
         )
         for result in state["tool_results"]:
             context.tool_results.setdefault(result.step_id, []).append(result)
@@ -1441,7 +1497,11 @@ class GraphNodeRuntime:
 
     def _load_evidence(self, state: AgentGraphState) -> dict[str, EvidenceItem]:
         return {
-            evidence_id: self._evidence_reader.get(evidence_id)
+            evidence_id: self._evidence_reader.get(
+                evidence_id,
+                task_id=state["task_id"],
+                tenant_id=state["contract"].constraints.tenant_id,
+            )
             for evidence_id in state["evidence_ids"]
         }
 
@@ -1552,7 +1612,12 @@ class GraphNodeRuntime:
         reason: str,
     ) -> TaskState:
         current, record = self._state_machine.transition(previous, event, reason=reason)
-        self._repository.commit_transition(previous, current, record)
+        self._repository.commit_transition(
+            previous,
+            current,
+            record,
+            tenant_id=state["intake_context"].tenant_id,
+        )
         self._emit(state, "task_status_changed", status=current.state.value)
         return current
 
@@ -1595,6 +1660,10 @@ class GraphNodeRuntime:
                     state["plan"].planning_version if state.get("plan") is not None else 0
                 ),
                 timestamp=self._clock(),
+                tenant_id=state["intake_context"].tenant_id,
+                trace_id=state["trace_id"],
+                actor_id=state["intake_context"].user_id,
+                scopes=state["intake_context"].scopes,
                 step_id=state["current_step_id"],
                 status=status,
                 duration_ms=duration_ms,

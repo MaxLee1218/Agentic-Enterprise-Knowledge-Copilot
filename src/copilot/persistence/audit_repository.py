@@ -17,7 +17,7 @@ from copilot.services.workflows.models import WorkflowAuditRecord
 from copilot.tools.base import ToolAuditRecord
 
 
-class InMemoryToolAuditRepository:
+class ToolAuditRepository:
     """Thread-safe local audit repository with one record per invocation attempt."""
 
     def __init__(
@@ -36,6 +36,14 @@ class InMemoryToolAuditRepository:
 
     def append(self, record: ToolAuditRecord) -> None:
         """Append one record and reject attempts to rewrite an existing call audit."""
+        record = replace(
+            record,
+            principal_id=_redacted_text(record.principal_id),
+            scopes=tuple(_redacted_text(scope) or "[REDACTED]" for scope in record.scopes),
+            purpose=_redacted_text(record.purpose),
+            tool_origin=_redacted_text(record.tool_origin) or "[REDACTED]",
+            tool_provenance=_redacted_text(record.tool_provenance) or "[REDACTED]",
+        )
         with self._lock:
             if self._database is not None:
                 try:
@@ -44,6 +52,7 @@ class InMemoryToolAuditRepository:
                             WorkflowToolAuditRow(
                                 event_id=record.tool_call_id,
                                 task_id=record.task_id,
+                                tenant_id=record.tenant_id,
                                 payload_json=_tool_json(record),
                             )
                         )
@@ -55,18 +64,23 @@ class InMemoryToolAuditRepository:
             self._records.append(record)
             self._call_ids.add(record.tool_call_id)
 
-    def list(self) -> tuple[ToolAuditRecord, ...]:
+    def list(self, *, tenant_id: str, task_id: str | None = None) -> tuple[ToolAuditRecord, ...]:
         """Return an immutable snapshot in append order."""
         with self._lock:
             if self._database is not None:
                 with self._database.session() as session:
-                    payloads = session.scalars(
-                        select(WorkflowToolAuditRow.payload_json).order_by(
-                            WorkflowToolAuditRow.sequence_id
-                        )
+                    statement = select(WorkflowToolAuditRow.payload_json).where(
+                        WorkflowToolAuditRow.tenant_id == tenant_id
                     )
+                    if task_id is not None:
+                        statement = statement.where(WorkflowToolAuditRow.task_id == task_id)
+                    payloads = session.scalars(statement.order_by(WorkflowToolAuditRow.sequence_id))
                     return tuple(_tool_record(item) for item in payloads)
-            return tuple(self._records)
+            return tuple(
+                record
+                for record in self._records
+                if record.tenant_id == tenant_id and (task_id is None or record.task_id == task_id)
+            )
 
     def close(self) -> None:
         with self._lock:
@@ -75,7 +89,7 @@ class InMemoryToolAuditRepository:
                 self._database = None
 
 
-class InMemoryWorkflowAuditRepository:
+class WorkflowAuditRepository:
     """Thread-safe append-only workflow event sink."""
 
     def __init__(
@@ -109,6 +123,7 @@ class InMemoryWorkflowAuditRepository:
                             WorkflowGraphAuditRow(
                                 event_id=record.event_id,
                                 task_id=record.task_id,
+                                tenant_id=record.tenant_id,
                                 payload_json=_workflow_json(record),
                             )
                         )
@@ -120,18 +135,27 @@ class InMemoryWorkflowAuditRepository:
             self._records.append(record)
             self._event_ids.add(record.event_id)
 
-    def list(self) -> tuple[WorkflowAuditRecord, ...]:
+    def list(
+        self, *, tenant_id: str, task_id: str | None = None
+    ) -> tuple[WorkflowAuditRecord, ...]:
         """Return workflow events in append order."""
         with self._lock:
             if self._database is not None:
                 with self._database.session() as session:
+                    statement = select(WorkflowGraphAuditRow.payload_json).where(
+                        WorkflowGraphAuditRow.tenant_id == tenant_id
+                    )
+                    if task_id is not None:
+                        statement = statement.where(WorkflowGraphAuditRow.task_id == task_id)
                     payloads = session.scalars(
-                        select(WorkflowGraphAuditRow.payload_json).order_by(
-                            WorkflowGraphAuditRow.sequence_id
-                        )
+                        statement.order_by(WorkflowGraphAuditRow.sequence_id)
                     )
                     return tuple(_workflow_record(item) for item in payloads)
-            return tuple(self._records)
+            return tuple(
+                record
+                for record in self._records
+                if record.tenant_id == tenant_id and (task_id is None or record.task_id == task_id)
+            )
 
     def close(self) -> None:
         with self._lock:
@@ -145,6 +169,8 @@ def _tool_json(record: ToolAuditRecord) -> str:
         {
             "tool_call_id": record.tool_call_id,
             "task_id": record.task_id,
+            "tenant_id": record.tenant_id,
+            "trace_id": record.trace_id,
             "step_id": record.step_id,
             "tool_name": record.tool_name,
             "tool_version": record.tool_version,
@@ -154,6 +180,12 @@ def _tool_json(record: ToolAuditRecord) -> str:
             "attempt": record.attempt,
             "error_code": record.error_code,
             "principal_id": record.principal_id,
+            "scopes": list(record.scopes),
+            "purpose": record.purpose,
+            "approval_id": record.approval_id,
+            "arguments_hash": record.arguments_hash,
+            "tool_origin": record.tool_origin,
+            "tool_provenance": record.tool_provenance,
             "policy_decision": record.policy_decision,
             "reason_code": record.reason_code,
             "security_finding_codes": list(record.security_finding_codes),
@@ -162,11 +194,20 @@ def _tool_json(record: ToolAuditRecord) -> str:
     )
 
 
+def _redacted_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    safe = redact_for_logging(value)
+    return safe if isinstance(safe, str) else "[REDACTED]"
+
+
 def _tool_record(payload: str) -> ToolAuditRecord:
     raw = json.loads(payload)
     return ToolAuditRecord(
         tool_call_id=raw["tool_call_id"],
         task_id=raw["task_id"],
+        tenant_id=raw.get("tenant_id", "TENANT-LEGACY-UNSCOPED"),
+        trace_id=raw.get("trace_id", raw["tool_call_id"]),
         step_id=raw["step_id"],
         tool_name=raw["tool_name"],
         tool_version=raw["tool_version"],
@@ -176,6 +217,12 @@ def _tool_record(payload: str) -> ToolAuditRecord:
         attempt=raw["attempt"],
         error_code=raw["error_code"],
         principal_id=raw.get("principal_id"),
+        scopes=tuple(raw.get("scopes", ())),
+        purpose=raw.get("purpose"),
+        approval_id=raw.get("approval_id"),
+        arguments_hash=raw.get("arguments_hash"),
+        tool_origin=raw.get("tool_origin", "local"),
+        tool_provenance=raw.get("tool_provenance", "built-in"),
         policy_decision=raw.get("policy_decision"),
         reason_code=raw.get("reason_code"),
         security_finding_codes=tuple(raw.get("security_finding_codes", ())),
@@ -191,6 +238,12 @@ def _workflow_json(record: WorkflowAuditRecord) -> str:
             "plan_id": record.plan_id,
             "plan_version": record.plan_version,
             "timestamp": record.timestamp.isoformat(),
+            "tenant_id": record.tenant_id,
+            "trace_id": record.trace_id,
+            "actor_id": record.actor_id,
+            "scopes": list(record.scopes),
+            "approval_id": record.approval_id,
+            "arguments_hash": record.arguments_hash,
             "step_id": record.step_id,
             "tool_name": record.tool_name,
             "attempt": record.attempt,
@@ -214,6 +267,12 @@ def _workflow_record(payload: str) -> WorkflowAuditRecord:
         plan_id=raw["plan_id"],
         plan_version=raw["plan_version"],
         timestamp=datetime.fromisoformat(raw["timestamp"]),
+        tenant_id=raw.get("tenant_id", "TENANT-LEGACY-UNSCOPED"),
+        trace_id=raw.get("trace_id", raw["event_id"]),
+        actor_id=raw.get("actor_id"),
+        scopes=tuple(raw.get("scopes", ())),
+        approval_id=raw.get("approval_id"),
+        arguments_hash=raw.get("arguments_hash"),
         step_id=raw["step_id"],
         tool_name=raw["tool_name"],
         attempt=raw["attempt"],
@@ -224,3 +283,16 @@ def _workflow_record(payload: str) -> WorkflowAuditRecord:
         artifact_id=raw["artifact_id"],
         metadata=JsonObject(raw["metadata"]),
     )
+
+
+# Deprecated compatibility names retained for existing imports. New code uses the canonical names;
+# both classes can be memory-backed or SQL-backed depending on injected persistence.
+InMemoryToolAuditRepository = ToolAuditRepository
+InMemoryWorkflowAuditRepository = WorkflowAuditRepository
+
+__all__ = [
+    "InMemoryToolAuditRepository",
+    "InMemoryWorkflowAuditRepository",
+    "ToolAuditRepository",
+    "WorkflowAuditRepository",
+]

@@ -232,6 +232,7 @@ class MockKnowledgeTool(_MockToolBase):
         self.call_count = 0
 
     def execute(self, arguments: JsonObject, context: ToolExecutionContext) -> ToolExecutionOutput:
+        context.cancellation.raise_if_requested()
         self._before_execute()
         snapshot = str(arguments.root["index_snapshot_id"])
         if self.behavior.empty_result:
@@ -565,6 +566,7 @@ class MockAnalyticsTool(_MockToolBase):
         self.received_evidence_ids: list[str] = []
 
     def execute(self, arguments: JsonObject, context: ToolExecutionContext) -> ToolExecutionOutput:
+        context.cancellation.raise_if_requested()
         self._before_execute()
         rows = cast(list[JsonMapping], arguments.root["dataset"])
         source_id = str(arguments.root["dataset_evidence_id"])
@@ -602,6 +604,7 @@ class MockAnalyticsTool(_MockToolBase):
             for name in requested
         ]
         warnings = ["No rows were available for calculation"] if not rows else []
+        context.cancellation.raise_if_requested()
         output = _json_object(
             {
                 "metrics": metrics,
@@ -633,6 +636,7 @@ class MockAnalyticsTool(_MockToolBase):
             ),
         )
         assert context.call.tool_name == self.definition.tool_name
+        context.cancellation.raise_if_requested()
         return ToolExecutionOutput(output=output, evidence=(evidence,))
 
 
@@ -731,9 +735,16 @@ class MockReportTool(_MockToolBase):
         evidence_refs = tuple(
             str(item) for item in cast(list[JsonValue], arguments.root["evidence_refs"])
         )
-        self.received_evidence_ids.append(evidence_refs)
-        evidence = tuple(self._evidence_reader.get(item) for item in evidence_refs)
         task_id = str(arguments.root["task_id"])
+        self.received_evidence_ids.append(evidence_refs)
+        evidence = tuple(
+            self._evidence_reader.get(
+                item,
+                task_id=task_id,
+                tenant_id=context.tenant_id,
+            )
+            for item in evidence_refs
+        )
         if task_id != context.call.task_id or any(item.task_id != task_id for item in evidence):
             raise ToolPermissionError(
                 error_code="REPORT_INPUT_DENIED",
@@ -767,6 +778,7 @@ class MockReportTool(_MockToolBase):
             artifact = self._artifact_store.write(
                 artifact_id=artifact_id,
                 task_id=task_id,
+                tenant_id=context.tenant_id,
                 artifact_type=ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
                 filename=f"supplier-quality-analysis-{safe_task}-{safe_artifact}.json",
                 media_type="application/json",

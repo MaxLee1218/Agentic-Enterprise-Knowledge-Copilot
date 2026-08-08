@@ -13,7 +13,7 @@ from copilot.policies.data_access import (
 )
 from copilot.policies.permissions import AuthorizationRequest, Permission, PermissionMatrix
 from copilot.services.approval_service import ApprovalRepositoryPort
-from copilot.services.task_intake import TrustedTaskContext
+from copilot.services.execution import ExecutionContext
 from copilot.tools.exceptions import ToolAuthorizationError
 from copilot.tools.schema import validate_payload
 
@@ -34,27 +34,21 @@ class OfflineSupplierQualityAuthorizer:
         self._permission_matrix = permission_matrix or PermissionMatrix()
         self._data_access_policy = data_access_policy or DataAccessPolicy()
 
-    def authorize(self, call: ToolCall, definition: ToolDefinition) -> None:
-        """Authorize legacy internal calls with the explicit least-privilege demo role."""
-        self._authorize(
-            call,
-            definition,
-            roles=("quality_analyst",),
-            is_demo_identity=True,
-            purpose="supplier_quality_analysis.v1",
-        )
-
     def authorize_with_context(
         self,
         call: ToolCall,
         definition: ToolDefinition,
-        security_context: TrustedTaskContext,
+        execution_context: ExecutionContext,
     ) -> None:
         """Re-authorize every real attempt from the current trusted execution context."""
         if (
-            security_context.task_id != call.task_id
-            or security_context.user_id != call.user_id
-            or security_context.tenant_id != call.tenant_id
+            not execution_context.authenticated
+            or execution_context.task_id != call.task_id
+            or execution_context.step_id != call.step_id
+            or execution_context.user_id != call.user_id
+            or execution_context.tenant_id != call.tenant_id
+            or execution_context.deadline_at != call.deadline_at
+            or execution_context.approval_id != call.approval_id
         ):
             raise ToolAuthorizationError(
                 "Security context does not match the invocation",
@@ -63,10 +57,15 @@ class OfflineSupplierQualityAuthorizer:
         self._authorize(
             call,
             definition,
-            roles=security_context.roles,
-            is_demo_identity=security_context.is_demo_identity,
-            purpose=security_context.purpose,
+            roles=execution_context.roles,
+            is_demo_identity=execution_context.is_demo_identity,
+            purpose=execution_context.purpose,
         )
+        if execution_context.approval_required and call.approval_id is None:
+            raise ToolAuthorizationError(
+                "A bound approval is required for this invocation",
+                error_code="APPROVAL_REQUIRED",
+            )
 
     def _authorize(
         self,
@@ -142,7 +141,10 @@ class OfflineSupplierQualityAuthorizer:
             if self._approval_repository is None:
                 raise ToolAuthorizationError("Approval validation is unavailable")
             try:
-                approval = self._approval_repository.get(call.approval_id)
+                approval = self._approval_repository.get(
+                    call.approval_id,
+                    tenant_id=call.tenant_id,
+                )
             except KeyError as exc:
                 raise ToolAuthorizationError("Approval record was not found") from exc
             schema_digest = schema_fingerprint(definition)

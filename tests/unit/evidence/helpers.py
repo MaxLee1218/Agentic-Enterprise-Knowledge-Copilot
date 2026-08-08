@@ -48,6 +48,7 @@ from copilot.tools.mock_supplier_quality import (
 
 NOW = datetime(2026, 7, 26, 8, 0, tzinfo=UTC)
 TASK_ID = "T-VERIFY-001"
+TENANT_ID = "TENANT-A"
 DOC_ID = "E-DOC-001"
 DB_ID = "E-DB-001"
 CALC_ID = "E-CALC-001"
@@ -139,15 +140,16 @@ def evidence_item(
 def valid_ledger() -> InMemoryEvidenceLedger:
     """Build Document, Database, and Calculation evidence with valid lineage."""
     ledger = InMemoryEvidenceLedger()
-    ledger.add(evidence_item(DOC_ID, EvidenceType.DOCUMENT, step_id="S-KB"))
-    ledger.add(evidence_item(DB_ID, EvidenceType.DATABASE, step_id="S-DB"))
+    ledger.add(evidence_item(DOC_ID, EvidenceType.DOCUMENT, step_id="S-KB"), tenant_id=TENANT_ID)
+    ledger.add(evidence_item(DB_ID, EvidenceType.DATABASE, step_id="S-DB"), tenant_id=TENANT_ID)
     ledger.add(
         evidence_item(
             CALC_ID,
             EvidenceType.CALCULATION,
             step_id="S-AN",
             parents=(DB_ID,),
-        )
+        ),
+        tenant_id=TENANT_ID,
     )
     return ledger
 

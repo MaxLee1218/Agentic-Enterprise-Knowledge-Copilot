@@ -12,6 +12,7 @@ from copilot.services.workflows.state_machine import TaskStateMachine
 from tests.unit.domain.helpers import make_contract, make_plan
 
 NOW = datetime(2026, 7, 19, 8, 0, tzinfo=UTC)
+TENANT_ID = "TENANT-A"
 
 
 def test_sql_compare_and_swap_rejects_stale_cross_process_state(tmp_path: Path) -> None:
@@ -25,7 +26,7 @@ def test_sql_compare_and_swap_rejects_stale_cross_process_state(tmp_path: Path) 
         created_at=NOW,
     )
     first = InMemoryWorkflowRepository(database_path)
-    first.initialize(request, make_contract(), make_plan(), initial)
+    first.initialize(request, make_contract(), make_plan(), initial, tenant_id=TENANT_ID)
     stale = InMemoryWorkflowRepository(database_path)
     try:
         first_state, first_event = first_machine.transition(
@@ -41,15 +42,15 @@ def test_sql_compare_and_swap_rejects_stale_cross_process_state(tmp_path: Path) 
             "START_UNDERSTANDING",
             reason="stale writer",
         )
-        first.commit_transition(initial, first_state, first_event)
+        first.commit_transition(initial, first_state, first_event, tenant_id=TENANT_ID)
 
         with pytest.raises(ValueError, match="compare-and-swap"):
-            stale.commit_transition(initial, stale_state, stale_event)
+            stale.commit_transition(initial, stale_state, stale_event, tenant_id=TENANT_ID)
 
-        assert first.state_for("T-001") == first_state
+        assert first.state_for("T-001", tenant_id=TENANT_ID) == first_state
         reloaded = InMemoryWorkflowRepository(database_path)
         try:
-            assert reloaded.state_for("T-001") == first_state
+            assert reloaded.state_for("T-001", tenant_id=TENANT_ID) == first_state
         finally:
             reloaded.close()
     finally:

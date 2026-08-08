@@ -38,14 +38,11 @@ from copilot.observability import (
 )
 from copilot.persistence.approval_repository import ApprovalRepository
 from copilot.persistence.artifact_repository import LocalArtifactRepository
-from copilot.persistence.audit_repository import (
-    InMemoryToolAuditRepository,
-    InMemoryWorkflowAuditRepository,
-)
+from copilot.persistence.audit_repository import ToolAuditRepository, WorkflowAuditRepository
 from copilot.persistence.checkpoint import require_postgres_checkpoint_schema
 from copilot.persistence.database import PersistenceDatabase
 from copilot.persistence.identifiers import UuidIdentifierFactory
-from copilot.persistence.task_repository import InMemoryWorkflowRepository
+from copilot.persistence.task_repository import WorkflowRepository
 from copilot.policies.approval import SupplierQualityApprovalPolicy
 from copilot.policies.data_access import DataAccessPolicy
 from copilot.policies.offline import OfflineSupplierQualityAuthorizer
@@ -66,6 +63,7 @@ from copilot.services.workflows.service import SupplierQualityWorkflowService
 from copilot.services.workflows.state_machine import TaskStateMachine
 from copilot.services.workflows.validation import PlanValidator
 from copilot.tools.analytics import AnalyticsTool
+from copilot.tools.cancellation import InvocationCancellationRegistry
 from copilot.tools.database import DatabaseConnection, DatabaseTool
 from copilot.tools.database.schema_registry import SchemaRegistry
 from copilot.tools.executor import ToolExecutor
@@ -77,7 +75,7 @@ from copilot.tools.mock_supplier_quality import (
     MockKnowledgeTool,
     MockReportTool,
 )
-from copilot.tools.registry import ToolRegistry
+from copilot.tools.registry import ToolCancellationMode, ToolRegistry
 from copilot.tools.reporting import ReportTool
 
 
@@ -91,9 +89,9 @@ class WorkflowContainer:
     registry: ToolRegistry
     evidence: InMemoryEvidenceLedger
     artifacts: LocalArtifactRepository
-    repository: InMemoryWorkflowRepository
-    tool_audit: InMemoryToolAuditRepository
-    workflow_audit: InMemoryWorkflowAuditRepository
+    repository: WorkflowRepository
+    tool_audit: ToolAuditRepository
+    workflow_audit: WorkflowAuditRepository
     approval_repository: ApprovalRepository
     approval_service: ApprovalService
     artifact_service: ArtifactService
@@ -110,6 +108,7 @@ class WorkflowContainer:
     persistence_database: PersistenceDatabase | None = None
     observability: InMemoryObservability | None = None
     readiness: ReadinessService | None = None
+    cancellations: InvocationCancellationRegistry | None = None
 
     def close(self) -> None:
         """Release the executor's owned worker pool."""
@@ -233,9 +232,9 @@ def build_workflow_container(
         output_guard=output_guard,
         initialize_schema=False,
     )
-    repository = InMemoryWorkflowRepository(persistence_database, initialize_schema=False)
-    tool_audit = InMemoryToolAuditRepository(persistence_database, initialize_schema=False)
-    workflow_audit = InMemoryWorkflowAuditRepository(
+    repository = WorkflowRepository(persistence_database, initialize_schema=False)
+    tool_audit = ToolAuditRepository(persistence_database, initialize_schema=False)
+    workflow_audit = WorkflowAuditRepository(
         persistence_database,
         initialize_schema=False,
     )
@@ -296,8 +295,10 @@ def build_workflow_container(
             behavior=report_behavior,
         )
     registry = ToolRegistry()
-    for tool in (knowledge_tool, database_tool, analytics_tool, report_tool):
-        registry.register(tool)
+    registry.register(knowledge_tool, cancellation_mode=ToolCancellationMode.NON_CANCELLABLE)
+    registry.register(database_tool, cancellation_mode=ToolCancellationMode.NON_CANCELLABLE)
+    registry.register(analytics_tool, cancellation_mode=ToolCancellationMode.COOPERATIVE)
+    registry.register(report_tool, cancellation_mode=ToolCancellationMode.NON_CANCELLABLE)
     approval_gate = ApprovalGateService(
         repository=approval_repository,
         audit_sink=workflow_audit,
@@ -306,6 +307,7 @@ def build_workflow_container(
         ttl_seconds=settings.approval_ttl_seconds,
     )
     approval_policy = SupplierQualityApprovalPolicy()
+    cancellations = InvocationCancellationRegistry()
     executor = ToolExecutor(
         registry=registry,
         authorizer=OfflineSupplierQualityAuthorizer(
@@ -323,6 +325,7 @@ def build_workflow_container(
         timer=timer,
         max_step_duration_seconds=settings.max_step_duration_seconds,
         max_database_rows=settings.max_database_rows,
+        cancellation_registry=cancellations,
     )
     plan_factory = SupplierQualityAnalysisPlanFactory(registry)
     plan_validator = PlanValidator(
@@ -486,6 +489,7 @@ def build_workflow_container(
         output_guard=output_guard,
         permission_matrix=permission_matrix,
         observability=observability,
+        cancellations=cancellations,
     )
     artifact_service = ArtifactService(
         repository=artifacts,
@@ -499,11 +503,17 @@ def build_workflow_container(
         (lambda: knowledge_client.health_check().healthy) if knowledge_client is not None else None
     )
     task_dependencies = {"database", "artifact_storage"}
+    business_database_probe = (
+        database_tool.check_ready if isinstance(database_tool, DatabaseTool) else None
+    )
+    if business_database_probe is not None:
+        task_dependencies.add("business_database")
     if rag_probe is not None:
         task_dependencies.add("rag")
     readiness = ReadinessService(
         {
             "database": persistence_database.ping if persistence_database is not None else None,
+            "business_database": business_database_probe,
             "artifact_storage": artifacts.check_ready,
             "rag": rag_probe,
         },
@@ -535,6 +545,7 @@ def build_workflow_container(
         persistence_database=persistence_database,
         observability=observability,
         readiness=readiness,
+        cancellations=cancellations,
     )
 
 

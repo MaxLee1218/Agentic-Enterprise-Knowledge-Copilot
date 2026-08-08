@@ -35,6 +35,17 @@ class ToolAlreadyExistsError(ToolRuntimeError):
         )
 
 
+class ToolRegistryConflictError(ToolRuntimeError):
+    """Raised when an atomic registry update observes a stale generation."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            error_code="TOOL_REGISTRY_CONFLICT",
+            error_type=ErrorType.VALIDATION,
+            message="Tool registry generation changed during refresh",
+        )
+
+
 class ToolNotFoundError(ToolRuntimeError):
     """Raised when a requested registered capability does not exist."""
 
@@ -98,6 +109,18 @@ class ToolTimeoutError(ToolRuntimeError):
             error_type=ErrorType.TIMEOUT,
             message=message,
             recoverable=True,
+        )
+
+
+class ToolCancellationError(ToolRuntimeError):
+    """Cooperative signal that a cancellation request reached an interruption point."""
+
+    def __init__(self, *, message: str = "Tool invocation was cancelled") -> None:
+        super().__init__(
+            error_code="TOOL_CANCELLED",
+            error_type=ErrorType.CANCELLATION,
+            message=message,
+            recoverable=False,
         )
 
 

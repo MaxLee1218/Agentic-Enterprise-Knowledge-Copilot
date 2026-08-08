@@ -25,6 +25,7 @@ from copilot.contracts import (
     ToolResultStatus,
     VerificationStatus,
 )
+from copilot.services.execution import ExecutionContext
 from copilot.services.workflows.dependency import DependencyChecker
 from copilot.services.workflows.errors import PlanValidationError, StepInputError, VerificationError
 from copilot.services.workflows.fixed_plan import SUPPLIER_QUALITY_PLAN_ID
@@ -47,6 +48,7 @@ from copilot.services.workflows.ports import (
 from copilot.services.workflows.retry import WorkflowRetryPolicy
 from copilot.services.workflows.state_machine import TaskStateMachine
 from copilot.services.workflows.validation import PlanValidator
+from copilot.tools.cancellation import CancellationToken
 from copilot.tools.exceptions import ToolRuntimeError, ToolValidationError
 from copilot.tools.executor import ToolExecutor
 from copilot.tools.registry import ToolRegistry
@@ -108,7 +110,13 @@ class WorkflowRunner:
             started_at=started_at,
             metadata={"registered_tools": tuple(self._registry.list())},
         )
-        self._repository.initialize(request, contract, plan, initial)
+        self._repository.initialize(
+            request,
+            contract,
+            plan,
+            initial,
+            tenant_id=contract.constraints.tenant_id,
+        )
         self._emit(context, "workflow_started", status=initial.state.value)
         self._transition(context, "START_UNDERSTANDING", "Authenticated request accepted")
         self._transition(context, "CONTRACT_VALIDATED", "Frozen task contract supplied")
@@ -171,7 +179,10 @@ class WorkflowRunner:
         )
         verification_result = self._verifier.verify(context)
         context.verification_result = verification_result
-        self._repository.save_verification_result(verification_result)
+        self._repository.save_verification_result(
+            verification_result,
+            tenant_id=context.contract.constraints.tenant_id,
+        )
         self._emit(
             context,
             "verification_completed",
@@ -203,7 +214,10 @@ class WorkflowRunner:
             artifacts=tuple(item.artifact_id for item in context.artifacts),
             evidence=tuple(context.evidence),
         )
-        self._repository.save_task_result(task_result)
+        self._repository.save_task_result(
+            task_result,
+            tenant_id=context.contract.constraints.tenant_id,
+        )
         completed_at = self._clock()
         self._emit(
             context,
@@ -255,10 +269,34 @@ class WorkflowRunner:
                 status="EXECUTING",
             )
             try:
-                tool_result = self._tool_executor.execute(call, attempt=attempt_number)
+                tool_result = self._tool_executor.execute(
+                    call,
+                    ExecutionContext(
+                        task_id=context.task_id,
+                        trace_id=context.task_id,
+                        step_id=step.step_id,
+                        user_id=context.request.user_id,
+                        tenant_id=context.contract.constraints.tenant_id,
+                        roles=("quality_analyst",),
+                        scopes=("task:execute", "data:quality.v1"),
+                        data_scope=context.contract.constraints.data_scope,
+                        purpose="supplier_quality_analysis.v1",
+                        authentication_source="legacy_internal_adapter",
+                        is_demo_identity=True,
+                        authenticated=True,
+                        deadline_at=call.deadline_at,
+                        approval_required=False,
+                        approval_id=call.approval_id,
+                        cancellation=CancellationToken(),
+                    ),
+                    attempt=attempt_number,
+                )
             except (ToolValidationError, ToolRuntimeError) as exc:
                 tool_result = self._exception_result(call, attempt_number, exc)
-            self._repository.save_tool_result(tool_result)
+            self._repository.save_tool_result(
+                tool_result,
+                tenant_id=context.contract.constraints.tenant_id,
+            )
             context.tool_results.setdefault(step.step_id, []).append(tool_result)
             attempts.append(tool_result)
             if tool_result.status is ToolResultStatus.SUCCESS:
@@ -335,7 +373,10 @@ class WorkflowRunner:
             artifact_id = final.output.root.get("artifact_id")
             if not isinstance(artifact_id, str):
                 raise VerificationError("Report output omitted artifact identifier")
-            artifact = self._artifact_store.get(artifact_id)
+            artifact = self._artifact_store.get(
+                artifact_id,
+                tenant_id=context.contract.constraints.tenant_id,
+            )
             context.artifacts.append(artifact)
             self._emit(
                 context,
@@ -472,7 +513,12 @@ class WorkflowRunner:
         record: StepExecutionRecord,
         event: str,
     ) -> None:
-        self._repository.save_step_result(result, record)
+        self._repository.save_step_result(
+            context.task_id,
+            result,
+            record,
+            tenant_id=context.contract.constraints.tenant_id,
+        )
         context.step_results[result.step_id] = result
         context.step_executions[result.step_id] = record
         step = next(item for item in context.plan.steps if item.step_id == result.step_id)
@@ -489,7 +535,11 @@ class WorkflowRunner:
     def _collect_evidence(self, context: WorkflowExecutionContext, tool_result: ToolResult) -> None:
         for evidence_id in tool_result.evidence_ids:
             if evidence_id not in context.evidence:
-                context.evidence[evidence_id] = self._evidence_reader.get(evidence_id)
+                context.evidence[evidence_id] = self._evidence_reader.get(
+                    evidence_id,
+                    task_id=context.task_id,
+                    tenant_id=context.contract.constraints.tenant_id,
+                )
         if tool_result.evidence_ids:
             step = next(item for item in context.plan.steps if item.step_id == tool_result.step_id)
             self._emit(
@@ -503,7 +553,12 @@ class WorkflowRunner:
     def _transition(self, context: WorkflowExecutionContext, event: str, reason: str) -> None:
         previous = context.task_state
         current, record = self._state_machine.transition(previous, event, reason=reason)
-        self._repository.commit_transition(previous, current, record)
+        self._repository.commit_transition(
+            previous,
+            current,
+            record,
+            tenant_id=context.contract.constraints.tenant_id,
+        )
         context.task_state = current
         self._emit(
             context,
@@ -532,7 +587,10 @@ class WorkflowRunner:
             artifacts=(),
             evidence=tuple(context.evidence),
         )
-        self._repository.save_task_result(task_result)
+        self._repository.save_task_result(
+            task_result,
+            tenant_id=context.contract.constraints.tenant_id,
+        )
         completed_at = self._clock()
         event = "workflow_partially_completed" if successful else "workflow_failed"
         self._emit(
@@ -644,6 +702,9 @@ class WorkflowRunner:
                 plan_id=SUPPLIER_QUALITY_PLAN_ID,
                 plan_version=context.plan.planning_version,
                 timestamp=self._clock(),
+                tenant_id=context.contract.constraints.tenant_id,
+                trace_id=context.task_id,
+                actor_id=context.request.user_id,
                 step_id=step.step_id if step is not None else None,
                 tool_name=step.tool_name if step is not None else None,
                 attempt=attempt,

@@ -40,18 +40,28 @@ def test_natural_text_is_preserved_and_understood_before_planning(tmp_path: Path
             CALLER,
         )
         state = container.engine.get_state(execution.task_result.task_id, "TENANT-DEMO")
-        events = container.workflow_audit.list()
+        events = container.workflow_audit.list(tenant_id=CALLER.tenant_id)
 
         assert execution.task_result.final_status is TaskStatus.COMPLETED
         assert execution.trace_id == "TRACE-NATURAL-1"
         assert state["request"].raw_input == raw
-        assert container.repository.request_for(execution.task_result.task_id).raw_input == raw
+        assert (
+            container.repository.request_for(
+                execution.task_result.task_id, tenant_id=CALLER.tenant_id
+            ).raw_input
+            == raw
+        )
         assert state["contract"].constraints.year == 2026
         assert state["contract"].constraints.quarter == 2
         assert state["plan"].planning_version == 1
         assert events[0].event == "TASK_SUBMITTED"
         assert events[0].metadata.root["task_text_length"] == len(raw)
-        assert [result.tool_name for result in container.repository.tool_results()] == [
+        assert [
+            result.tool_name
+            for result in container.repository.tool_results_for(
+                execution.task_result.task_id, tenant_id=CALLER.tenant_id
+            )
+        ] == [
             "knowledge_search",
             "database_query",
             "analysis_engine",
@@ -74,9 +84,14 @@ def test_missing_information_follows_frozen_failed_path_without_tools(tmp_path: 
 
         assert execution.task_result.final_status is TaskStatus.FAILED
         assert any(error.error_code == "TASK_INFORMATION_MISSING" for error in execution.errors)
-        assert container.repository.tool_results() == ()
+        assert (
+            container.repository.tool_results_for(
+                execution.task_result.task_id, tenant_id=CALLER.tenant_id
+            )
+            == ()
+        )
         assert "TASK_CLARIFICATION_REQUIRED" in {
-            event.event for event in container.workflow_audit.list()
+            event.event for event in container.workflow_audit.list(tenant_id=CALLER.tenant_id)
         }
 
 
@@ -133,8 +148,21 @@ def test_llm_failure_keeps_the_persisted_original_request(tmp_path: Path) -> Non
 
         assert execution.task_result.final_status is TaskStatus.FAILED
         assert execution.errors[0].error_code == "LLM_UNAVAILABLE_ERROR"
-        assert container.repository.request_for(execution.task_result.task_id).raw_input == raw
         assert (
-            container.repository.state_for(execution.task_result.task_id).state is TaskStatus.FAILED
+            container.repository.request_for(
+                execution.task_result.task_id, tenant_id=CALLER.tenant_id
+            ).raw_input
+            == raw
         )
-        assert container.repository.tool_results() == ()
+        assert (
+            container.repository.state_for(
+                execution.task_result.task_id, tenant_id=CALLER.tenant_id
+            ).state
+            is TaskStatus.FAILED
+        )
+        assert (
+            container.repository.tool_results_for(
+                execution.task_result.task_id, tenant_id=CALLER.tenant_id
+            )
+            == ()
+        )

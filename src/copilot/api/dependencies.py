@@ -2,11 +2,11 @@
 
 from typing import cast
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 
-from copilot.config import Settings
 from copilot.services.approval_service import ApprovalService
 from copilot.services.artifact_service import ArtifactService
+from copilot.services.identity import IdentityProvider, IdentityRequest, IdentityResolutionError
 from copilot.services.task_intake import TrustedCallerContext
 from copilot.services.task_service import NaturalLanguageTaskService
 
@@ -27,19 +27,15 @@ def get_artifact_service(request: Request) -> ArtifactService:
 
 
 def get_caller_context(request: Request) -> TrustedCallerContext:
-    """Return server-owned demo identity until an authentication adapter is installed."""
-    settings: Settings = request.app.state.settings
-    return TrustedCallerContext(
-        user_id=settings.demo_user_id,
-        tenant_id=settings.demo_tenant_id,
-        data_scope=("quality.v1", "supplier-quality-policy-v1"),
-        roles=settings.demo_approval_roles,
-        authentication_source="configured_demo_adapter",
-        is_demo_identity=True,
-        purpose="supplier_quality_analysis.v1",
-        policy_forces_read_only=settings.task_force_read_only,
-        policy_requires_approval=settings.task_require_approval_by_default,
-    )
+    """Resolve every API caller through the explicitly composed authentication boundary."""
+    provider = cast(IdentityProvider, request.app.state.identity_provider)
+    try:
+        return provider.resolve(IdentityRequest(headers=dict(request.headers), source="api"))
+    except IdentityResolutionError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail={"error_code": exc.code, "message": str(exc)},
+        ) from exc
 
 
 __all__ = [

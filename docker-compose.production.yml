@@ -1,0 +1,104 @@
+name: agentic-enterprise-knowledge-copilot-production
+
+x-copilot-environment: &copilot-production-environment
+  APP_ENV: production
+  DEBUG: "false"
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_FORMAT: json
+  PERSISTENCE_DATABASE_URL: ${PERSISTENCE_DATABASE_URL:?inject the Copilot PostgreSQL URL}
+  PERSISTENCE_AUTO_CREATE_SCHEMA: "false"
+  DATABASE_URL: ${DATABASE_URL:?inject the read-only enterprise business database URL}
+  DATABASE_PROVIDER: sqlalchemy
+  KNOWLEDGE_PROVIDER: http
+  RAG_BASE_URL: ${RAG_BASE_URL:-http://enterprise-rag-engine:8000}
+  ARTIFACT_DIR: /app/data/artifacts
+  LLM_PROVIDER: deepseek
+  LLM_API_KEY: ${LLM_API_KEY:?inject the model credential}
+  IDENTITY_PROVIDER: trusted_headers
+  IDENTITY_SIGNING_SECRET: ${IDENTITY_SIGNING_SECRET:?inject a 32-byte minimum signing secret}
+  CHECKPOINT_ENABLED: "true"
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set the Copilot database name}
+      POSTGRES_USER: ${POSTGRES_USER:?set the Copilot database user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?inject the Copilot database password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [copilot]
+
+  enterprise-rag-engine:
+    image: ${RAG_IMAGE:?set an approved immutable Enterprise RAG image}
+    restart: unless-stopped
+    networks: [copilot]
+
+  migrate:
+    image: ${COPILOT_IMAGE:?set the immutable Copilot image}
+    restart: "no"
+    environment: *copilot-production-environment
+    command: ["python", "-m", "copilot.persistence.migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [copilot]
+
+  rag-health:
+    image: ${COPILOT_IMAGE:?set the immutable Copilot image}
+    restart: "no"
+    environment: *copilot-production-environment
+    command:
+      [
+        "python",
+        "-c",
+        "from copilot.bootstrap.knowledge_cli import health_main; raise SystemExit(health_main(['--json']))",
+      ]
+    depends_on:
+      enterprise-rag-engine:
+        condition: service_started
+    networks: [copilot]
+
+  copilot-api:
+    image: ${COPILOT_IMAGE:?set the immutable Copilot image}
+    restart: unless-stopped
+    environment: *copilot-production-environment
+    ports:
+      - "${COPILOT_PORT:-8000}:8000"
+    volumes:
+      - artifact-data:/app/data/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      rag-health:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2).read()",
+        ]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      retries: 12
+    stop_grace_period: 30s
+    networks: [copilot]
+
+volumes:
+  postgres-data:
+  artifact-data:
+
+networks:
+  copilot:
+    driver: bridge

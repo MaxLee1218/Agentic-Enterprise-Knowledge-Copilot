@@ -57,6 +57,9 @@ jobs:
       - name: Run integration, contract, and smoke tests
         run: pytest tests/integration tests/contract tests/smoke
 
+      - name: Run security regression tests
+        run: pytest tests/security
+
       - name: Run offline Agent evaluation regression gate
         run: >-
           python evaluation/run_eval.py
@@ -129,5 +132,17 @@ jobs:
         env:
           RAG_IMAGE: enterprise-rag-engine:ci-placeholder
         run: docker compose config
+      - name: Validate production Compose topology
+        env:
+          COPILOT_IMAGE: enterprise-copilot:ci
+          RAG_IMAGE: enterprise-rag-engine:ci-placeholder
+          POSTGRES_DB: copilot
+          POSTGRES_USER: copilot
+          POSTGRES_PASSWORD: ci-only-placeholder
+          PERSISTENCE_DATABASE_URL: postgresql+psycopg://copilot:ci-only-placeholder@postgres/copilot
+          DATABASE_URL: postgresql+psycopg://readonly:ci-only-placeholder@business-db/quality
+          LLM_API_KEY: ci-only-placeholder
+          IDENTITY_SIGNING_SECRET: ci-only-identity-signing-secret-32-bytes
+        run: docker compose -f docker-compose.production.yml config
       - name: Build Copilot image
         run: docker build --tag enterprise-copilot:ci .

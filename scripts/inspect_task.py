@@ -44,7 +44,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             steps = container.task_service.list_task_steps(args.task_id, caller)
             evidence = container.task_service.list_task_evidence(args.task_id, caller)
             artifacts = container.artifact_service.list_task_artifacts(args.task_id, caller)
-            performance = _performance_view(container, task.trace_id, args.task_id, task.status)
+            performance = _performance_view(
+                container,
+                task.trace_id,
+                args.task_id,
+                task.status,
+                tenant_id=caller.tenant_id,
+            )
     except ConfigurationError as exc:
         print(f"CONFIGURATION_ERROR: {exc}", file=sys.stderr)
         return 3
@@ -99,12 +105,14 @@ def _performance_view(
     trace_id: str,
     task_id: str,
     status: str,
+    *,
+    tenant_id: str,
 ) -> dict[str, object]:
     """Build an inspectable view from live spans or durable audit timing facts."""
     workflow_audit = container.workflow_audit
     tool_audit = container.tool_audit
     telemetry = container.observability
-    workflow_events = [item for item in workflow_audit.list() if item.task_id == task_id]
+    workflow_events = list(workflow_audit.list(tenant_id=tenant_id, task_id=task_id))
     node_latency: dict[str, int] = {}
     for item in workflow_events:
         if item.event != "node_completed" or item.duration_ms is None:
@@ -112,7 +120,7 @@ def _performance_view(
         raw_name = item.metadata.root.get("node_name", item.event)
         name = raw_name if isinstance(raw_name, str) else item.event
         node_latency[name] = node_latency.get(name, 0) + item.duration_ms
-    tools = [item for item in tool_audit.list() if item.task_id == task_id]
+    tools = list(tool_audit.list(tenant_id=tenant_id, task_id=task_id))
     tool_latency = {f"{item.tool_name}#attempt-{item.attempt}": item.latency_ms for item in tools}
     retries = sum(max(item.attempt - 1, 0) for item in tools)
     failures = sorted({item.error_code for item in tools if item.error_code is not None})

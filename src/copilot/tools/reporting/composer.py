@@ -44,12 +44,17 @@ class ReportComposer:
         request: ReportRequest,
         *,
         task_id: str,
+        tenant_id: str,
     ) -> tuple[EvidenceItem, ...]:
         """Resolve and scope every referenced Evidence item."""
         loaded: list[EvidenceItem] = []
         for evidence_id in request.evidence_refs:
             try:
-                item = self._evidence_reader.get(evidence_id)
+                item = self._evidence_reader.get(
+                    evidence_id,
+                    task_id=task_id,
+                    tenant_id=tenant_id,
+                )
             except (KeyError, LookupError) as exc:
                 raise ReportInputError("Report references Evidence that does not exist") from exc
             if item.task_id != task_id:

@@ -66,7 +66,9 @@ class TrustedCallerContext(BaseModel):
     data_scope: tuple[str, ...] = Field(min_length=1)
     supplier_ids: tuple[str, ...] = ()
     roles: tuple[str, ...] = ()
+    scopes: tuple[str, ...] = ()
     authentication_source: str = Field(default="demo", min_length=1)
+    authenticated: bool = True
     is_demo_identity: bool = True
     purpose: str = Field(default="supplier_quality_analysis.v1", min_length=1)
     attributes: dict[str, MetadataValue] = Field(default_factory=dict)
@@ -87,7 +89,9 @@ class TrustedTaskContext(BaseModel):
     data_scope: tuple[str, ...]
     authorized_supplier_ids: tuple[str, ...] = ()
     roles: tuple[str, ...] = ()
+    scopes: tuple[str, ...] = ()
     authentication_source: str = Field(default="demo", min_length=1)
+    authenticated: bool = True
     is_demo_identity: bool = True
     purpose: str = Field(default="supplier_quality_analysis.v1", min_length=1)
     output_format: ArtifactType | None = None

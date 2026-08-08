@@ -20,6 +20,7 @@ from copilot.services.task_intake import (
     RequestSource,
     TrustedCallerContext,
 )
+from copilot.services.task_service import TaskNotFoundError
 
 POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")
 
@@ -69,12 +70,18 @@ def test_postgres_migration_round_trip_and_restart_recovery(
         task_id = captured.value.task_id
         approval_id = captured.value.approval_id
         assert approval_id is not None
-        assert first.approval_repository.get(approval_id).status is ApprovalStatus.PENDING
-        assert first.evidence.list(task_id)
-        assert first.workflow_audit.list()
+        assert (
+            first.approval_repository.get(approval_id, tenant_id=caller.tenant_id).status
+            is ApprovalStatus.PENDING
+        )
+        assert first.evidence.list(task_id, tenant_id=caller.tenant_id)
+        assert first.workflow_audit.list(tenant_id=caller.tenant_id)
 
     with build_application(settings) as restarted:
-        assert restarted.approval_repository.get(approval_id).status is ApprovalStatus.PENDING
+        assert (
+            restarted.approval_repository.get(approval_id, tenant_id=caller.tenant_id).status
+            is ApprovalStatus.PENDING
+        )
         result = restarted.approval_service.resolve(
             ApprovalResolutionCommand(
                 task_id=task_id,
@@ -85,14 +92,40 @@ def test_postgres_migration_round_trip_and_restart_recovery(
             caller,
         )
         assert result.task_status is TaskStatus.COMPLETED
-        assert restarted.artifacts.list_by_task(task_id)
+        assert restarted.artifacts.list_by_task(task_id, tenant_id=caller.tenant_id)
         assert restarted.engine.get_state(task_id, caller.tenant_id)["task_id"] == task_id
 
     with build_application(settings) as recovered:
         task = recovered.task_service.get_task(task_id, caller)
         assert task.status == TaskStatus.COMPLETED.value
-        assert recovered.repository.task_result_for(task_id) is not None
-        assert recovered.approval_repository.get(approval_id).status is ApprovalStatus.APPROVED
+        assert recovered.repository.task_result_for(task_id, tenant_id=caller.tenant_id) is not None
+        assert (
+            recovered.approval_repository.get(approval_id, tenant_id=caller.tenant_id).status
+            is ApprovalStatus.APPROVED
+        )
         assert recovered.engine.get_state(task_id, caller.tenant_id)["task_id"] == task_id
+
+        intruder = TrustedCallerContext(
+            user_id="U-POSTGRES-INTRUDER",
+            tenant_id="TENANT-POSTGRES-OTHER",
+            data_scope=caller.data_scope,
+            roles=caller.roles,
+            scopes=caller.scopes,
+            authentication_source="postgres_integration_test",
+            authenticated=True,
+            is_demo_identity=False,
+        )
+        with pytest.raises(TaskNotFoundError):
+            recovered.task_service.get_task(task_id, intruder)
+        with pytest.raises(KeyError):
+            recovered.repository.state_for(task_id, tenant_id=intruder.tenant_id)
+        assert recovered.evidence.list(task_id, tenant_id=intruder.tenant_id) == ()
+        assert recovered.artifacts.list_by_task(task_id, tenant_id=intruder.tenant_id) == ()
+        with pytest.raises(KeyError):
+            recovered.approval_repository.get(approval_id, tenant_id=intruder.tenant_id)
+        assert recovered.tool_audit.list(tenant_id=intruder.tenant_id) == ()
+        assert recovered.workflow_audit.list(tenant_id=intruder.tenant_id) == ()
+        with pytest.raises(ValueError, match="checkpoint was not found"):
+            recovered.engine.get_state(task_id, intruder.tenant_id)
 
     get_settings.cache_clear()

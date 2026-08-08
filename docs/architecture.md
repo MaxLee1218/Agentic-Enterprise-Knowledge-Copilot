@@ -12,7 +12,10 @@ Most packages remain scaffolds. Today, the stable domain contracts, governed too
 deterministic offline Supplier Quality LangGraph workflow, and an optional structured LLM
 understanding/planning path are implemented. Stage 17 adds SQLAlchemy-backed SQLite/PostgreSQL
 business persistence, Alembic migrations, PostgreSQL checkpointing, and container deployment.
-General enterprise adapters and MCP interoperability are not. A path
+Stage 17.1 adds a trusted identity-provider boundary, mandatory execution context, tenant-scoped
+persistence, an unavoidable executor security gate, protocol-neutral registry lifecycle metadata,
+truthful cancellation, and cross-boundary correlation. General enterprise adapters and MCP
+interoperability are not. A path
 in this document identifies an approved boundary, not proof that every capability is implemented.
 
 ## 1. System Architecture
@@ -53,13 +56,13 @@ renderer implementation directly.
 |---|---|---|
 | Domain | `copilot.contracts` | Implemented v1.1 typed contracts, including immutable approval resolution; provider- and framework-independent |
 | Application | `copilot.services`, `copilot.agent`, `copilot.policies` | LangGraph workflow, deterministic validation, optional LLM planning/repair/replan, structured approval policy, and checkpoint resume implemented |
-| Governed capability runtime | `copilot.tools.base`, `registry`, `executor`, `runner`, `schema` | Implemented application-facing port, registration, authorization, execution, evidence, and audit sequence |
-| Capability adapters | `copilot.tools.knowledge`, `database`, `analytics`, `reporting`, offline mock module | HTTP knowledge, SQLAlchemy SQLite database, deterministic analytics, and deterministic PDF/JSON reporting adapters are implemented |
+| Governed capability runtime | `copilot.tools.base`, `registry`, `executor`, `runner`, `schema`, `cancellation` | Implemented mandatory-context authorization, exact approval, namespace/source metadata, atomic refresh/revoke, bounded execution, truthful cancellation, evidence, and audit sequence |
+| Capability adapters | `copilot.tools.knowledge`, `database`, `analytics`, `reporting`, offline mock module | HTTP knowledge, SQLAlchemy read-only SQLite/PostgreSQL database, deterministic analytics, and deterministic PDF/JSON reporting adapters are implemented |
 | Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | DeepSeek/Mock structured LLM adapters, Evidence Ledger, deterministic verification, SQLAlchemy SQLite/PostgreSQL workflow/approval/audit storage, SQLite/PostgreSQL checkpoints, execution leases, local atomic Artifact storage, and bounded local observability support this stage |
-| Cross-cutting security | `copilot.security`, `copilot.policies` | Source/trust findings, sensitive-data registry, recursive redaction, output guard, centralized permission matrix, and table/field access policy |
+| Cross-cutting security | `copilot.security`, `copilot.policies` | Identity providers, source/trust findings, sensitive-data registry, recursive redaction, output guard, centralized permission matrix, exact approval, and table/field access policy |
 | Interfaces | `copilot.api`, `copilot.cli` | Natural-language submission, task/step/Evidence/Artifact query, controlled Artifact download, cooperative cancellation, health, and approval detail/resolution API/CLI are implemented |
 | Protocol boundary | `copilot.mcp` | Future Phase 5 boundary; scaffold only |
-| Bootstrap | `copilot.bootstrap` | Composition root uses offline adapters by default and registers the real read-only Database Tool in production or when explicitly enabled |
+| Bootstrap | `copilot.bootstrap` | Sole composition root; development/test may use explicit offline adapters, while production validation requires trusted identity and real critical-path providers |
 | Configuration | `copilot.config` | Typed environment configuration consumed at startup and infrastructure edges |
 
 `tools` is a governed capability boundary rather than permission to bypass the layers. Its generic
@@ -116,6 +119,50 @@ Additional mandatory boundaries:
   existing governed executor. Exported capabilities are deny-by-default and explicitly
   allowlisted.
 - Framework-, vendor-, and database-specific types do not cross into domain contracts.
+
+### Stage 17.1 security and execution boundaries
+
+```text
+API request
+  -> IdentityProvider (demo only outside production, or signed trusted gateway)
+  -> TrustedCallerContext / TrustedTaskContext
+  -> mandatory ExecutionContext for one exact task/step/tool call
+  -> ToolExecutor
+       -> registry lookup and schema validation
+       -> identity/tenant/purpose/policy validation
+       -> exact approval validation when required
+       -> cancellation-aware bounded runner
+       -> output guard, Evidence, Audit, and trace
+```
+
+`ExecutionContext` binds task, trace, step, user, tenant, roles, scopes, data scope, purpose,
+authentication source, deadline, approval state, and one cancellation token. It is server-owned;
+model output and tool arguments cannot populate or upgrade it. A direct `ToolExecutor` call with a
+missing or mismatched context fails before adapter execution.
+
+Tenant-owned Task, state, plan, step/tool results, Evidence, Approval/history, Artifact metadata,
+Audit, lease, and checkpoint records carry explicit tenant ownership. Repository APIs require a
+tenant and SQL paths filter by tenant in the query. Composite database relationships prevent a
+child row from naming a task in another tenant. Tenant-qualified checkpoint thread IDs prevent
+recovery state from colliding across tenants.
+
+The registry preserves frozen local tool names while supporting qualified names for approved
+non-local namespaces. Each immutable registration carries origin, provenance, schema version,
+registration source, cancellation mode, and generation. Namespace refresh validates the complete
+replacement before one locked commit; revocation removes future lookup immediately. These are
+general lifecycle primitives, not external discovery or MCP behavior.
+
+Cancellation is cooperative. The deterministic Analytics adapter checks its token at bounded
+safe points. Current synchronous Knowledge HTTP, Database, and Report adapters are explicitly
+non-cancellable: a request changes from `ACTIVE` to `CANCELLATION_REQUESTED`, the late result is
+discarded, and only then is the invocation marked `CANCELLED`. Timeout and shutdown signal the
+same registry; Python threads are never claimed to have been forcibly stopped.
+
+Correlation uses immutable `ContextVar` state. API/service/graph/executor bindings are copied into
+the tool worker thread, and the Knowledge client forwards the configured trace header. Async and
+parallel flows retain independent contexts. Audit records who/what/why with hashes and decision
+codes; logs diagnose runtime behavior; traces describe the path. None stores raw arguments,
+authorization headers, secrets, database rows, or unrestricted identity payloads.
 
 ## 3. Runtime Call Direction
 

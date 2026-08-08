@@ -5,7 +5,9 @@ turns a natural-language enterprise request into a validated plan, executes only
 records Evidence and audit lineage, verifies the result, and produces an immutable report
 Artifact. Stage 17 packages the implemented Stage 0–16 vertical slice as an installable,
 migration-driven, Docker-ready service with SQLite development storage and PostgreSQL deployment
-persistence.
+persistence. Stage 17.1 hardens identity, mandatory execution context, tenant persistence,
+approval enforcement, registry lifecycle, cancellation, correlation, and production configuration
+without adding a business capability.
 
 The **Enterprise RAG Engine is a separate service and repository**. The Copilot consumes its
 approved HTTP contract through the Knowledge Tool; this repository does not copy, embed, or
@@ -35,7 +37,9 @@ create a second workflow or bypass Policy, Approval, Registry/Executor, Evidence
 Observability, or Verification.
 
 See [Architecture](docs/architecture.md), the [frozen v1.1 baseline](docs/design/design_baseline.md),
-and [ADR-006](docs/adr/ADR-006-deployment-persistence-boundary.md).
+and [ADR-006](docs/adr/ADR-006-deployment-persistence-boundary.md). The separation between this
+hardening stage and any future interoperability stage is recorded in
+[ADR-007](docs/adr/ADR-007-stage-18-mcp-readiness-boundary.md).
 
 ## Supported vertical slice
 
@@ -49,8 +53,10 @@ Current boundaries are intentional:
 - no CAPA execution, email, procurement, supplier-status change, or business-database write;
 - no arbitrary SQL/Python, open internet source, or unregistered connector;
 - no cross-database atomic transaction or external API exactly-once guarantee;
-- no background task queue or forced interruption of an in-flight external call;
-- no production IAM/SSO adapter—the checked-in API/CLI identity is a Demo Identity;
+- no background task queue or forced interruption of a synchronous in-flight external call; such
+  calls expose cancellation-requested state and their late output is discarded;
+- no bundled enterprise IAM/SSO: production verifies a short-lived signed assertion from an
+  approved upstream gateway, while Demo Identity is restricted to explicit development/test use;
 - no MCP behavior. MCP files are future placeholders, not an implementation.
 
 ## Requirements and installation
@@ -96,6 +102,8 @@ export DATABASE_URL=sqlite:///data/database/enterprise_demo.db
 ```
 
 This database is enterprise business data for Tool reads; it is not Copilot persistence.
+The same allowlisted adapter accepts PostgreSQL in production, uses a server-side read-only
+transaction and statement timeout, and is included in `/health/ready` dependency checks.
 
 ## Docker Compose
 
@@ -210,7 +218,7 @@ Health semantics:
 ```bash
 enterprise-copilot --help
 python scripts/run_task.py \
-  "Analyze Q2 2026 supplier quality deviations and generate a JSON report."
+  "Analyze Q2 2026 supplier quality deviations and generate a JSON report." --demo
 python scripts/inspect_task.py TASK_ID
 python scripts/inspect_task.py TASK_ID --performance
 python scripts/smoke_agent.py --show-trace
@@ -225,20 +233,23 @@ API and CLI use the same Task Service and LangGraph. CLI exit codes are document
 | Variable | Development default | Production requirement |
 |---|---|---|
 | `APP_ENV` | `development` | `production` with strict validation |
+| `IDENTITY_PROVIDER` | `demo` | `trusted_headers`; no demo fallback |
+| `IDENTITY_SIGNING_SECRET` | blank | injected secret, at least 32 bytes |
 | `PERSISTENCE_DATABASE_URL` | local SQLite fallback | required PostgreSQL URL |
 | `PERSISTENCE_AUTO_CREATE_SCHEMA` | `true` | `false`; run migrations separately |
 | `DATABASE_URL` | demo business SQLite | approved read-only business DB |
 | `DATABASE_PROVIDER` | `mock` | `sqlalchemy` |
 | `KNOWLEDGE_PROVIDER` | `mock` | `http` |
 | `RAG_BASE_URL` | host-local URL | approved non-loopback service URL |
+| `LLM_PROVIDER` / `LLM_API_KEY` | `mock` / blank | real provider / injected credential |
 | `ARTIFACT_DIR` | `data/artifacts` | persistent, writable, backed-up volume |
 | `LOG_LEVEL` / `LOG_FORMAT` | `INFO` / `json` | structured stdout/stderr |
 | `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `5` / `10` | size for deployment concurrency |
 | `MAX_TASK_STEPS` | `10` | may be tightened, not expanded past policy |
 
-The complete safe template is [.env.example](.env.example). The Demo Identity remains a known
-deployment blocker for a true production rollout and must be replaced by a trusted authentication
-adapter; Stage 17 does not pretend otherwise.
+The complete safe template is [.env.example](.env.example). The production adapter validates a
+gateway-signed user, tenant, roles, scopes, data scope, purpose, and timestamp; the upstream
+enterprise gateway/IdP remains a required deployment dependency.
 
 ## Security
 
@@ -248,8 +259,10 @@ filtering, Approval binding, append-only Audit, Evidence lineage, Artifact integ
 independent Verification. Logs redact secret-shaped values and do not emit database URLs, raw
 SQL, Authorization headers, tool payloads, or ordinary stack traces.
 
-These controls are a governed demo foundation, not production IAM, a Secret Manager, tamper-proof
-audit, or a disaster-recovery platform. See [Security Model](docs/security-model.md).
+These controls are a production security foundation, not an enterprise IdP, a Secret Manager,
+tamper-proof audit, or a disaster-recovery platform. Repository APIs require tenant scope, and the
+executor independently requires exact authenticated context, policy, and approval even when
+called directly. See [Security Model](docs/security-model.md).
 
 ## Observability and operations
 
@@ -269,6 +282,7 @@ ruff format --check .
 mypy
 pytest tests/unit --cov=copilot --cov-report=term-missing --cov-report=xml
 pytest tests/integration tests/contract tests/smoke
+pytest tests/security
 python evaluation/run_eval.py --mode mock --seed 42 \
   --baseline evaluation/baselines/supplier_quality_v1.json --fail-on-regression
 python scripts/check_docs.py
@@ -276,6 +290,7 @@ python scripts/check_architecture.py
 python -m build
 docker build .
 RAG_IMAGE=enterprise-rag-engine:local docker compose config
+docker compose -f docker-compose.production.yml config
 ```
 
 Real PostgreSQL coverage uses an isolated `TEST_POSTGRES_URL`; GitHub Actions supplies a PostgreSQL
@@ -295,6 +310,7 @@ latency quality. See [Offline Agent Evaluation](docs/evaluation.md).
 
 ## Roadmap
 
-Stage 17 is deployment engineering only. **Stage 18: MCP Interoperability is not implemented and
-remains a future phase.** Existing MCP directories and documentation are placeholders and do not
-mean MCP client, server, transport, OAuth, import, or export behavior exists.
+Stage 17.1 is production security and readiness hardening only. **Stage 18: MCP Interoperability is
+not implemented and remains a separate future phase that requires a passing readiness gate.**
+Existing MCP directories and documentation are placeholders and do not mean MCP client, server,
+transport, OAuth, import, or export behavior exists.

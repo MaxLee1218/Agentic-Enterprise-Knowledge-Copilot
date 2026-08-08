@@ -23,6 +23,7 @@ from copilot.tools.reporting.schemas import ReportFormat, ReportScope
 
 FIXED_NOW = datetime(2026, 7, 26, 8, 0, tzinfo=UTC)
 TASK_ID = "T-REPORT-001"
+TENANT_ID = "TENANT-A"
 
 METRICS: tuple[JsonMapping, ...] = (
     {
@@ -58,9 +59,12 @@ class DictEvidenceReader:
     def __init__(self, items: tuple[EvidenceItem, ...]) -> None:
         self._items = {item.evidence_id: item for item in items}
 
-    def get(self, evidence_id: str) -> EvidenceItem:
+    def get(self, evidence_id: str, *, task_id: str, tenant_id: str) -> EvidenceItem:
         """Return a fixture Evidence item."""
-        return self._items[evidence_id]
+        item = self._items[evidence_id]
+        if item.task_id != task_id or tenant_id != TENANT_ID:
+            raise KeyError(evidence_id)
+        return item
 
 
 class SequentialIds:
@@ -197,9 +201,15 @@ def report_context(request: ReportRequest, *, task_id: str = TASK_ID) -> ToolExe
             idempotency_key=f"IDEMPOTENCY-{request.format.value}",
             approval_id=None,
             deadline_at=FIXED_NOW + timedelta(minutes=1),
-            tenant_id="TENANT-A",
+            tenant_id=TENANT_ID,
             user_id="U-QUALITY",
-        )
+        ),
+        trace_id="TRACE-REPORT-001",
+        tenant_id=TENANT_ID,
+        user_id="U-QUALITY",
+        roles=("quality_analyst",),
+        scopes=("quality.read", "artifact.write"),
+        purpose="supplier_quality_analysis",
     )
 
 
@@ -229,6 +239,7 @@ __all__ = [
     "DictEvidenceReader",
     "FIXED_NOW",
     "TASK_ID",
+    "TENANT_ID",
     "evidence_items",
     "report_context",
     "report_request",
