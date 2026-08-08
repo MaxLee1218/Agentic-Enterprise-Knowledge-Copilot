@@ -1,5 +1,7 @@
 """Validated application configuration loaded from environment variables."""
 
+from __future__ import annotations
+
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -11,8 +13,10 @@ from pydantic import (
     SecretStr,
     ValidationError,
     field_validator,
+    model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _HTTP_HEADER_NAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
@@ -32,7 +36,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_env: Literal["development", "test", "staging", "production"] = "development"
+    app_env: Literal["development", "test", "production"] = "development"
+    debug: bool = False
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     log_format: Literal["json", "text"] = "json"
     observability_enabled: bool = True
@@ -53,6 +58,7 @@ class Settings(BaseSettings):
         max_length=256,
     )
     rag_trace_header: str = Field(default="X-Trace-ID", min_length=1, max_length=128)
+    knowledge_provider: Literal["mock", "http"] = "mock"
     llm_provider: Literal["mock", "deepseek"] = "mock"
     llm_model: str = Field(default="deepseek-chat", min_length=1, max_length=128)
     llm_base_url: AnyHttpUrl = AnyHttpUrl("https://api.deepseek.com")
@@ -70,9 +76,21 @@ class Settings(BaseSettings):
     )
     llm_trace_header: str = Field(default="X-Trace-ID", min_length=1, max_length=128)
     max_plan_repair_attempts: int = Field(default=2, ge=0, le=2)
+    # Enterprise business data is a separate, read-only Tool boundary.
     database_url: str
+    database_provider: Literal["mock", "sqlalchemy"] = "mock"
     database_statement_timeout_seconds: float = Field(default=8, gt=0, le=8)
     max_database_rows: int = Field(default=10_000, ge=1, le=10_000)
+    # Copilot-owned Task/Evidence/Audit persistence.  When omitted outside production, the
+    # existing checkpoint SQLite path remains the backward-compatible local database.
+    persistence_database_url: str | None = None
+    persistence_auto_create_schema: bool = True
+    db_pool_size: int = Field(default=5, ge=1, le=50)
+    db_max_overflow: int = Field(default=10, ge=0, le=100)
+    db_pool_timeout_seconds: float = Field(default=30, gt=0, le=300)
+    db_pool_recycle_seconds: int = Field(default=1800, ge=30, le=86_400)
+    db_connect_max_attempts: int = Field(default=5, ge=1, le=20)
+    db_connect_retry_delay_seconds: float = Field(default=1, ge=0, le=30)
     artifact_dir: Path = Path("data/artifacts")
     report_max_size_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=100 * 1024 * 1024)
     max_evidence_items: int = Field(default=500, ge=1, le=10_000)
@@ -99,11 +117,43 @@ class Settings(BaseSettings):
     max_total_execution_seconds: int = Field(default=300, ge=1, le=3600)
     graph_recursion_limit: int = Field(default=100, ge=20, le=1000)
 
+    @model_validator(mode="after")
+    def validate_environment_profile(self) -> Settings:
+        """Fail fast on unsafe production-only combinations."""
+        if self.app_env != "production":
+            return self
+        if self.debug:
+            raise ValueError("DEBUG must be disabled in production")
+        if self.persistence_database_url is None:
+            raise ValueError("PERSISTENCE_DATABASE_URL is required in production")
+        if make_url(self.persistence_database_url).get_backend_name() != "postgresql":
+            raise ValueError("PERSISTENCE_DATABASE_URL must use PostgreSQL in production")
+        if self.persistence_auto_create_schema:
+            raise ValueError("PERSISTENCE_AUTO_CREATE_SCHEMA must be false in production")
+        if not self.checkpoint_enabled:
+            raise ValueError("CHECKPOINT_ENABLED must be true in production")
+        if make_url(self.database_url).get_backend_name() == "sqlite":
+            raise ValueError("DATABASE_URL must not use the demo SQLite database in production")
+        if self.knowledge_provider != "http":
+            raise ValueError("KNOWLEDGE_PROVIDER must be http in production")
+        if self.database_provider != "sqlalchemy":
+            raise ValueError("DATABASE_PROVIDER must be sqlalchemy in production")
+        rag_host = self.rag_base_url.host
+        if rag_host in {"127.0.0.1", "localhost", "::1"}:
+            raise ValueError("RAG_BASE_URL must not use a loopback address in production")
+        return self
+
     @field_validator("artifact_dir", "checkpoint_database_path", mode="after")
     @classmethod
     def normalize_project_path(cls, value: Path) -> Path:
         """Resolve configured local persistence paths against the repository root."""
         return value.resolve() if value.is_absolute() else (PROJECT_ROOT / value).resolve()
+
+    @field_validator("persistence_database_url", mode="before")
+    @classmethod
+    def normalize_optional_database_url(cls, value: object) -> object:
+        """Treat a blank optional deployment URL as the local SQLite fallback."""
+        return None if value == "" else value
 
     @field_validator("rag_base_url", "llm_base_url", mode="after")
     @classmethod
@@ -142,6 +192,13 @@ class Settings(BaseSettings):
         """Return the normalized absolute directory for generated artifacts."""
         return self.artifact_dir
 
+    @property
+    def effective_persistence_database_url(self) -> str:
+        """Return explicit deployment storage or the local SQLite compatibility path."""
+        if self.persistence_database_url is not None:
+            return self.persistence_database_url
+        return f"sqlite:///{self.checkpoint_database_path}"
+
 
 def _configuration_error(error: ValidationError) -> ConfigurationError:
     """Translate Pydantic validation details into a stable application exception."""
@@ -149,7 +206,9 @@ def _configuration_error(error: ValidationError) -> ConfigurationError:
     if missing:
         return ConfigurationError(f"Missing required configuration: {', '.join(missing)}")
 
-    invalid = [str(item["loc"][0]).upper() for item in error.errors()]
+    invalid = [
+        str(item["loc"][0]).upper() if item["loc"] else "SETTINGS" for item in error.errors()
+    ]
     fields = ", ".join(dict.fromkeys(invalid))
     return ConfigurationError(f"Invalid configuration: {fields}")
 

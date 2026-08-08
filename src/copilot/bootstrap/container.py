@@ -7,10 +7,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from time import monotonic, sleep
+from typing import Any
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
+from sqlalchemy.engine import make_url
 
 from copilot.agent.graph import LangGraphWorkflowEngine
 from copilot.agent.runtime import GraphNodeRuntime
@@ -40,6 +42,8 @@ from copilot.persistence.audit_repository import (
     InMemoryToolAuditRepository,
     InMemoryWorkflowAuditRepository,
 )
+from copilot.persistence.checkpoint import require_postgres_checkpoint_schema
+from copilot.persistence.database import PersistenceDatabase
 from copilot.persistence.identifiers import UuidIdentifierFactory
 from copilot.persistence.task_repository import InMemoryWorkflowRepository
 from copilot.policies.approval import SupplierQualityApprovalPolicy
@@ -49,6 +53,7 @@ from copilot.policies.permissions import PermissionMatrix
 from copilot.security import OutputGuard, PromptInjectionDetector, SensitiveDataRegistry
 from copilot.services.approval_service import ApprovalGateService, ApprovalService
 from copilot.services.artifact_service import ArtifactService
+from copilot.services.health import ReadinessService
 from copilot.services.llm import LLMGenerationOptions, LLMProvider
 from copilot.services.task_intake import IntakeLimits
 from copilot.services.task_service import NaturalLanguageTaskService
@@ -101,8 +106,10 @@ class WorkflowContainer:
     engine: LangGraphWorkflowEngine
     planning_service: LLMPlanningService | None = None
     owned_llm_provider: DeepSeekProvider | None = None
-    checkpoint_connection: sqlite3.Connection | None = None
+    checkpoint_connection: Any | None = None
+    persistence_database: PersistenceDatabase | None = None
     observability: InMemoryObservability | None = None
+    readiness: ReadinessService | None = None
 
     def close(self) -> None:
         """Release the executor's owned worker pool."""
@@ -120,7 +127,11 @@ class WorkflowContainer:
         self.workflow_audit.close()
         self.approval_repository.close()
         if self.checkpoint_connection is not None:
-            self.checkpoint_connection.close()
+            close_checkpoint = getattr(self.checkpoint_connection, "close", None)
+            if callable(close_checkpoint):
+                close_checkpoint()
+        if self.persistence_database is not None:
+            self.persistence_database.dispose()
 
     def __enter__(self) -> WorkflowContainer:
         return self
@@ -187,36 +198,54 @@ def build_workflow_container(
     injection_detector = PromptInjectionDetector()
     permission_matrix = PermissionMatrix()
     data_access_policy = DataAccessPolicy()
-    if settings.checkpoint_enabled:
-        settings.checkpoint_database_path.parent.mkdir(parents=True, exist_ok=True)
+    persistence_database: PersistenceDatabase | None = None
+    if settings.checkpoint_enabled or settings.persistence_database_url is not None:
+        persistence_database = PersistenceDatabase(
+            settings.effective_persistence_database_url,
+            base_directory=PROJECT_ROOT,
+            pool_size=settings.db_pool_size,
+            max_overflow=settings.db_max_overflow,
+            pool_timeout_seconds=settings.db_pool_timeout_seconds,
+            pool_recycle_seconds=settings.db_pool_recycle_seconds,
+        )
+        persistence_database.connect_with_retry(
+            max_attempts=settings.db_connect_max_attempts,
+            retry_delay_seconds=settings.db_connect_retry_delay_seconds,
+        )
+        if settings.persistence_auto_create_schema:
+            persistence_database.create_schema_for_tests()
+        else:
+            persistence_database.require_schema()
     evidence = InMemoryEvidenceLedger(
         id_factory=lambda: identifier_factory.new_id("E"),
         clock=clock,
-        database_path=(settings.checkpoint_database_path if settings.checkpoint_enabled else None),
+        database_path=persistence_database,
         output_guard=output_guard,
         injection_detector=injection_detector,
         max_items_per_task=settings.max_evidence_items,
+        initialize_schema=False,
     )
     artifacts = LocalArtifactRepository(
         settings.artifact_path,
         clock=clock,
         max_size_bytes=settings.report_max_size_bytes,
-        database_path=(settings.checkpoint_database_path if settings.checkpoint_enabled else None),
+        database_path=persistence_database,
         output_guard=output_guard,
+        initialize_schema=False,
     )
-    repository = InMemoryWorkflowRepository(
-        settings.checkpoint_database_path if settings.checkpoint_enabled else None
+    repository = InMemoryWorkflowRepository(persistence_database, initialize_schema=False)
+    tool_audit = InMemoryToolAuditRepository(persistence_database, initialize_schema=False)
+    workflow_audit = InMemoryWorkflowAuditRepository(
+        persistence_database,
+        initialize_schema=False,
     )
-    audit_database_path = settings.checkpoint_database_path if settings.checkpoint_enabled else None
-    tool_audit = InMemoryToolAuditRepository(audit_database_path)
-    workflow_audit = InMemoryWorkflowAuditRepository(audit_database_path)
     approval_repository = ApprovalRepository(
-        audit_database_path,
-        initialize_schema=settings.app_env != "production",
+        persistence_database,
+        initialize_schema=False,
     )
     schema_registry = SchemaRegistry()
     knowledge_client: HttpKnowledgeClient | None = None
-    if settings.app_env == "production":
+    if settings.knowledge_provider == "http":
         knowledge_client = build_http_knowledge_client(
             settings,
             timeout_seconds=min(settings.rag_timeout_seconds, 10.0),
@@ -225,7 +254,9 @@ def build_workflow_container(
     else:
         knowledge_tool = MockKnowledgeTool(knowledge_behavior)
     real_database_enabled = (
-        settings.app_env == "production" if use_real_database is None else use_real_database
+        settings.database_provider == "sqlalchemy"
+        if use_real_database is None
+        else use_real_database
     )
     if real_database_enabled:
         if database_behavior is not None:
@@ -365,17 +396,39 @@ def build_workflow_container(
         permission_matrix=permission_matrix,
         observability=observability,
     )
-    checkpoint_connection: sqlite3.Connection | None = None
+    checkpoint_connection: Any | None = None
     checkpointer: BaseCheckpointSaver[str]
     checkpoint_serde = checkpoint_serializer()
     if settings.checkpoint_enabled:
-        settings.checkpoint_database_path.parent.mkdir(parents=True, exist_ok=True)
-        checkpoint_connection = sqlite3.connect(
-            settings.checkpoint_database_path,
-            timeout=settings.checkpoint_connection_timeout_seconds,
-            check_same_thread=False,
-        )
-        checkpointer = SqliteSaver(checkpoint_connection, serde=checkpoint_serde)
+        checkpoint_backend = make_url(
+            settings.effective_persistence_database_url
+        ).get_backend_name()
+        if checkpoint_backend == "postgresql":
+            from langgraph.checkpoint.postgres import PostgresSaver
+            from psycopg import Connection
+            from psycopg.rows import dict_row
+
+            assert persistence_database is not None
+            require_postgres_checkpoint_schema(persistence_database.engine)
+            checkpoint_url = make_url(settings.effective_persistence_database_url).set(
+                drivername="postgresql"
+            )
+            postgres_connection = Connection.connect(
+                checkpoint_url.render_as_string(hide_password=False),
+                autocommit=True,
+                prepare_threshold=0,
+                row_factory=dict_row,
+            )
+            checkpointer = PostgresSaver(postgres_connection, serde=checkpoint_serde)
+            checkpoint_connection = postgres_connection
+        else:
+            settings.checkpoint_database_path.parent.mkdir(parents=True, exist_ok=True)
+            checkpoint_connection = sqlite3.connect(
+                settings.checkpoint_database_path,
+                timeout=settings.checkpoint_connection_timeout_seconds,
+                check_same_thread=False,
+            )
+            checkpointer = SqliteSaver(checkpoint_connection, serde=checkpoint_serde)
     else:
         checkpointer = InMemorySaver(serde=checkpoint_serde)
     engine = LangGraphWorkflowEngine(
@@ -442,6 +495,20 @@ def build_workflow_container(
         clock=clock,
         permission_matrix=permission_matrix,
     )
+    rag_probe = (
+        (lambda: knowledge_client.health_check().healthy) if knowledge_client is not None else None
+    )
+    task_dependencies = {"database", "artifact_storage"}
+    if rag_probe is not None:
+        task_dependencies.add("rag")
+    readiness = ReadinessService(
+        {
+            "database": persistence_database.ping if persistence_database is not None else None,
+            "artifact_storage": artifacts.check_ready,
+            "rag": rag_probe,
+        },
+        task_dependencies=frozenset(task_dependencies),
+    )
     return WorkflowContainer(
         service=service,
         task_service=task_service,
@@ -465,7 +532,9 @@ def build_workflow_container(
         planning_service=planning_service,
         owned_llm_provider=owned_llm_provider,
         checkpoint_connection=checkpoint_connection,
+        persistence_database=persistence_database,
         observability=observability,
+        readiness=readiness,
     )
 
 

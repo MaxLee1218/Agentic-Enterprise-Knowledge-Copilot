@@ -18,3 +18,20 @@ def test_health_response_contract() -> None:
             return response.json()  # type: ignore[no-any-return]
 
     assert asyncio.run(request_health()) == {"status": "ok"}
+
+
+def test_uncomposed_readiness_response_contract_is_safe() -> None:
+    async def request_readiness() -> tuple[int, dict[str, object]]:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            response = await client.get("/health/ready")
+            return response.status_code, response.json()
+
+    status, payload = asyncio.run(request_readiness())
+    assert status == 503
+    assert payload == {
+        "status": "not_ready",
+        "accepts_tasks": False,
+        "dependencies": {"database": "not_configured"},
+    }

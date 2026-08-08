@@ -11,14 +11,17 @@ authors = [
     { name = "Agentic Enterprise Knowledge Copilot Contributors" },
 ]
 dependencies = [
+    "alembic>=1.14,<2.0",
     "fastapi>=0.115,<1.0",
     "httpx>=0.28,<1.0",
     "jsonschema>=4.23,<5.0",
     "langgraph>=1.2,<2.0",
     "langgraph-checkpoint-sqlite>=3.1,<4.0",
+    "langgraph-checkpoint-postgres>=3.1,<4.0",
     "pydantic>=2.10,<3.0",
     "pydantic-settings>=2.7,<3.0",
     "python-dotenv>=1.0,<2.0",
+    "psycopg[binary,pool]>=3.2,<4.0",
     "reportlab>=4.4,<5.0",
     "sqlalchemy>=2.0,<3.0",
     "typer>=0.15,<1.0",

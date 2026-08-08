@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sqlite3
 from collections.abc import Callable
 from copy import deepcopy
 from datetime import datetime
@@ -14,6 +13,7 @@ from typing import cast
 from uuid import uuid4
 
 from pydantic import JsonValue
+from sqlalchemy import select
 
 from copilot.contracts import (
     ErrorType,
@@ -30,6 +30,8 @@ from copilot.contracts import (
 )
 from copilot.contracts.errors import DomainError
 from copilot.contracts.validators import utc_now
+from copilot.persistence.database import PersistenceDatabase, coerce_database
+from copilot.persistence.models import WorkflowEvidenceRow
 from copilot.security import (
     ContentSourceType,
     OutputDisposition,
@@ -65,10 +67,11 @@ class InMemoryEvidenceLedger:
         *,
         id_factory: Callable[[], str] | None = None,
         clock: Callable[[], datetime] | None = None,
-        database_path: Path | None = None,
+        database_path: PersistenceDatabase | Path | None = None,
         output_guard: OutputGuard | None = None,
         injection_detector: PromptInjectionDetector | None = None,
         max_items_per_task: int = 500,
+        initialize_schema: bool = True,
     ) -> None:
         if max_items_per_task < 1:
             raise ValueError("max_items_per_task must be positive")
@@ -80,34 +83,20 @@ class InMemoryEvidenceLedger:
         self._items: dict[str, EvidenceItem] = {}
         self._fingerprints: dict[tuple[str, str], str] = {}
         self._lock = RLock()
-        self._database = (
-            sqlite3.connect(database_path, check_same_thread=False)
-            if database_path is not None
-            else None
+        self._database, self._owns_database = coerce_database(
+            database_path,
+            initialize_schema=initialize_schema,
         )
         if self._database is not None:
-            self._database.execute(
-                """
-                CREATE TABLE IF NOT EXISTS workflow_evidence (
-                    evidence_id TEXT PRIMARY KEY,
-                    task_id TEXT NOT NULL,
-                    payload_json TEXT NOT NULL
-                )
-                """
-            )
-            self._database.commit()
-            for row in self._database.execute(
-                "SELECT payload_json FROM workflow_evidence ORDER BY rowid"
-            ):
-                item = EvidenceItem.model_validate_json(row[0])
-                self._items[item.evidence_id] = item
-                self._fingerprints[(item.task_id, evidence_fingerprint(item))] = item.evidence_id
+            self._refresh_database_items()
 
     def record(self, call: ToolCall, drafts: tuple[EvidenceDraft, ...]) -> tuple[EvidenceItem, ...]:
         """Bind drafts to one governed call and atomically append canonical evidence."""
         if not drafts:
             return ()
         with self._lock:
+            if self._database is not None:
+                self._refresh_database_items()
             existing_count = sum(item.task_id == call.task_id for item in self._items.values())
             if existing_count + len(drafts) > self._max_items_per_task:
                 raise self._validation_error(
@@ -252,6 +241,8 @@ class InMemoryEvidenceLedger:
     def add(self, evidence: EvidenceItem) -> EvidenceAddResult:
         """Append one item or return the existing canonical logical duplicate."""
         with self._lock:
+            if self._database is not None:
+                self._refresh_database_items()
             detached = _copy_item(evidence)
             fingerprint = evidence_fingerprint(detached)
             existing_count = sum(item.task_id == detached.task_id for item in self._items.values())
@@ -536,28 +527,38 @@ class InMemoryEvidenceLedger:
     def close(self) -> None:
         """Close the optional durable Evidence connection."""
         with self._lock:
-            if self._database is not None:
-                self._database.close()
+            if self._owns_database and self._database is not None:
+                self._database.dispose()
                 self._database = None
 
     def _persist_created(self, results: tuple[EvidenceAddResult, ...]) -> None:
         if self._database is None:
             return
-        try:
+        with self._database.session() as session:
             for result in results:
                 if result.created:
-                    self._database.execute(
-                        "INSERT INTO workflow_evidence VALUES (?, ?, ?)",
-                        (
-                            result.evidence.evidence_id,
-                            result.evidence.task_id,
-                            result.evidence.model_dump_json(),
-                        ),
+                    item = result.evidence
+                    session.add(
+                        WorkflowEvidenceRow(
+                            evidence_id=item.evidence_id,
+                            task_id=item.task_id,
+                            fingerprint=evidence_fingerprint(item),
+                            payload_json=item.model_dump_json(),
+                        )
                     )
-            self._database.commit()
-        except Exception:
-            self._database.rollback()
-            raise
+
+    def _refresh_database_items(self) -> None:
+        assert self._database is not None
+        self._items.clear()
+        self._fingerprints.clear()
+        with self._database.session() as session:
+            payloads = session.scalars(
+                select(WorkflowEvidenceRow.payload_json).order_by(WorkflowEvidenceRow.sequence_id)
+            )
+            for payload in payloads:
+                item = EvidenceItem.model_validate_json(payload)
+                self._items[item.evidence_id] = item
+                self._fingerprints[(item.task_id, evidence_fingerprint(item))] = item.evidence_id
 
     def _rollback_created(self, results: tuple[EvidenceAddResult, ...]) -> None:
         for result in results:

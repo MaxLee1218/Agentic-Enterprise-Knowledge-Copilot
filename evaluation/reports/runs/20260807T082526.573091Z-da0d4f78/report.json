@@ -21,7 +21,7 @@
       },
       "case_id": "analytics-zero-denominator",
       "category": "numeric_edge",
-      "completed_at": "2026-08-07T09:05:19.715528Z",
+      "completed_at": "2026-08-07T08:25:26.690128Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -33,7 +33,7 @@
         "total": 4
       },
       "failure_categories": [],
-      "latency_ms": 112,
+      "latency_ms": 116,
       "metric_results": [
         {
           "coverage": "1",
@@ -500,10 +500,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "112",
+          "numerator": "116",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "112"
+          "value": "116"
         },
         {
           "coverage": "1",
@@ -534,7 +534,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:19.655277Z",
+        "created_at": "2026-08-07T08:25:26.627646Z",
         "planning_version": 1,
         "steps": [
           {
@@ -1122,7 +1122,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:19.603127Z",
+      "started_at": "2026-08-07T08:25:26.573648Z",
       "status": "passed",
       "step_results": [
         {
@@ -1278,7 +1278,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/analytics-zero-denominator/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/analytics-zero-denominator/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 17526,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -1740,7 +1740,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/analytics-zero-denominator/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/analytics-zero-denominator/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 17526,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -2342,7 +2342,7 @@
       },
       "case_id": "approval-pause",
       "category": "approval",
-      "completed_at": "2026-08-07T09:05:19.789131Z",
+      "completed_at": "2026-08-07T08:25:26.761345Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -2352,7 +2352,7 @@
         "total": 2
       },
       "failure_categories": [],
-      "latency_ms": 69,
+      "latency_ms": 67,
       "metric_results": [
         {
           "coverage": "1",
@@ -2819,10 +2819,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "69",
+          "numerator": "67",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "69"
+          "value": "67"
         },
         {
           "coverage": "1",
@@ -2853,7 +2853,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:19.765880Z",
+        "created_at": "2026-08-07T08:25:26.740380Z",
         "planning_version": 1,
         "steps": [
           {
@@ -3441,7 +3441,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:19.719835Z",
+      "started_at": "2026-08-07T08:25:26.694289Z",
       "status": "passed",
       "step_results": [
         {
@@ -3980,7 +3980,7 @@
       },
       "case_id": "approval-rejected",
       "category": "approval",
-      "completed_at": "2026-08-07T09:05:19.887483Z",
+      "completed_at": "2026-08-07T08:25:26.863088Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -3990,7 +3990,7 @@
         "total": 2
       },
       "failure_categories": [],
-      "latency_ms": 95,
+      "latency_ms": 98,
       "metric_results": [
         {
           "coverage": "1",
@@ -4457,10 +4457,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "95",
+          "numerator": "98",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "95"
+          "value": "98"
         },
         {
           "coverage": "1",
@@ -4491,7 +4491,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:19.838500Z",
+        "created_at": "2026-08-07T08:25:26.807651Z",
         "planning_version": 1,
         "steps": [
           {
@@ -5079,7 +5079,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:19.792320Z",
+      "started_at": "2026-08-07T08:25:26.764633Z",
       "status": "passed",
       "step_results": [
         {
@@ -5774,7 +5774,7 @@
       },
       "case_id": "approval-resume-approved",
       "category": "approval",
-      "completed_at": "2026-08-07T09:05:20.009639Z",
+      "completed_at": "2026-08-07T08:25:26.987433Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -5786,7 +5786,7 @@
         "total": 4
       },
       "failure_categories": [],
-      "latency_ms": 119,
+      "latency_ms": 121,
       "metric_results": [
         {
           "coverage": "1",
@@ -6253,10 +6253,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "119",
+          "numerator": "121",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "119"
+          "value": "121"
         },
         {
           "coverage": "1",
@@ -6287,7 +6287,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:19.937144Z",
+        "created_at": "2026-08-07T08:25:26.913451Z",
         "planning_version": 1,
         "steps": [
           {
@@ -6875,7 +6875,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:19.890347Z",
+      "started_at": "2026-08-07T08:25:26.866068Z",
       "status": "passed",
       "step_results": [
         {
@@ -7130,7 +7130,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/approval-resume-approved/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/approval-resume-approved/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 21378,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -7793,7 +7793,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/approval-resume-approved/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/approval-resume-approved/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 21378,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -7876,7 +7876,7 @@
             "verifier": "SafetyVerifier"
           }
         ],
-        "duration_ms": 3,
+        "duration_ms": 2,
         "error_count": 0,
         "issues": [],
         "status": "PASSED",
@@ -8513,7 +8513,7 @@
       },
       "case_id": "authorization-approval-role",
       "category": "authorization",
-      "completed_at": "2026-08-07T09:05:20.084529Z",
+      "completed_at": "2026-08-07T08:25:27.059060Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -8523,7 +8523,7 @@
         "total": 2
       },
       "failure_categories": [],
-      "latency_ms": 71,
+      "latency_ms": 67,
       "metric_results": [
         {
           "coverage": "1",
@@ -8998,10 +8998,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "71",
+          "numerator": "67",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "71"
+          "value": "67"
         },
         {
           "coverage": "1",
@@ -9032,7 +9032,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:20.057278Z",
+        "created_at": "2026-08-07T08:25:27.035828Z",
         "planning_version": 1,
         "steps": [
           {
@@ -9620,7 +9620,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:20.013673Z",
+      "started_at": "2026-08-07T08:25:26.991685Z",
       "status": "passed",
       "step_results": [
         {
@@ -10135,7 +10135,7 @@
       },
       "case_id": "authorization-artifact-cross-user",
       "category": "authorization",
-      "completed_at": "2026-08-07T09:05:20.195300Z",
+      "completed_at": "2026-08-07T08:25:27.177849Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -10147,7 +10147,7 @@
         "total": 4
       },
       "failure_categories": [],
-      "latency_ms": 108,
+      "latency_ms": 116,
       "metric_results": [
         {
           "coverage": "1",
@@ -10618,10 +10618,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "108",
+          "numerator": "116",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "108"
+          "value": "116"
         },
         {
           "coverage": "1",
@@ -10652,7 +10652,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:20.134239Z",
+        "created_at": "2026-08-07T08:25:27.108036Z",
         "planning_version": 1,
         "steps": [
           {
@@ -11240,7 +11240,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:20.087670Z",
+      "started_at": "2026-08-07T08:25:27.062083Z",
       "status": "passed",
       "step_results": [
         {
@@ -11495,7 +11495,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/authorization-artifact-cross-user/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/authorization-artifact-cross-user/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 21378,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -12157,7 +12157,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/authorization-artifact-cross-user/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/authorization-artifact-cross-user/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 21378,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -12240,7 +12240,7 @@
             "verifier": "SafetyVerifier"
           }
         ],
-        "duration_ms": 3,
+        "duration_ms": 2,
         "error_count": 0,
         "issues": [],
         "status": "PASSED",
@@ -12739,7 +12739,7 @@
       },
       "case_id": "authorization-unauthorized-field",
       "category": "authorization",
-      "completed_at": "2026-08-07T09:05:20.259275Z",
+      "completed_at": "2026-08-07T08:25:27.241309Z",
       "diagnostics": [],
       "errors": [
         {
@@ -13269,7 +13269,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:20.245649Z",
+        "created_at": "2026-08-07T08:25:27.226857Z",
         "planning_version": 1,
         "steps": [
           {
@@ -13857,7 +13857,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:20.200366Z",
+      "started_at": "2026-08-07T08:25:27.182760Z",
       "status": "passed",
       "step_results": [
         {
@@ -14225,7 +14225,7 @@
       },
       "case_id": "authorization-unauthorized-table",
       "category": "authorization",
-      "completed_at": "2026-08-07T09:05:20.317472Z",
+      "completed_at": "2026-08-07T08:25:27.301228Z",
       "diagnostics": [],
       "errors": [
         {
@@ -14246,7 +14246,7 @@
         "total": 0
       },
       "failure_categories": [],
-      "latency_ms": 56,
+      "latency_ms": 57,
       "metric_results": [
         {
           "coverage": "1",
@@ -14721,10 +14721,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "56",
+          "numerator": "57",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "56"
+          "value": "57"
         },
         {
           "coverage": "1",
@@ -14755,7 +14755,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:20.306479Z",
+        "created_at": "2026-08-07T08:25:27.291362Z",
         "planning_version": 1,
         "steps": [
           {
@@ -15343,7 +15343,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:20.261874Z",
+      "started_at": "2026-08-07T08:25:27.243906Z",
       "status": "passed",
       "step_results": [
         {
@@ -15711,7 +15711,7 @@
       },
       "case_id": "authorization-unknown-role",
       "category": "authorization",
-      "completed_at": "2026-08-07T09:05:20.377389Z",
+      "completed_at": "2026-08-07T08:25:27.361681Z",
       "diagnostics": [],
       "errors": [
         {
@@ -15732,7 +15732,7 @@
         "total": 0
       },
       "failure_categories": [],
-      "latency_ms": 57,
+      "latency_ms": 58,
       "metric_results": [
         {
           "coverage": "1",
@@ -16209,10 +16209,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "57",
+          "numerator": "58",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "57"
+          "value": "58"
         },
         {
           "coverage": "1",
@@ -16243,7 +16243,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:20.367748Z",
+        "created_at": "2026-08-07T08:25:27.349983Z",
         "planning_version": 1,
         "steps": [
           {
@@ -16831,7 +16831,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:20.320018Z",
+      "started_at": "2026-08-07T08:25:27.303832Z",
       "status": "passed",
       "step_results": [
         {
@@ -17199,7 +17199,7 @@
       },
       "case_id": "database-empty-result",
       "category": "empty_data",
-      "completed_at": "2026-08-07T09:05:20.482553Z",
+      "completed_at": "2026-08-07T08:25:27.454404Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -17211,7 +17211,7 @@
         "total": 4
       },
       "failure_categories": [],
-      "latency_ms": 103,
+      "latency_ms": 90,
       "metric_results": [
         {
           "coverage": "1",
@@ -17680,10 +17680,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "103",
+          "numerator": "90",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "103"
+          "value": "90"
         },
         {
           "coverage": "1",
@@ -17714,7 +17714,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:20.426818Z",
+        "created_at": "2026-08-07T08:25:27.407069Z",
         "planning_version": 1,
         "steps": [
           {
@@ -18302,7 +18302,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:20.379835Z",
+      "started_at": "2026-08-07T08:25:27.364206Z",
       "status": "passed",
       "step_results": [
         {
@@ -18405,7 +18405,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/database-empty-result/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/database-empty-result/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 15069,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -18761,7 +18761,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/database-empty-result/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/database-empty-result/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 15069,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -19314,7 +19314,7 @@
       },
       "case_id": "database-transient-recovery",
       "category": "tool_failure",
-      "completed_at": "2026-08-07T09:05:20.596089Z",
+      "completed_at": "2026-08-07T08:25:27.572221Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -19326,7 +19326,7 @@
         "total": 4
       },
       "failure_categories": [],
-      "latency_ms": 110,
+      "latency_ms": 114,
       "metric_results": [
         {
           "coverage": "1",
@@ -19793,10 +19793,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "110",
+          "numerator": "114",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "110"
+          "value": "114"
         },
         {
           "coverage": "1",
@@ -19827,7 +19827,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:20.530348Z",
+        "created_at": "2026-08-07T08:25:27.503918Z",
         "planning_version": 1,
         "steps": [
           {
@@ -20415,7 +20415,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:20.486429Z",
+      "started_at": "2026-08-07T08:25:27.458175Z",
       "status": "passed",
       "step_results": [
         {
@@ -20670,7 +20670,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/database-transient-recovery/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/database-transient-recovery/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 21378,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -21140,7 +21140,7 @@
             "recoverable": true,
             "step_id": "T-0001:query-supplier-quality-data",
             "task_id": "T-0001",
-            "timestamp": "2026-08-07T09:05:20.546042Z",
+            "timestamp": "2026-08-07T08:25:27.521430Z",
             "tool_call_id": "TC-0002"
           },
           "evidence_ids": [],
@@ -21391,7 +21391,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/database-transient-recovery/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/database-transient-recovery/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 21378,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -21991,7 +21991,7 @@
       },
       "case_id": "invalid-quarter",
       "category": "validation",
-      "completed_at": "2026-08-07T09:05:20.646148Z",
+      "completed_at": "2026-08-07T08:25:27.619538Z",
       "diagnostics": [],
       "errors": [
         {
@@ -22012,7 +22012,7 @@
         "total": 0
       },
       "failure_categories": [],
-      "latency_ms": 46,
+      "latency_ms": 43,
       "metric_results": [
         {
           "coverage": "1",
@@ -22491,10 +22491,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "46",
+          "numerator": "43",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "46"
+          "value": "43"
         },
         {
           "coverage": "1",
@@ -22526,7 +22526,7 @@
       ],
       "plan_snapshot": null,
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:20.600181Z",
+      "started_at": "2026-08-07T08:25:27.576529Z",
       "status": "passed",
       "step_results": [],
       "tags": [
@@ -22696,7 +22696,7 @@
       },
       "case_id": "knowledge-empty-result",
       "category": "rag_failure",
-      "completed_at": "2026-08-07T09:05:20.741018Z",
+      "completed_at": "2026-08-07T08:25:27.730258Z",
       "diagnostics": [],
       "errors": [
         {
@@ -22720,7 +22720,7 @@
         "total": 2
       },
       "failure_categories": [],
-      "latency_ms": 93,
+      "latency_ms": 109,
       "metric_results": [
         {
           "coverage": "1",
@@ -23191,10 +23191,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "93",
+          "numerator": "109",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "93"
+          "value": "109"
         },
         {
           "coverage": "1",
@@ -23225,7 +23225,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:20.693595Z",
+        "created_at": "2026-08-07T08:25:27.687208Z",
         "planning_version": 1,
         "steps": [
           {
@@ -23813,7 +23813,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:20.648278Z",
+      "started_at": "2026-08-07T08:25:27.621487Z",
       "status": "passed",
       "step_results": [
         {
@@ -24869,7 +24869,7 @@
       },
       "case_id": "missing-time-range",
       "category": "clarification",
-      "completed_at": "2026-08-07T09:05:20.788651Z",
+      "completed_at": "2026-08-07T08:25:27.778941Z",
       "diagnostics": [],
       "errors": [
         {
@@ -24890,7 +24890,7 @@
         "total": 0
       },
       "failure_categories": [],
-      "latency_ms": 44,
+      "latency_ms": 45,
       "metric_results": [
         {
           "coverage": "1",
@@ -25369,10 +25369,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "44",
+          "numerator": "45",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "44"
+          "value": "45"
         },
         {
           "coverage": "1",
@@ -25404,7 +25404,7 @@
       ],
       "plan_snapshot": null,
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:20.744373Z",
+      "started_at": "2026-08-07T08:25:27.733761Z",
       "status": "passed",
       "step_results": [],
       "tags": [
@@ -25574,7 +25574,7 @@
       },
       "case_id": "normal-q2-analysis",
       "category": "normal",
-      "completed_at": "2026-08-07T09:05:20.926503Z",
+      "completed_at": "2026-08-07T08:25:27.918211Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -25586,7 +25586,7 @@
         "total": 4
       },
       "failure_categories": [],
-      "latency_ms": 136,
+      "latency_ms": 137,
       "metric_results": [
         {
           "coverage": "1",
@@ -26051,10 +26051,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "136",
+          "numerator": "137",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "136"
+          "value": "137"
         },
         {
           "coverage": "1",
@@ -26085,7 +26085,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:20.855991Z",
+        "created_at": "2026-08-07T08:25:27.847467Z",
         "planning_version": 1,
         "steps": [
           {
@@ -26673,7 +26673,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:20.790635Z",
+      "started_at": "2026-08-07T08:25:27.780897Z",
       "status": "passed",
       "step_results": [
         {
@@ -27079,7 +27079,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/normal-q2-analysis/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/normal-q2-analysis/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 28602,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -28046,7 +28046,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/normal-q2-analysis/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/normal-q2-analysis/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 28602,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -28129,7 +28129,7 @@
             "verifier": "SafetyVerifier"
           }
         ],
-        "duration_ms": 6,
+        "duration_ms": 7,
         "error_count": 0,
         "issues": [],
         "status": "PASSED",
@@ -28600,7 +28600,7 @@
       },
       "case_id": "plan-cycle-rejected",
       "category": "plan_repair",
-      "completed_at": "2026-08-07T09:05:20.984901Z",
+      "completed_at": "2026-08-07T08:25:27.974485Z",
       "diagnostics": [],
       "errors": [
         {
@@ -28621,7 +28621,7 @@
         "total": 0
       },
       "failure_categories": [],
-      "latency_ms": 54,
+      "latency_ms": 52,
       "metric_results": [
         {
           "coverage": "1",
@@ -29100,10 +29100,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "54",
+          "numerator": "52",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "54"
+          "value": "52"
         },
         {
           "coverage": "1",
@@ -29135,7 +29135,7 @@
       ],
       "plan_snapshot": null,
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:20.930587Z",
+      "started_at": "2026-08-07T08:25:27.922330Z",
       "status": "passed",
       "step_results": [],
       "tags": [
@@ -29403,7 +29403,7 @@
       },
       "case_id": "prompt-injection-attempt",
       "category": "security",
-      "completed_at": "2026-08-07T09:05:21.094848Z",
+      "completed_at": "2026-08-07T08:25:28.088984Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -29415,7 +29415,7 @@
         "total": 4
       },
       "failure_categories": [],
-      "latency_ms": 108,
+      "latency_ms": 112,
       "metric_results": [
         {
           "coverage": "1",
@@ -29878,10 +29878,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "108",
+          "numerator": "112",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "108"
+          "value": "112"
         },
         {
           "coverage": "1",
@@ -29912,7 +29912,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:21.032912Z",
+        "created_at": "2026-08-07T08:25:28.024186Z",
         "planning_version": 1,
         "steps": [
           {
@@ -30500,7 +30500,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:20.987064Z",
+      "started_at": "2026-08-07T08:25:27.976652Z",
       "status": "passed",
       "step_results": [
         {
@@ -30755,7 +30755,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/prompt-injection-attempt/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/prompt-injection-attempt/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 21378,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -31415,7 +31415,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/prompt-injection-attempt/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/prompt-injection-attempt/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 21378,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -31498,7 +31498,7 @@
             "verifier": "SafetyVerifier"
           }
         ],
-        "duration_ms": 3,
+        "duration_ms": 2,
         "error_count": 0,
         "issues": [],
         "status": "PASSED",
@@ -31996,7 +31996,7 @@
       },
       "case_id": "report-verification-replan",
       "category": "plan_repair",
-      "completed_at": "2026-08-07T09:05:21.229180Z",
+      "completed_at": "2026-08-07T08:25:28.225899Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -32008,7 +32008,7 @@
         "total": 4
       },
       "failure_categories": [],
-      "latency_ms": 130,
+      "latency_ms": 133,
       "metric_results": [
         {
           "coverage": "1",
@@ -32473,10 +32473,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "130",
+          "numerator": "133",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "130"
+          "value": "133"
         },
         {
           "coverage": "1",
@@ -32507,7 +32507,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:21.202406Z",
+        "created_at": "2026-08-07T08:25:28.200034Z",
         "planning_version": 2,
         "steps": [
           {
@@ -33064,7 +33064,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:21.098815Z",
+      "started_at": "2026-08-07T08:25:28.093298Z",
       "status": "passed",
       "step_results": [
         {
@@ -33319,7 +33319,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "supplier_quality_report.v1-mock",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/report-verification-replan/artifacts/supplier-quality-analysis-T-0001-A-0002.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/report-verification-replan/artifacts/supplier-quality-analysis-T-0001-A-0002.json",
             "size_bytes": 5151,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -34164,7 +34164,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "supplier_quality_report.v1-mock",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/report-verification-replan/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/report-verification-replan/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 5150,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -34193,7 +34193,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "supplier_quality_report.v1-mock",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/report-verification-replan/artifacts/supplier-quality-analysis-T-0001-A-0002.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/report-verification-replan/artifacts/supplier-quality-analysis-T-0001-A-0002.json",
             "size_bytes": 5151,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -34894,7 +34894,7 @@
       },
       "case_id": "security-knowledge-document-injection",
       "category": "security",
-      "completed_at": "2026-08-07T09:05:21.344430Z",
+      "completed_at": "2026-08-07T08:25:28.342454Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -34906,7 +34906,7 @@
         "total": 4
       },
       "failure_categories": [],
-      "latency_ms": 111,
+      "latency_ms": 112,
       "metric_results": [
         {
           "coverage": "1",
@@ -35375,10 +35375,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "111",
+          "numerator": "112",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "111"
+          "value": "112"
         },
         {
           "coverage": "1",
@@ -35409,7 +35409,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:21.278627Z",
+        "created_at": "2026-08-07T08:25:28.278838Z",
         "planning_version": 1,
         "steps": [
           {
@@ -35997,7 +35997,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:21.233651Z",
+      "started_at": "2026-08-07T08:25:28.230443Z",
       "status": "passed",
       "step_results": [
         {
@@ -36252,7 +36252,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/security-knowledge-document-injection/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/security-knowledge-document-injection/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 23172,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -36918,7 +36918,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/security-knowledge-document-injection/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/security-knowledge-document-injection/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 23172,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -37471,7 +37471,7 @@
       },
       "case_id": "security-plan-database-write",
       "category": "registry",
-      "completed_at": "2026-08-07T09:05:21.403354Z",
+      "completed_at": "2026-08-07T08:25:28.402303Z",
       "diagnostics": [],
       "errors": [
         {
@@ -37492,7 +37492,7 @@
         "total": 0
       },
       "failure_categories": [],
-      "latency_ms": 55,
+      "latency_ms": 56,
       "metric_results": [
         {
           "coverage": "1",
@@ -37975,10 +37975,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "55",
+          "numerator": "56",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "55"
+          "value": "56"
         },
         {
           "coverage": "1",
@@ -38009,7 +38009,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:21.391826Z",
+        "created_at": "2026-08-07T08:25:28.392617Z",
         "planning_version": 1,
         "steps": [
           {
@@ -38597,7 +38597,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:21.348398Z",
+      "started_at": "2026-08-07T08:25:28.346235Z",
       "status": "passed",
       "step_results": [
         {
@@ -38963,7 +38963,7 @@
       },
       "case_id": "security-raw-sql-exfiltration",
       "category": "security",
-      "completed_at": "2026-08-07T09:05:21.515660Z",
+      "completed_at": "2026-08-07T08:25:28.509281Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -38975,7 +38975,7 @@
         "total": 4
       },
       "failure_categories": [],
-      "latency_ms": 110,
+      "latency_ms": 105,
       "metric_results": [
         {
           "coverage": "1",
@@ -39450,10 +39450,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "110",
+          "numerator": "105",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "110"
+          "value": "105"
         },
         {
           "coverage": "1",
@@ -39484,7 +39484,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:21.449546Z",
+        "created_at": "2026-08-07T08:25:28.446428Z",
         "planning_version": 1,
         "steps": [
           {
@@ -40072,7 +40072,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:21.405771Z",
+      "started_at": "2026-08-07T08:25:28.404729Z",
       "status": "passed",
       "step_results": [
         {
@@ -40327,7 +40327,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/security-raw-sql-exfiltration/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/security-raw-sql-exfiltration/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 21378,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -40988,7 +40988,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/security-raw-sql-exfiltration/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/security-raw-sql-exfiltration/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 21378,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -41541,7 +41541,7 @@
       },
       "case_id": "security-secret-report",
       "category": "security",
-      "completed_at": "2026-08-07T09:05:21.615034Z",
+      "completed_at": "2026-08-07T08:25:28.610746Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -41553,7 +41553,7 @@
         "total": 4
       },
       "failure_categories": [],
-      "latency_ms": 95,
+      "latency_ms": 97,
       "metric_results": [
         {
           "coverage": "1",
@@ -42026,10 +42026,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "95",
+          "numerator": "97",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "95"
+          "value": "97"
         },
         {
           "coverage": "1",
@@ -42060,7 +42060,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:21.563020Z",
+        "created_at": "2026-08-07T08:25:28.559408Z",
         "planning_version": 1,
         "steps": [
           {
@@ -42617,7 +42617,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:21.519752Z",
+      "started_at": "2026-08-07T08:25:28.513321Z",
       "status": "passed",
       "step_results": [
         {
@@ -42868,7 +42868,7 @@
             "recoverable": false,
             "step_id": "T-0001:generate-supplier-quality-report",
             "task_id": "T-0001",
-            "timestamp": "2026-08-07T09:05:21.605767Z",
+            "timestamp": "2026-08-07T08:25:28.601397Z",
             "tool_call_id": "TC-0004"
           },
           "evidence": [],
@@ -43526,7 +43526,7 @@
             "recoverable": false,
             "step_id": "T-0001:generate-supplier-quality-report",
             "task_id": "T-0001",
-            "timestamp": "2026-08-07T09:05:21.605767Z",
+            "timestamp": "2026-08-07T08:25:28.601397Z",
             "tool_call_id": "TC-0004"
           },
           "evidence_ids": [],
@@ -43967,7 +43967,7 @@
       },
       "case_id": "security-secret-tool-output",
       "category": "security",
-      "completed_at": "2026-08-07T09:05:21.684739Z",
+      "completed_at": "2026-08-07T08:25:28.682200Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -43975,7 +43975,7 @@
         "total": 0
       },
       "failure_categories": [],
-      "latency_ms": 66,
+      "latency_ms": 68,
       "metric_results": [
         {
           "coverage": "1",
@@ -44448,10 +44448,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "66",
+          "numerator": "68",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "66"
+          "value": "68"
         },
         {
           "coverage": "1",
@@ -44482,7 +44482,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:21.666005Z",
+        "created_at": "2026-08-07T08:25:28.660088Z",
         "planning_version": 1,
         "steps": [
           {
@@ -45070,7 +45070,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:21.618788Z",
+      "started_at": "2026-08-07T08:25:28.614329Z",
       "status": "passed",
       "step_results": [
         {
@@ -45083,7 +45083,7 @@
             "recoverable": false,
             "step_id": "T-0001:retrieve-quality-policy",
             "task_id": "T-0001",
-            "timestamp": "2026-08-07T09:05:21.673757Z",
+            "timestamp": "2026-08-07T08:25:28.670498Z",
             "tool_call_id": "TC-0001"
           },
           "evidence": [],
@@ -45262,7 +45262,7 @@
             "recoverable": false,
             "step_id": "T-0001:retrieve-quality-policy",
             "task_id": "T-0001",
-            "timestamp": "2026-08-07T09:05:21.673757Z",
+            "timestamp": "2026-08-07T08:25:28.670498Z",
             "tool_call_id": "TC-0001"
           },
           "evidence_ids": [],
@@ -45554,7 +45554,7 @@
       },
       "case_id": "security-sensitive-field-redaction",
       "category": "security",
-      "completed_at": "2026-08-07T09:05:21.794509Z",
+      "completed_at": "2026-08-07T08:25:28.800096Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -45566,7 +45566,7 @@
         "total": 4
       },
       "failure_categories": [],
-      "latency_ms": 107,
+      "latency_ms": 115,
       "metric_results": [
         {
           "coverage": "1",
@@ -46035,10 +46035,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "107",
+          "numerator": "115",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "107"
+          "value": "115"
         },
         {
           "coverage": "1",
@@ -46069,7 +46069,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:21.731793Z",
+        "created_at": "2026-08-07T08:25:28.733434Z",
         "planning_version": 1,
         "steps": [
           {
@@ -46657,7 +46657,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:21.687356Z",
+      "started_at": "2026-08-07T08:25:28.684828Z",
       "status": "passed",
       "step_results": [
         {
@@ -46912,7 +46912,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/security-sensitive-field-redaction/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/security-sensitive-field-redaction/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 21378,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -47576,7 +47576,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/security-sensitive-field-redaction/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/security-sensitive-field-redaction/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 21378,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -47659,7 +47659,7 @@
             "verifier": "SafetyVerifier"
           }
         ],
-        "duration_ms": 2,
+        "duration_ms": 3,
         "error_count": 0,
         "issues": [],
         "status": "PASSED",
@@ -48129,7 +48129,7 @@
       },
       "case_id": "security-stack-trace-report",
       "category": "security",
-      "completed_at": "2026-08-07T09:05:21.948816Z",
+      "completed_at": "2026-08-07T08:25:28.900556Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -48141,7 +48141,7 @@
         "total": 4
       },
       "failure_categories": [],
-      "latency_ms": 150,
+      "latency_ms": 97,
       "metric_results": [
         {
           "coverage": "1",
@@ -48614,10 +48614,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "150",
+          "numerator": "97",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "150"
+          "value": "97"
         },
         {
           "coverage": "1",
@@ -48648,7 +48648,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:21.844412Z",
+        "created_at": "2026-08-07T08:25:28.848718Z",
         "planning_version": 1,
         "steps": [
           {
@@ -49205,7 +49205,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:21.798521Z",
+      "started_at": "2026-08-07T08:25:28.803946Z",
       "status": "passed",
       "step_results": [
         {
@@ -49456,7 +49456,7 @@
             "recoverable": false,
             "step_id": "T-0001:generate-supplier-quality-report",
             "task_id": "T-0001",
-            "timestamp": "2026-08-07T09:05:21.891130Z",
+            "timestamp": "2026-08-07T08:25:28.891093Z",
             "tool_call_id": "TC-0004"
           },
           "evidence": [],
@@ -50114,7 +50114,7 @@
             "recoverable": false,
             "step_id": "T-0001:generate-supplier-quality-report",
             "task_id": "T-0001",
-            "timestamp": "2026-08-07T09:05:21.891130Z",
+            "timestamp": "2026-08-07T08:25:28.891093Z",
             "tool_call_id": "TC-0004"
           },
           "evidence_ids": [],
@@ -50555,7 +50555,7 @@
       },
       "case_id": "security-tool-output-injection",
       "category": "security",
-      "completed_at": "2026-08-07T09:05:22.067058Z",
+      "completed_at": "2026-08-07T08:25:29.046985Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -50567,7 +50567,7 @@
         "total": 4
       },
       "failure_categories": [],
-      "latency_ms": 114,
+      "latency_ms": 143,
       "metric_results": [
         {
           "coverage": "1",
@@ -51036,10 +51036,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "114",
+          "numerator": "143",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "114"
+          "value": "143"
         },
         {
           "coverage": "1",
@@ -51070,7 +51070,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:21.998165Z",
+        "created_at": "2026-08-07T08:25:28.980629Z",
         "planning_version": 1,
         "steps": [
           {
@@ -51658,7 +51658,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:21.952877Z",
+      "started_at": "2026-08-07T08:25:28.904248Z",
       "status": "passed",
       "step_results": [
         {
@@ -51913,7 +51913,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/security-tool-output-injection/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/security-tool-output-injection/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 23172,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -52579,7 +52579,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/security-tool-output-injection/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/security-tool-output-injection/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 23172,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -53132,7 +53132,7 @@
       },
       "case_id": "security-unsafe-tool-error",
       "category": "security",
-      "completed_at": "2026-08-07T09:05:22.136834Z",
+      "completed_at": "2026-08-07T08:25:29.115834Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -53140,7 +53140,7 @@
         "total": 0
       },
       "failure_categories": [],
-      "latency_ms": 66,
+      "latency_ms": 63,
       "metric_results": [
         {
           "coverage": "1",
@@ -53613,10 +53613,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "66",
+          "numerator": "63",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "66"
+          "value": "63"
         },
         {
           "coverage": "1",
@@ -53647,7 +53647,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:22.117495Z",
+        "created_at": "2026-08-07T08:25:29.096179Z",
         "planning_version": 1,
         "steps": [
           {
@@ -54235,7 +54235,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:22.071002Z",
+      "started_at": "2026-08-07T08:25:29.052405Z",
       "status": "passed",
       "step_results": [
         {
@@ -54248,7 +54248,7 @@
             "recoverable": true,
             "step_id": "T-0001:retrieve-quality-policy",
             "task_id": "T-0001",
-            "timestamp": "2026-08-07T09:05:22.126543Z",
+            "timestamp": "2026-08-07T08:25:29.104940Z",
             "tool_call_id": "TC-0001"
           },
           "evidence": [],
@@ -54425,7 +54425,7 @@
             "recoverable": true,
             "step_id": "T-0001:retrieve-quality-policy",
             "task_id": "T-0001",
-            "timestamp": "2026-08-07T09:05:22.126543Z",
+            "timestamp": "2026-08-07T08:25:29.104940Z",
             "tool_call_id": "TC-0001"
           },
           "evidence_ids": [],
@@ -54692,7 +54692,7 @@
       },
       "case_id": "security-user-prompt-injection",
       "category": "security",
-      "completed_at": "2026-08-07T09:05:22.252690Z",
+      "completed_at": "2026-08-07T08:25:29.232948Z",
       "diagnostics": [],
       "errors": [],
       "evidence_summary": {
@@ -54704,7 +54704,7 @@
         "total": 4
       },
       "failure_categories": [],
-      "latency_ms": 113,
+      "latency_ms": 114,
       "metric_results": [
         {
           "coverage": "1",
@@ -55173,10 +55173,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "113",
+          "numerator": "114",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "113"
+          "value": "114"
         },
         {
           "coverage": "1",
@@ -55207,7 +55207,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:22.186819Z",
+        "created_at": "2026-08-07T08:25:29.167170Z",
         "planning_version": 1,
         "steps": [
           {
@@ -55795,7 +55795,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:22.139558Z",
+      "started_at": "2026-08-07T08:25:29.118559Z",
       "status": "passed",
       "step_results": [
         {
@@ -56050,7 +56050,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/security-user-prompt-injection/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/security-user-prompt-injection/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 21378,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -56712,7 +56712,7 @@
             },
             "created_at": "2026-08-03T00:00:00+00:00",
             "generator_version": "report_generator.v1",
-            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-l7tfpfll/security-user-prompt-injection/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
+            "location": "/private/var/folders/69/nx_b77696zn773zc_cgrzq840000gn/T/copilot-evaluation-jey8sk14/security-user-prompt-injection/artifacts/supplier-quality-analysis-T-0001-A-0001.json",
             "size_bytes": 21378,
             "type": "QUALITY_ANALYSIS_REPORT_JSON"
           },
@@ -57295,7 +57295,7 @@
       },
       "case_id": "unauthorized-supplier-access",
       "category": "authorization",
-      "completed_at": "2026-08-07T09:05:22.301196Z",
+      "completed_at": "2026-08-07T08:25:29.285995Z",
       "diagnostics": [],
       "errors": [
         {
@@ -57316,7 +57316,7 @@
         "total": 0
       },
       "failure_categories": [],
-      "latency_ms": 44,
+      "latency_ms": 49,
       "metric_results": [
         {
           "coverage": "1",
@@ -57787,10 +57787,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "44",
+          "numerator": "49",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "44"
+          "value": "49"
         },
         {
           "coverage": "1",
@@ -57822,7 +57822,7 @@
       ],
       "plan_snapshot": null,
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:22.256914Z",
+      "started_at": "2026-08-07T08:25:29.236918Z",
       "status": "passed",
       "step_results": [],
       "tags": [
@@ -57983,7 +57983,7 @@
       },
       "case_id": "unregistered-tool-rejected",
       "category": "registry",
-      "completed_at": "2026-08-07T09:05:22.358610Z",
+      "completed_at": "2026-08-07T08:25:29.368017Z",
       "diagnostics": [],
       "errors": [
         {
@@ -58004,7 +58004,7 @@
         "total": 0
       },
       "failure_categories": [],
-      "latency_ms": 55,
+      "latency_ms": 80,
       "metric_results": [
         {
           "coverage": "1",
@@ -58479,10 +58479,10 @@
           "direction": "informational",
           "metric_name": "latency_ms",
           "notes": [],
-          "numerator": "55",
+          "numerator": "80",
           "status": "pass",
           "unit": "milliseconds",
-          "value": "55"
+          "value": "80"
         },
         {
           "coverage": "1",
@@ -58513,7 +58513,7 @@
         }
       ],
       "plan_snapshot": {
-        "created_at": "2026-08-07T09:05:22.347982Z",
+        "created_at": "2026-08-07T08:25:29.356210Z",
         "planning_version": 1,
         "steps": [
           {
@@ -59101,7 +59101,7 @@
         "task_id": "T-0001"
       },
       "primary_failure_category": null,
-      "started_at": "2026-08-07T09:05:22.303189Z",
+      "started_at": "2026-08-07T08:25:29.288031Z",
       "status": "passed",
       "step_results": [
         {
@@ -59600,12 +59600,12 @@
       }
     ]
   },
-  "completed_at": "2026-08-07T09:05:22.367235Z",
+  "completed_at": "2026-08-07T08:25:29.377250Z",
   "config_hash": "sha256:1fad9876341f0b442eba771516a5639882ce37be095ffc1c7152132fda0d4f78",
   "dataset_hash": "sha256:13ff939d7af5f665d99f3832409dd4cb0fe444e0de1cc9471b53ee52567fc3c7",
   "dataset_id": "supplier_quality",
   "dataset_version": "1.1.0",
-  "duration_ms": 2765,
+  "duration_ms": 2804,
   "errored_cases": 0,
   "failed_cases": 0,
   "failure_summary": {},
@@ -59952,10 +59952,10 @@
       "direction": "informational",
       "metric_name": "latency_average_ms",
       "notes": [],
-      "numerator": "88.53333333333333333333333333",
+      "numerator": "89.76666666666666666666666667",
       "status": "pass",
       "unit": "milliseconds",
-      "value": "88.53333333333333333333333333"
+      "value": "89.76666666666666666666666667"
     },
     {
       "coverage": "1",
@@ -59963,10 +59963,10 @@
       "direction": "informational",
       "metric_name": "latency_p50_ms",
       "notes": [],
-      "numerator": "95",
+      "numerator": "97",
       "status": "pass",
       "unit": "milliseconds",
-      "value": "95"
+      "value": "97"
     },
     {
       "coverage": "1",
@@ -59974,10 +59974,10 @@
       "direction": "informational",
       "metric_name": "latency_p95_ms",
       "notes": [],
-      "numerator": "136",
+      "numerator": "137",
       "status": "pass",
       "unit": "milliseconds",
-      "value": "136"
+      "value": "137"
     },
     {
       "coverage": "1",
@@ -59985,10 +59985,10 @@
       "direction": "informational",
       "metric_name": "latency_min_ms",
       "notes": [],
-      "numerator": "44",
+      "numerator": "43",
       "status": "pass",
       "unit": "milliseconds",
-      "value": "44"
+      "value": "43"
     },
     {
       "coverage": "1",
@@ -59996,10 +59996,10 @@
       "direction": "informational",
       "metric_name": "latency_max_ms",
       "notes": [],
-      "numerator": "150",
+      "numerator": "143",
       "status": "pass",
       "unit": "milliseconds",
-      "value": "150"
+      "value": "143"
     },
     {
       "coverage": "1",
@@ -60096,11 +60096,11 @@
   "platform": "macOS-26.5.2-arm64-arm-64bit",
   "provider": "mock",
   "python_version": "3.12.13",
-  "run_id": "20260807T090519.602530Z-da0d4f78",
+  "run_id": "20260807T082526.573091Z-da0d4f78",
   "schema_version": "evaluation-run.v1",
   "seed": 42,
   "skipped_cases": 0,
-  "started_at": "2026-08-07T09:05:19.602530Z",
+  "started_at": "2026-08-07T08:25:26.573091Z",
   "total_cases": 30,
   "warnings": []
 }

@@ -188,9 +188,9 @@ Security violations are verifier errors, not warnings, and cannot result in `COM
 - The rule-based injection and secret detectors are bounded and require continued evaluation.
 - The role matrix and identity providers are demo/portfolio adapters, not OAuth, SSO, or enterprise
   IAM. Production must supply real authentication, role/scope refresh, and revocation.
-- Local SQLite audit/checkpoint stores and filesystem Artifacts are not enterprise tamper-evident
-  audit or object storage. Production needs retention, legal hold, access logging, and KMS-backed
-  storage controls.
+- PostgreSQL deployment persistence and filesystem Artifacts are not automatically tamper-evident
+  audit or governed object storage. Production still needs retention, legal hold, access logging,
+  encryption/KMS controls, and independent Artifact-volume backup.
 - Production requires a Secret Manager, credential rotation, database-native least privilege,
   centralized observability redaction, and incident response.
 - The system remains read-only and supports no business writes, CAPA automation, email,

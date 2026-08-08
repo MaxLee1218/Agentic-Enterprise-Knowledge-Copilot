@@ -127,5 +127,5 @@ def test_repository_reads_cannot_mutate_persisted_argument_history() -> None:
 
 
 def test_production_mode_requires_the_formal_approval_migration(tmp_path: Path) -> None:
-    with pytest.raises(RuntimeError, match="0001_approval_requests.sql"):
+    with pytest.raises(RuntimeError, match="persistence migration is required"):
         ApprovalRepository(tmp_path / "unmigrated.db", initialize_schema=False)

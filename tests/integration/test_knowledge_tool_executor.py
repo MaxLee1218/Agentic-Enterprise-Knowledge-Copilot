@@ -2,31 +2,28 @@
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 import pytest
 from pydantic import AnyHttpUrl
 
 from copilot.bootstrap.container import build_workflow_container
-from copilot.config import PROJECT_ROOT, Settings
+from copilot.config import Settings
 from copilot.tools.database import DatabaseTool
 from copilot.tools.knowledge import HttpKnowledgeClient, KnowledgeTool
 
 pytestmark = pytest.mark.integration
 
 
-def test_production_composition_registers_http_knowledge_without_network(
+def test_explicit_provider_composition_registers_http_knowledge_without_network(
     tmp_path: Path,
 ) -> None:
     checkpoint_database = tmp_path / "checkpoints.db"
-    with sqlite3.connect(checkpoint_database) as database:
-        database.executescript(
-            (PROJECT_ROOT / "migrations" / "0001_approval_requests.sql").read_text()
-        )
     settings = Settings(
-        app_env="production",
+        app_env="test",
         database_url="sqlite:///unused.db",
+        database_provider="sqlalchemy",
+        knowledge_provider="http",
         artifact_dir=tmp_path,
         checkpoint_database_path=checkpoint_database,
         rag_base_url=AnyHttpUrl("http://rag.example/"),

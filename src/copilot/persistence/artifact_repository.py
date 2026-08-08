@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import sqlite3
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -13,7 +12,12 @@ from datetime import datetime
 from pathlib import Path
 from threading import RLock
 
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
+
 from copilot.contracts import Artifact, ArtifactType
+from copilot.persistence.database import PersistenceDatabase, coerce_database
+from copilot.persistence.models import WorkflowArtifactRow
 from copilot.security import (
     ContentSourceType,
     OutputDisposition,
@@ -102,8 +106,9 @@ class LocalArtifactRepository:
         *,
         clock: Callable[[], datetime],
         max_size_bytes: int = 10 * 1024 * 1024,
-        database_path: Path | None = None,
+        database_path: PersistenceDatabase | Path | None = None,
         output_guard: OutputGuard | None = None,
+        initialize_schema: bool = True,
     ) -> None:
         self._root = root.resolve()
         self._clock = clock
@@ -111,27 +116,10 @@ class LocalArtifactRepository:
         self._output_guard = output_guard or OutputGuard()
         self._artifacts: dict[str, Artifact] = {}
         self._lock = RLock()
-        self._database = (
-            sqlite3.connect(database_path, check_same_thread=False)
-            if database_path is not None
-            else None
+        self._database, self._owns_database = coerce_database(
+            database_path,
+            initialize_schema=initialize_schema,
         )
-        if self._database is not None:
-            self._database.execute(
-                """
-                CREATE TABLE IF NOT EXISTS workflow_artifacts (
-                    artifact_id TEXT PRIMARY KEY,
-                    task_id TEXT NOT NULL,
-                    payload_json TEXT NOT NULL
-                )
-                """
-            )
-            self._database.commit()
-            for row in self._database.execute(
-                "SELECT payload_json FROM workflow_artifacts ORDER BY rowid"
-            ):
-                artifact = Artifact.model_validate_json(row[0])
-                self._artifacts[artifact.artifact_id] = artifact
 
     def write(
         self,
@@ -174,7 +162,10 @@ class LocalArtifactRepository:
         if Path(filename).suffix.lower() != expected_extension:
             raise ValueError("artifact extension does not match its type")
         with self._lock:
-            existing = self._artifacts.get(artifact_id)
+            try:
+                existing = self.get(artifact_id)
+            except KeyError:
+                existing = None
             if existing is not None:
                 if existing.checksum != checksum:
                     raise ValueError("artifact identifier already exists with different content")
@@ -202,6 +193,16 @@ class LocalArtifactRepository:
     def get(self, artifact_id: str) -> Artifact:
         """Return one committed artifact."""
         with self._lock:
+            if self._database is not None:
+                with self._database.session() as session:
+                    payload = session.scalar(
+                        select(WorkflowArtifactRow.payload_json).where(
+                            WorkflowArtifactRow.artifact_id == artifact_id
+                        )
+                    )
+                    if payload is None:
+                        raise KeyError(artifact_id)
+                    return Artifact.model_validate_json(payload)
             return self._artifacts[artifact_id]
 
     def get_by_id(self, artifact_id: str) -> Artifact:
@@ -211,6 +212,20 @@ class LocalArtifactRepository:
     def list_by_task(self, task_id: str) -> tuple[Artifact, ...]:
         """List Task-owned metadata in deterministic creation/identifier order."""
         with self._lock:
+            if self._database is not None:
+                with self._database.session() as session:
+                    payloads = session.scalars(
+                        select(WorkflowArtifactRow.payload_json)
+                        .where(WorkflowArtifactRow.task_id == task_id)
+                        .order_by(WorkflowArtifactRow.sequence_id)
+                    )
+                    artifacts = tuple(Artifact.model_validate_json(item) for item in payloads)
+                    return tuple(
+                        sorted(
+                            artifacts,
+                            key=lambda artifact: (artifact.created_at, artifact.artifact_id),
+                        )
+                    )
             return tuple(
                 sorted(
                     (
@@ -224,8 +239,11 @@ class LocalArtifactRepository:
 
     def exists(self, artifact_id: str) -> bool:
         """Report whether metadata has been committed for an identifier."""
-        with self._lock:
-            return artifact_id in self._artifacts
+        try:
+            self.get(artifact_id)
+        except KeyError:
+            return False
+        return True
 
     def path_for(self, artifact: Artifact) -> Path:
         """Resolve and revalidate a committed artifact path beneath the configured root."""
@@ -234,39 +252,53 @@ class LocalArtifactRepository:
             raise ValueError("artifact location escaped the configured root")
         return path
 
+    def check_ready(self) -> bool:
+        """Verify that the configured root can accept an atomic temporary file."""
+        self._root.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary_name = tempfile.mkstemp(prefix=".readiness-", dir=self._root)
+        os.close(descriptor)
+        Path(temporary_name).unlink(missing_ok=True)
+        return True
+
     def delete(self, artifact_id: str) -> None:
         """Compensate an invalid Artifact while it is not published to TaskResult."""
         with self._lock:
-            artifact = self._artifacts.pop(artifact_id)
+            artifact = self.get(artifact_id)
             self._writer.delete(Path(artifact.location))
             if self._database is not None:
-                self._database.execute(
-                    "DELETE FROM workflow_artifacts WHERE artifact_id = ?",
-                    (artifact_id,),
-                )
-                self._database.commit()
+                with self._database.session() as session:
+                    session.execute(
+                        delete(WorkflowArtifactRow).where(
+                            WorkflowArtifactRow.artifact_id == artifact_id
+                        )
+                    )
+            else:
+                self._artifacts.pop(artifact_id)
 
     def _save_metadata(self, artifact: Artifact) -> None:
         """Commit metadata after final bytes have been verified."""
-        if artifact.artifact_id in self._artifacts:
-            raise ValueError("artifact identifier already exists")
         if self._database is not None:
             try:
-                self._database.execute(
-                    "INSERT INTO workflow_artifacts VALUES (?, ?, ?)",
-                    (artifact.artifact_id, artifact.task_id, artifact.model_dump_json()),
-                )
-                self._database.commit()
-            except Exception:
-                self._database.rollback()
-                raise
+                with self._database.session() as session:
+                    session.add(
+                        WorkflowArtifactRow(
+                            artifact_id=artifact.artifact_id,
+                            task_id=artifact.task_id,
+                            payload_json=artifact.model_dump_json(),
+                        )
+                    )
+            except IntegrityError as exc:
+                raise ValueError("artifact identifier already exists") from exc
+            return
+        if artifact.artifact_id in self._artifacts:
+            raise ValueError("artifact identifier already exists")
         self._artifacts[artifact.artifact_id] = artifact
 
     def close(self) -> None:
         """Close the optional durable Artifact metadata connection."""
         with self._lock:
-            if self._database is not None:
-                self._database.close()
+            if self._owns_database and self._database is not None:
+                self._database.dispose()
                 self._database = None
 
 

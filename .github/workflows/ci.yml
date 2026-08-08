@@ -47,8 +47,15 @@ jobs:
       - name: Run Mypy
         run: mypy
 
-      - name: Run test suite
-        run: pytest
+      - name: Run unit tests
+        run: >-
+          pytest tests/unit
+          --cov=copilot
+          --cov-report=term-missing
+          --cov-report=xml
+
+      - name: Run integration, contract, and smoke tests
+        run: pytest tests/integration tests/contract tests/smoke
 
       - name: Run offline Agent evaluation regression gate
         run: >-
@@ -77,3 +84,50 @@ jobs:
           python -m build
           python -m pip install --disable-pip-version-check --no-deps --force-reinstall dist/*.whl
           python -c "import copilot; print(copilot.__version__)"
+
+  postgres-integration:
+    name: PostgreSQL migration and persistence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_DB: copilot_test
+          POSTGRES_USER: copilot_test
+          POSTGRES_PASSWORD: copilot_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U copilot_test -d copilot_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      APP_ENV: test
+      DATABASE_URL: "sqlite:///:memory:"
+      PERSISTENCE_DATABASE_URL: "postgresql+psycopg://copilot_test:copilot_test_password@127.0.0.1:5432/copilot_test"
+      TEST_POSTGRES_URL: "postgresql+psycopg://copilot_test:copilot_test_password@127.0.0.1:5432/copilot_test"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install project
+        run: python -m pip install -e ".[dev]"
+      - name: Run PostgreSQL integration test
+        run: pytest tests/integration/test_postgres_persistence.py -v
+
+  container-build:
+    name: Container and Compose build gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose topology
+        env:
+          RAG_IMAGE: enterprise-rag-engine:ci-placeholder
+        run: docker compose config
+      - name: Build Copilot image
+        run: docker build --tag enterprise-copilot:ci .

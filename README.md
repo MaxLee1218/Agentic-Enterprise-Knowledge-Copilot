@@ -1,115 +1,182 @@
 # Agentic Enterprise Knowledge Copilot
 
-Production-oriented Python foundation for a governed, evidence-backed enterprise task completion
-system. This milestone provides configuration, CLI, API health checks, frozen v1.1 domain
-contracts, a governed tool-runtime foundation, HTTP Enterprise RAG and read-only SQLite database
-adapters, and one
-deterministic offline Supplier Quality workflow with evidence, audit, retries, verification, and
-production deterministic PDF/JSON report generation, and a LangGraph workflow with SQLite
-checkpoint/restart recovery. Stage 11 adds optional structured LLM task understanding and planning
-with DeepSeek and deterministic MockLLM providers, bounded plan repair/replan, and an unchanged
-policy/Registry/Executor execution boundary.
+Agentic Enterprise Knowledge Copilot is a governed, evidence-backed task-completion system. It
+turns a natural-language enterprise request into a validated plan, executes only approved tools,
+records Evidence and audit lineage, verifies the result, and produces an immutable report
+Artifact. Stage 17 packages the implemented Stage 0–16 vertical slice as an installable,
+migration-driven, Docker-ready service with SQLite development storage and PostgreSQL deployment
+persistence.
 
-Stage 12 implements v1.1 Human-in-the-loop approval with durable `APPROVE`, bounded `EDIT`, and
-`REJECT` decisions plus checkpoint resume. It intentionally does not add CAPA creation or any
-business write operation; the frozen four-tool scope remains unchanged.
+The **Enterprise RAG Engine is a separate service and repository**. The Copilot consumes its
+approved HTTP contract through the Knowledge Tool; this repository does not copy, embed, or
+reimplement the RAG service.
 
-Stage 13 adds stable `/v1` task-management APIs and matching local CLIs for task submission,
-status, steps, Evidence, Artifact metadata/download, and cooperative cancellation. These adapters
-reuse the same application services and do not create a second Graph, Registry, or execution path.
+## Architecture
 
-Stage 15 hardens the existing path with an explicit trusted security context, centralized demo
-permission and data-access policies, execution-time reauthorization, prompt-injection isolation,
-sensitive-data classification, recursive log/audit redaction, shared output guarding, and
-Artifact publication/read checks. It does not broaden the frozen Supplier Quality v1.1 scope.
+```text
+User -> API / CLI -> Task Understanding -> Planner -> Policy / Approval
+     -> Tool Registry / Executor -> Knowledge + Database + Analytics + Reporting
+     -> Evidence -> Verifier -> TaskResult + Artifact
 
-Stage 16 adds one injected observability context across API/CLI, Task Service, LangGraph, Step, and
-Tool execution: safe JSON events, bounded in-memory spans and metrics, p50/p95 snapshots, task
-performance analysis, and enforced task/step/database/Evidence/report/LLM budgets. It requires no
-external monitoring service and does not change the frozen business lifecycle or four-tool scope.
+External boundaries:
+  Enterprise RAG Engine       Copilot PostgreSQL       Artifact filesystem/volume
+  Enterprise business DB     (internal state)          (report bytes)
+```
 
-The typed Supplier Quality Analysis contracts and lifecycle are documented in
-[Domain Contracts](docs/domain-contracts.md).
+The Copilot persistence database and enterprise business database are deliberately different:
 
-Architecture boundaries and their decision history are documented in
-[Architecture Overview](docs/architecture.md) and the
-[Architecture Decision Record index](docs/adr/README.md).
+- `PERSISTENCE_DATABASE_URL` stores Task, State, plans/results, Evidence, Approval, Audit,
+  Artifact metadata, leases, and PostgreSQL checkpoints.
+- `DATABASE_URL` is visible only to the registered, read-only enterprise Database Tool. It cannot
+  access Copilot internal tables through the application architecture.
 
-## Requirements
+The API and CLI share `build_application(settings)` as their composition root. Docker does not
+create a second workflow or bypass Policy, Approval, Registry/Executor, Evidence, Audit,
+Observability, or Verification.
+
+See [Architecture](docs/architecture.md), the [frozen v1.1 baseline](docs/design/design_baseline.md),
+and [ADR-006](docs/adr/ADR-006-deployment-persistence-boundary.md).
+
+## Supported vertical slice
+
+The only implemented business scenario is **Supplier Quality Deviation Investigation / Supplier
+Quality Analysis v1.1**. A request must include an explicit year and quarter. The frozen four
+tools are `knowledge_search`, `database_query`, `analysis_engine`, and `report_generator`.
+Artifacts are PDF or JSON.
+
+Current boundaries are intentional:
+
+- no CAPA execution, email, procurement, supplier-status change, or business-database write;
+- no arbitrary SQL/Python, open internet source, or unregistered connector;
+- no cross-database atomic transaction or external API exactly-once guarantee;
+- no background task queue or forced interruption of an in-flight external call;
+- no production IAM/SSO adapter—the checked-in API/CLI identity is a Demo Identity;
+- no MCP behavior. MCP files are future placeholders, not an implementation.
+
+## Requirements and installation
 
 - Python 3.11 or later
-
-## Setup
+- Docker Engine with Compose v2 for the container path
+- PostgreSQL 16 for the deployment/integration path
+- a separately built or approved Enterprise RAG Engine image for the full Compose topology
 
 ```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
 python -m pip install -e '.[dev]'
 cp .env.example .env
 ```
 
-Application code reads configuration only through
-`copilot.config.get_settings`. The committed `.env.example` contains safe local defaults;
-`.env` is intended for local configuration and must not contain committed secrets.
+All configuration enters through `copilot.config.Settings`. Keep real credentials out of `.env`,
+Git, image layers, logs, task text, and Artifacts.
 
-## Run
+## Local development
 
-```bash
-enterprise-copilot --help
-python scripts/run_task.py \
-  "Analyze Q2 2026 supplier quality deviations, identify the highest-risk suppliers, compare them with the Supplier Quality Manual, and generate a JSON management report."
-uvicorn copilot.bootstrap.api:app
-```
-
-The positional task and `--task` form are equivalent:
+The default `.env.example` uses offline Mock LLM/Knowledge/Database adapters and local SQLite. It
+is suitable for deterministic development:
 
 ```bash
-python scripts/run_task.py \
-  --task "Analysiere die Lieferantenqualität im 2. Quartal 2026 und erstelle einen JSON-Bericht."
+python -m copilot.persistence.migrate
+uvicorn copilot.bootstrap.api:app --host 127.0.0.1 --port 8000
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/health/ready
 ```
 
-Only the natural-language task is required. Optional `--output-format`, `--max-steps`,
-`--read-only`, `--require-approval`, and `--session-id` values can select an already-supported
-format or tighten server constraints; they cannot expand policy, permission, approval, tool, or
-step limits.
+`PERSISTENCE_AUTO_CREATE_SCHEMA=true` is a development/test compatibility helper. To exercise the
+deployment discipline locally, set it to `false`, set an explicit
+`PERSISTENCE_DATABASE_URL=sqlite:///data/database/copilot.db`, and run the migration command before
+starting the API.
 
-The HTTP task endpoint uses the same application service and LangGraph:
+To use the real read-only business Database Tool with the synthetic SQLite fixture:
+
+```bash
+python scripts/seed_demo_database.py
+export DATABASE_PROVIDER=sqlalchemy
+export DATABASE_URL=sqlite:///data/database/enterprise_demo.db
+```
+
+This database is enterprise business data for Tool reads; it is not Copilot persistence.
+
+## Docker Compose
+
+First obtain an approved independently packaged RAG image and set its tag:
+
+```bash
+export RAG_IMAGE=approved-registry.example/enterprise-rag-engine:VERSION
+```
+
+The current sibling Enterprise RAG Engine source checkout does not itself provide a Dockerfile.
+Its owning deployment must publish or otherwise supply this image; this Copilot repository does
+not invent that packaging or copy the RAG source.
+
+Then start this repository:
+
+```bash
+cp .env.example .env
+docker compose config
+docker compose build
+docker compose up
+```
+
+Compose starts `postgres`, `enterprise-rag-engine`, one-shot `migrate` and `rag-health` services,
+and `copilot-api`. The migration service runs Alembic and the official LangGraph PostgreSQL saver
+setup; `rag-health` uses the Copilot's real HTTP Knowledge client without assuming utilities exist
+inside the independent RAG image. Both must succeed before the API starts. The API reaches RAG as
+`http://enterprise-rag-engine:8000`, never through container-local `localhost`. Local ports default
+to Copilot `8000`, RAG `8001`, and PostgreSQL `5432`.
+
+The committed PostgreSQL credentials are local demo values only. Never use them in production.
+For an already-running RAG outside Compose, run the API outside Compose with an approved
+`RAG_BASE_URL`, or provide a deployment-specific Compose override and network route. See
+[Deployment](docs/deployment.md).
+
+## Database and migrations
+
+SQLite remains supported for fast tests and local demos. PostgreSQL is required by the production
+configuration profile and is used by Compose. Copilot-owned schema changes are explicit:
+
+```bash
+alembic upgrade head
+alembic current
+alembic history
+alembic downgrade -1  # isolated/non-production databases only after reviewing data loss
+```
+
+The normal API startup never runs `Base.metadata.create_all`, Alembic, or vendor checkpoint
+migrations in production. The deployment command is:
+
+```bash
+python -m copilot.persistence.migrate
+```
+
+Artifact metadata is stored in the Copilot database. Artifact bytes remain beneath
+`ARTIFACT_DIR`; Compose mounts a persistent `artifact-data` volume. A PostgreSQL backup therefore
+does **not** include report files.
+
+## Enterprise RAG service
+
+Use the real HTTP adapter by setting:
+
+```bash
+KNOWLEDGE_PROVIDER=http
+RAG_BASE_URL=http://approved-rag-host:8000
+python scripts/check_rag_health.py
+```
+
+`RAG_TIMEOUT_SECONDS`, `RAG_MAX_ATTEMPTS`, and `RAG_RETRY_BASE_DELAY_SECONDS` bound dependency
+calls. RAG failure can make task acceptance degraded while `/health/live` and historical task
+reads remain available. CI uses controlled offline adapters; live RAG verification is explicit
+and is not falsely represented by Mock tests.
+
+## Main API
+
+Submit and inspect a task:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/tasks \
-  -H "Content-Type: application/json" \
-  -d '{
-    "task": "Analyze Q2 2026 supplier quality deviations, identify the highest-risk suppliers, compare them with the Supplier Quality Manual, and generate a JSON management report.",
-    "output_format": "json",
-    "read_only": true
-  }'
-```
+  -H 'Content-Type: application/json' \
+  -d '{"task":"Analyze Q2 2026 supplier quality deviations and generate a JSON report."}'
 
-`POST /v1/tasks` requires only `task`; the caller does not supply a goal, entities, time range
-object, deliverables, plan, tool names, SQL, or tool arguments. Task Understanding creates the
-`TaskContract`, the Planner creates the `TaskPlan`, deterministic Plan Validator checks it, and
-Policy/Approval plus ToolExecutor remain mandatory. The original task text is persisted
-before model execution and is passed unchanged to Task Understanding.
-
-When a submission returns 202, use `pending_approval_id` with the approval API. The authorized
-GET endpoint returns the complete proposed tool input. `edit` must send that complete object and
-may only reduce `knowledge_search.top_k` or `database_query.row_limit`; a valid edit creates a new
-resolved action fingerprint and resumes without replaying successful prerequisites.
-
-```bash
-curl http://127.0.0.1:8000/v1/tasks/TASK_ID/approvals/APPROVAL_ID
-
-curl -X POST http://127.0.0.1:8000/v1/tasks/TASK_ID/approvals/APPROVAL_ID \
-  -H "Content-Type: application/json" \
-  -d '{"action":"approve","reason":"Reviewed and approved"}'
-```
-
-See [Stage 12 Human-in-the-loop](docs/stage-12/human-in-the-loop.md) and the
-[HTTP API](docs/api.md) for edit/reject payloads, permissions, persistence, recovery, and errors.
-
-Completed or failed submissions execute synchronously inside `POST /v1/tasks` and return
-`201 Created` with the reached state. A durable approval pause returns `202 Accepted` with
-`WAITING_APPROVAL`; it is not a claim that a background task queue exists. Task-management calls:
-
-```bash
 curl http://127.0.0.1:8000/v1/tasks/TASK_ID
 curl http://127.0.0.1:8000/v1/tasks/TASK_ID/steps
 curl http://127.0.0.1:8000/v1/tasks/TASK_ID/evidence
@@ -118,242 +185,116 @@ curl -OJ http://127.0.0.1:8000/v1/tasks/TASK_ID/artifacts/ARTIFACT_ID
 curl -X POST http://127.0.0.1:8000/v1/tasks/TASK_ID/cancel
 ```
 
-Artifact metadata and task-creation responses expose an Artifact ID and safe filename, never the
-local storage path. Downloads are streamed only after task ownership, Artifact ownership, root
-containment, size, and checksum validation.
-
-Local task inspection and the deterministic Stage 13 smoke test use the same services:
+Approval APIs actually implemented by this repository are:
 
 ```bash
+curl http://127.0.0.1:8000/v1/tasks/TASK_ID/approvals/APPROVAL_ID
+curl -X POST http://127.0.0.1:8000/v1/tasks/TASK_ID/approvals/APPROVAL_ID \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"approve","reason":"Reviewed"}'
+```
+
+`EDIT` requires complete replacement arguments and can only lower the frozen `top_k` or
+`row_limit` allowlist value. A waiting approval is durable and can resume after process restart.
+See [HTTP API](docs/api.md) and [Human-in-the-loop](docs/stage-12/human-in-the-loop.md).
+
+Health semantics:
+
+- `GET /health` preserves the original process-health contract: `{"status":"ok"}`.
+- `GET /health/live` reports process liveness only.
+- `GET /health/ready` reports safe database, Artifact storage, and configured RAG status. HTTP 503
+  means new governed tasks should not be accepted; it does not imply that the process is dead.
+
+## CLI
+
+```bash
+enterprise-copilot --help
+python scripts/run_task.py \
+  "Analyze Q2 2026 supplier quality deviations and generate a JSON report."
 python scripts/inspect_task.py TASK_ID
-python scripts/inspect_task.py TASK_ID --json
 python scripts/inspect_task.py TASK_ID --performance
-python scripts/smoke_agent.py
 python scripts/smoke_agent.py --show-trace
-```
-
-Task CLI output includes Task ID, Trace ID, terminal status, total latency, and Artifact metadata.
-The Stage 16 smoke output includes the sanitized Task/Node/Step/Tool trace, latency breakdown,
-p50/p95, slowest stage/step/tool, retry/replan counts, and tool attempt failure rate. Full trace
-and metrics are process-local; `inspect_task.py --performance` falls back to durable audit timing
-after restart. See [Observability](docs/observability.md) and
-[Performance Analysis and Limits](docs/performance.md).
-
-CLI exit codes are `0` for success or an expected approval pause, `1` for task/operation failure,
-`2` for invalid CLI input, `3` for configuration failure, `4` for an unavailable dependency, and
-`5` for permission/approval denial. The current CLI/API identity is an explicitly local Demo
-Identity and must be replaced by a trusted authentication adapter for deployment.
-
-The service health endpoint remains available at `GET /health`.
-
-The frozen Supplier Quality v1.1 Artifact contract supports PDF and JSON, not Markdown. An
-explicit year and quarter remain mandatory. When they are missing, Task Understanding records
-the missing information and the frozen state machine terminates the Task as `FAILED`; a corrected
-request starts a new Task because v1.1 has no multi-turn clarification-resume state.
-
-The standalone Enterprise RAG checks use the real HTTP adapter without starting the complete
-workflow:
-
-```bash
 python scripts/check_rag_health.py
-python scripts/ask_knowledge.py \
-  --question "What is the supplier quality deviation procedure?" \
-  --show-evidence
 ```
 
-See the Chinese
-[Knowledge Tool Verification Guide](docs/knowledge_tool_verification_guide.md) for macOS,
-Windows PowerShell, live integration tests, exit codes, and troubleshooting. The composed
-workflow keeps its deterministic mock in development and test environments; `APP_ENV=production`
-registers the HTTP Knowledge Tool and SQLAlchemy Database Tool while preserving the frozen v1.1
-input/output contracts.
+API and CLI use the same Task Service and LangGraph. CLI exit codes are documented in
+[Operations](docs/operations.md).
 
-Create or reset the deterministic SQLite demo database before running a real database workflow:
+## Important configuration
 
-```bash
-python scripts/seed_demo_database.py
-```
+| Variable | Development default | Production requirement |
+|---|---|---|
+| `APP_ENV` | `development` | `production` with strict validation |
+| `PERSISTENCE_DATABASE_URL` | local SQLite fallback | required PostgreSQL URL |
+| `PERSISTENCE_AUTO_CREATE_SCHEMA` | `true` | `false`; run migrations separately |
+| `DATABASE_URL` | demo business SQLite | approved read-only business DB |
+| `DATABASE_PROVIDER` | `mock` | `sqlalchemy` |
+| `KNOWLEDGE_PROVIDER` | `mock` | `http` |
+| `RAG_BASE_URL` | host-local URL | approved non-loopback service URL |
+| `ARTIFACT_DIR` | `data/artifacts` | persistent, writable, backed-up volume |
+| `LOG_LEVEL` / `LOG_FORMAT` | `INFO` / `json` | structured stdout/stderr |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `5` / `10` | size for deployment concurrency |
+| `MAX_TASK_STEPS` | `10` | may be tightened, not expanded past policy |
 
-The Database Tool accepts only the frozen query-template contract, never caller-provided raw SQL.
-See [Database Tool](docs/database-tool.md) for the schema, read-only boundary, Evidence model, and
-PostgreSQL migration notes.
+The complete safe template is [.env.example](.env.example). The Demo Identity remains a known
+deployment blocker for a true production rollout and must be replaced by a trusted authentication
+adapter; Stage 17 does not pretend otherwise.
 
-The composed development/test API and CLI use the bounded offline structured mock provider and
-run without a network or external model service. They write a verified
-`QUALITY_ANALYSIS_REPORT_JSON` file beneath `ARTIFACT_DIR`
-(default `data/artifacts`) while the CLI prints only its Artifact ID and safe filename. Pass
-`--report-format PDF` to generate and independently verify the frozen PDF alternative. Markdown
-and HTML are intentionally not emitted because the frozen Supplier Quality v1.1 Artifact contract
-supports only PDF and JSON. See the
-[Deterministic Workflow](docs/deterministic-workflow.md) for execution, retry, Evidence, failure,
-and compatibility details, and [Deterministic Report Tool](docs/report-tool.md) for report model,
-rendering, and Artifact integrity behavior.
+## Security
 
-After report generation, deterministic Evidence, lineage, deliverable, citation, numeric, safety,
-and Artifact verifiers produce a persisted structured result. A Task reaches `COMPLETED` only when
-that result has no Errors. See
-[Evidence Ledger and Deterministic Verification](docs/evidence-and-verification.md).
+The implemented path uses a deny-by-default permission matrix, read-only query templates and AST
+validation, tenant/supplier scope, bounded output, prompt-injection isolation, sensitive-data
+filtering, Approval binding, append-only Audit, Evidence lineage, Artifact integrity checks, and
+independent Verification. Logs redact secret-shaped values and do not emit database URLs, raw
+SQL, Authorization headers, tool payloads, or ordinary stack traces.
 
-LangGraph supplies explicit nodes, routing, bounded tool loops, SQLite checkpointing, and
-task/tenant-scoped resume. Domain facts, Evidence, Artifact metadata, leases, and audit remain in
-separate business tables rather than using checkpoints as the source of truth. See
-[Deterministic LangGraph Workflow](docs/langgraph-workflow.md).
+These controls are a governed demo foundation, not production IAM, a Secret Manager, tamper-proof
+audit, or a disaster-recovery platform. See [Security Model](docs/security-model.md).
 
-An LLM planning service is injected by the API/CLI composition root. It produces only candidate
-understanding and plans; deterministic Contract binding, PlanValidator, policy, approval,
-ToolExecutor, Evidence, and verification remain mandatory. See
-[Structured LLM Architecture](docs/llm-architecture.md) and
-[Task Understanding and Planning](docs/task-understanding-and-planning.md).
+## Observability and operations
 
-The real DeepSeek smoke test is opt-in and stops after deterministic plan validation:
+Structured events go to stdout/stderr and retain safe correlation fields such as `task_id`,
+`trace_id`, `step_id`, `node_name`, `tool_name`, `status`, `latency_ms`, `error_type`, and
+`retry_count`. Local spans and metrics are bounded and process-local; durable Audit provides the
+restart-safe operational trail.
 
-```bash
-LLM_PROVIDER=deepseek LLM_API_KEY=... python scripts/smoke_llm_planner.py
-```
+Use [Operations](docs/operations.md) for service, log, migration, backup, recovery, Artifact, RAG,
+and incident procedures. Use [Troubleshooting](docs/troubleshooting.md) for symptom-driven fixes.
 
-## Tool Runtime
-
-The runtime under `src/copilot/tools` treats each enterprise capability as a registered plugin.
-Every invocation uses the frozen `ToolCall`, `ToolDefinition`, `ToolResult`, `TaskError`, and
-`EvidenceItem` contracts and follows this boundary sequence:
-
-```text
-Registry lookup -> input validation -> policy/approval authorization -> bounded execution
-  -> output validation -> evidence registration -> append-only audit -> ToolResult
-```
-
-`ToolExecutor` depends only on protocols for the tool, authorizer, evidence recorder, and audit
-sink. It contains no knowledge, database, analytics, or reporting branches. The supplied default
-authorizer denies every call; an application must explicitly inject a policy implementation that
-validates tenant, user, scope, plan version, and approval binding.
-
-To add a real v1 adapter:
-
-1. Implement the `Tool` protocol and expose one frozen, versioned `ToolDefinition`.
-2. Return `ToolExecutionOutput` with a schema-conforming payload and minimized Evidence drafts.
-3. Register the adapter in an instance-scoped `ToolRegistry` configured for its approved name and
-   risk level.
-4. Compose `ToolExecutor` with the production policy engine, durable Evidence Ledger, and durable
-   Audit Repository.
-5. Add unit, boundary, contract, and smoke coverage for success, denial, validation, timeout,
-   dependency failure, empty-result, and lineage behavior.
-
-The adapters in `tests/mocks` remain narrow Tool Runtime test doubles. Development/test composition
-uses offline knowledge and database fixtures, the real deterministic Analytics Tool, and the real
-deterministic Report Tool. Production composition replaces knowledge and database fixtures with
-the HTTP Knowledge Tool and SQLAlchemy Database Tool. Reporting remains network- and model-free.
-
-## Verify
-
-### Quality Gates
-
-Every push and pull request must pass the consolidated GitHub Actions CI pipeline:
-
-- ✓ Ruff lint and format checks
-- ✓ Mypy strict type checking
-- ✓ Pytest unit, integration, contract, and smoke tests
-- ✓ Offline evaluation smoke test
-- ✓ Documentation governance check
-- ✓ AST-based architecture dependency check
-- ✓ Editable install and distribution build verification
-
-The same gates can be run locally without LLM or enterprise data services:
+## Testing and quality gates
 
 ```bash
 ruff check .
 ruff format --check .
 mypy
-pytest
-python evaluation/run_eval.py --smoke
+pytest tests/unit --cov=copilot --cov-report=term-missing --cov-report=xml
+pytest tests/integration tests/contract tests/smoke
+python evaluation/run_eval.py --mode mock --seed 42 \
+  --baseline evaluation/baselines/supplier_quality_v1.json --fail-on-regression
 python scripts/check_docs.py
 python scripts/check_architecture.py
 python -m build
+docker build .
+RAG_IMAGE=enterprise-rag-engine:local docker compose config
 ```
 
-All current tests run offline. Database integration tests use isolated disposable SQLite files;
-no live enterprise database, LLM, or network service is required.
+Real PostgreSQL coverage uses an isolated `TEST_POSTGRES_URL`; GitHub Actions supplies a PostgreSQL
+service container. Unit and ordinary integration tests do not call the public internet, DeepSeek,
+production databases, or live RAG.
 
-## Security
-
-This repository is a demo/portfolio implementation of governed controls, not a production identity
-or security platform. The current database path remains read-only. Business writes, automatic
-CAPA execution, email, procurement actions, arbitrary SQL/Python, new live connectors, and MCP are
-not supported.
-
-API, CLI, services, graph nodes, policies, and the executor carry identity/tenant/role facts in a
-trusted context separate from task text. The centralized role matrix is deny-by-default, and every
-tool is reauthorized immediately before execution. Database access uses frozen query templates,
-AST table/field validation, row limits, tenant scope, and query fingerprints. Reports and
-Artifacts pass through the same sensitive-data and output guard before persistence; downloads
-also require caller/task/Artifact binding and integrity checks. Logs and audit metadata are
-recursively redacted.
-
-Prompt-injection risk is reduced through source/trust separation, bounded prompts, typed model
-output, the Registry allowlist, plan validation, policy/approval checks, executor reauthorization,
-read-only database enforcement, Evidence verification, output guarding, and audit. It is not
-claimed to be completely eliminated.
-
-The checked-in demo identity is not production authentication. Deployment still requires real
-IAM/SSO, permission revocation, a Secret Manager, database-native least privilege, centralized
-tamper-evident audit/observability, encrypted governed object storage, retention controls, and
-incident response. See [Security Model](docs/security-model.md).
-
-## Agent Evaluation
-
-Stages 14 and 15 provide a reproducible offline evaluation system that executes 30 Supplier Quality cases
-through the same Task Service, LangGraph, policy, Registry/Executor, Evidence, approval, reporting,
-and verification path used by the API and CLI:
+## Evaluation
 
 ```bash
 python evaluation/run_eval.py
 python evaluation/run_eval.py --tag smoke
-python evaluation/run_eval.py \
-  --baseline evaluation/baselines/supplier_quality_v1.json \
-  --fail-on-regression
 ```
 
-Reports are written to `evaluation/reports/latest.json`, `latest.md`, and an immutable run
-directory. Dataset authoring, metric formulas, exit codes, baseline updates, and reproducibility
-rules are documented in [Offline Agent Evaluation](docs/evaluation.md).
+Reports are written to `evaluation/reports`. The checked-in Mock baseline validates deterministic
+regression behavior; it is not evidence of live-model, live-RAG, production-data, or production
+latency quality. See [Offline Agent Evaluation](docs/evaluation.md).
 
-Each captured execution may also include a unified observability snapshot containing the trace
-summary, stage/tool latency, retry/replan counts, performance warnings, and process-local metrics.
-Existing Evaluation latency/token/cost formulas remain authoritative; the snapshot is optional
-diagnostic input and does not establish a second scoring calculation.
+## Roadmap
 
-The checked-in fixed Mock baseline was generated on 2026-08-05 at commit
-`c1a1b5ecbed395bc53ed2f8318687bef0d728646`, using dataset `1.1.0` with hash
-`sha256:13ff939d7af5f665d99f3832409dd4cb0fe444e0de1cc9471b53ee52567fc3c7`, mode
-`mock`, and seed `42`.
-
-| Baseline metric | Result |
-|---|---:|
-| Cases satisfying their oracle | 100.00% (30/30) |
-| Initial / final plan validity | 100.00% (24/24) / 100.00% (24/24) |
-| Tool selection accuracy | 100.00% (15/15) |
-| Tool execution success | 92.86% (65/70; expected transient and security failures remain attempts) |
-| Evidence coverage / citation correctness | 100.00% (28/28) / 100.00% (56/56) |
-| Numeric accuracy | 100.00% (4/4) |
-| Safety violation / attack block / authorization block | 0.00% (0/21) / 100.00% (10/10) / 100.00% (6/6) |
-| Unauthorized tool / table / field access | 0.00% (0/22) / 0.00% (0/2) / 0.00% (0/3) |
-| Sensitive / Secret / unsafe-error leakage | 0.00% (0/1) / 0.00% (0/2) / 0.00% (0/2) |
-| Prompt-injection success / Artifact authorization failure | 0.00% (0/3) / 0.00% (0/1) |
-| Missing required security audit / legitimate false rejection | 0.00% (0/17) / 0.00% (0/1) |
-| Replan recovery | 100.00% (1/1) |
-| Average steps / measured wall latency | 3.27 / 39.97 ms |
-| Fixed Mock token usage / estimated cost | 11,400 / USD 0.00 |
-
-Known failures: none. Controlled `FAILED`, `CANCELLED`, and `WAITING_APPROVAL` outcomes count as
-successful only when required by the case oracle. This Mock baseline validates deterministic
-regression behavior; it is not a claim about live-model, live-RAG, production-data, latency,
-token, cost, or security performance.
-
-## Current limitations
-
-- Cancellation is cooperative at persisted state/Graph boundaries; it cannot forcibly interrupt
-  an arbitrary in-flight external HTTP or database call.
-- There is no production task queue, exactly-once external-call guarantee, cross-database atomic
-  transaction, object-store download implementation, or automatic crash recovery for in-memory
-  deployments.
-- CAPA writes, business database writes, email, procurement actions, Web UI, MCP, and Multi-Agent
-  execution remain out of scope.
+Stage 17 is deployment engineering only. **Stage 18: MCP Interoperability is not implemented and
+remains a future phase.** Existing MCP directories and documentation are placeholders and do not
+mean MCP client, server, transport, OAuth, import, or export behavior exists.

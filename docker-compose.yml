@@ -1,0 +1,114 @@
+name: agentic-enterprise-knowledge-copilot
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-copilot}
+      POSTGRES_USER: ${POSTGRES_USER:-copilot}
+      # Local demo value only. Never use this default in production.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-copilot_local_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [copilot]
+
+  enterprise-rag-engine:
+    # Build/tag the independent RAG repository or set RAG_IMAGE to an approved image.
+    image: ${RAG_IMAGE:-enterprise-rag-engine:local}
+    restart: unless-stopped
+    ports:
+      - "${RAG_PORT:-8001}:8000"
+    networks: [copilot]
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    environment: &copilot-environment
+      APP_ENV: development
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: json
+      PERSISTENCE_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-copilot}:${POSTGRES_PASSWORD:-copilot_local_password}@postgres:5432/${POSTGRES_DB:-copilot}
+      PERSISTENCE_AUTO_CREATE_SCHEMA: "false"
+      DATABASE_URL: sqlite:////app/data/database/enterprise_demo.db
+      DATABASE_PROVIDER: mock
+      KNOWLEDGE_PROVIDER: http
+      RAG_BASE_URL: http://enterprise-rag-engine:8000
+      ARTIFACT_DIR: /app/data/artifacts
+      LLM_PROVIDER: mock
+      CHECKPOINT_ENABLED: "true"
+    command: ["python", "-m", "copilot.persistence.migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [copilot]
+
+  rag-health:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    environment:
+      APP_ENV: development
+      DATABASE_URL: sqlite:////app/data/database/unused-rag-health.db
+      RAG_BASE_URL: http://enterprise-rag-engine:8000
+      RAG_TIMEOUT_SECONDS: ${RAG_TIMEOUT_SECONDS:-30}
+      RAG_MAX_ATTEMPTS: ${RAG_MAX_ATTEMPTS:-3}
+    command:
+      [
+        "python",
+        "-c",
+        "from copilot.bootstrap.knowledge_cli import health_main; raise SystemExit(health_main(['--json']))",
+      ]
+    depends_on:
+      enterprise-rag-engine:
+        condition: service_started
+    networks: [copilot]
+
+  copilot-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment: *copilot-environment
+    ports:
+      - "${COPILOT_PORT:-8000}:8000"
+    volumes:
+      - artifact-data:/app/data/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      rag-health:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2).read()",
+        ]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      retries: 12
+    networks: [copilot]
+
+volumes:
+  postgres-data:
+  artifact-data:
+
+networks:
+  copilot:
+    driver: bridge

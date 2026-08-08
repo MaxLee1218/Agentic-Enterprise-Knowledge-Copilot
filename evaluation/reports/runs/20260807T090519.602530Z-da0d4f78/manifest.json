@@ -1,0 +1,10 @@
+{
+  "config_hash": "sha256:1fad9876341f0b442eba771516a5639882ce37be095ffc1c7152132fda0d4f78",
+  "dataset_hash": "sha256:13ff939d7af5f665d99f3832409dd4cb0fe444e0de1cc9471b53ee52567fc3c7",
+  "dataset_id": "supplier_quality",
+  "dataset_version": "1.1.0",
+  "fixture_hash": "sha256:658fbb40562a44efbbfe4685f2c4d271ae1ec55d9c91eb0efb3cbf909705d326",
+  "run_id": "20260807T090519.602530Z-da0d4f78",
+  "schema_version": "evaluation-run.v1",
+  "seed": 42
+}

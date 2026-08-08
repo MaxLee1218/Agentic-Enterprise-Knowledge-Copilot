@@ -1,13 +1,16 @@
-"""Thread-safe in-memory persistence for deterministic workflow execution."""
+"""Workflow persistence with in-memory and SQLAlchemy-backed implementations."""
 
 from __future__ import annotations
 
 import json
-import sqlite3
-import time
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import RLock
+from typing import Any, cast
+
+from sqlalchemy import delete, select, update
+from sqlalchemy.engine import CursorResult
+from sqlalchemy.exc import IntegrityError
 
 from copilot.contracts import (
     JsonObject,
@@ -20,13 +23,28 @@ from copilot.contracts import (
     ToolResult,
     VerificationResult,
 )
+from copilot.persistence.database import PersistenceDatabase, coerce_database
+from copilot.persistence.models import (
+    WorkflowLeaseRow,
+    WorkflowPlanHistoryRow,
+    WorkflowStateEventRow,
+    WorkflowStepResultRow,
+    WorkflowTaskRow,
+    WorkflowToolResultRow,
+    WorkflowVerificationHistoryRow,
+)
 from copilot.services.workflows.models import StepExecutionRecord, TaskStateEvent
 
 
 class InMemoryWorkflowRepository:
-    """Append attempts/events and compare-and-swap TaskState snapshots in memory."""
+    """Preserve the application port while optionally persisting through SQLAlchemy."""
 
-    def __init__(self, database_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        database_path: PersistenceDatabase | Path | None = None,
+        *,
+        initialize_schema: bool = True,
+    ) -> None:
         self._requests: dict[str, TaskRequest] = {}
         self._contracts: dict[str, TaskContract] = {}
         self._plans: dict[str, TaskPlan] = {}
@@ -39,14 +57,10 @@ class InMemoryWorkflowRepository:
         self._verification_results: dict[str, VerificationResult] = {}
         self._execution_leases: dict[str, str] = {}
         self._lock = RLock()
-        self._database = (
-            sqlite3.connect(database_path, check_same_thread=False)
-            if database_path is not None
-            else None
+        self._database, self._owns_database = coerce_database(
+            database_path,
+            initialize_schema=initialize_schema,
         )
-        if self._database is not None:
-            self._setup()
-            self._load()
 
     def initialize(
         self,
@@ -58,32 +72,31 @@ class InMemoryWorkflowRepository:
         task_id: str | None = None,
     ) -> None:
         """Persist initial values exactly once per task."""
-        task_id = task_id or (contract.task_id if contract is not None else state.task_id)
+        resolved_task_id = task_id or (contract.task_id if contract is not None else state.task_id)
         with self._lock:
-            if task_id in self._states:
-                raise ValueError("workflow task already exists")
-            if self._database is not None:
-                with self._database:
-                    self._database.execute(
-                        """
-                        INSERT INTO workflow_tasks
-                        (task_id, request_json, contract_json, plan_json, state_json)
-                        VALUES (?, ?, ?, ?, ?)
-                        """,
-                        (
-                            task_id,
-                            request.model_dump_json(),
-                            contract.model_dump_json() if contract is not None else "null",
-                            plan.model_dump_json() if plan is not None else "null",
-                            state.model_dump_json(),
-                        ),
+            if self._database is None:
+                if resolved_task_id in self._states:
+                    raise ValueError("workflow task already exists")
+                self._requests[resolved_task_id] = request
+                if contract is not None:
+                    self._contracts[resolved_task_id] = contract
+                if plan is not None:
+                    self._plans[resolved_task_id] = plan
+                self._states[resolved_task_id] = state
+                return
+            try:
+                with self._database.session() as session:
+                    session.add(
+                        WorkflowTaskRow(
+                            task_id=resolved_task_id,
+                            request_json=request.model_dump_json(),
+                            contract_json=(contract.model_dump_json() if contract else None),
+                            plan_json=plan.model_dump_json() if plan else None,
+                            state_json=state.model_dump_json(),
+                        )
                     )
-            self._requests[task_id] = request
-            if contract is not None:
-                self._contracts[task_id] = contract
-            if plan is not None:
-                self._plans[task_id] = plan
-            self._states[task_id] = state
+            except IntegrityError as exc:
+                raise ValueError("workflow task already exists") from exc
 
     def commit_transition(
         self,
@@ -92,381 +105,474 @@ class InMemoryWorkflowRepository:
         event: TaskStateEvent,
     ) -> None:
         """Atomically compare state version, append event, and replace the snapshot."""
+        if current.version != previous.version + 1:
+            raise ValueError("task state compare-and-swap conflict")
+        if event.event_id != current.last_event_id:
+            raise ValueError("state event does not produce the supplied snapshot")
         with self._lock:
-            authoritative = self._states.get(previous.task_id)
-            if authoritative != previous or current.version != previous.version + 1:
-                raise ValueError("task state compare-and-swap conflict")
-            if event.event_id != current.last_event_id:
-                raise ValueError("state event does not produce the supplied snapshot")
-            if self._database is not None:
-                with self._database:
-                    updated = self._database.execute(
-                        """
-                        UPDATE workflow_tasks
-                        SET state_json = ?
-                        WHERE task_id = ? AND state_json = ?
-                        """,
-                        (
-                            current.model_dump_json(),
-                            current.task_id,
-                            previous.model_dump_json(),
+            if self._database is None:
+                authoritative = self._states.get(previous.task_id)
+                if authoritative != previous:
+                    raise ValueError("task state compare-and-swap conflict")
+                self._states[current.task_id] = current
+                self._state_events.append(event)
+                return
+            try:
+                with self._database.session() as session:
+                    result = cast(
+                        CursorResult[Any],
+                        session.execute(
+                            update(WorkflowTaskRow)
+                            .where(
+                                WorkflowTaskRow.task_id == previous.task_id,
+                                WorkflowTaskRow.state_json == previous.model_dump_json(),
+                            )
+                            .values(state_json=current.model_dump_json())
                         ),
                     )
-                    if updated.rowcount != 1:
+                    if result.rowcount != 1:
                         raise ValueError("task state compare-and-swap conflict")
-                    self._database.execute(
-                        "INSERT INTO workflow_state_events VALUES (?, ?, ?)",
-                        (event.event_id, event.task_id, _event_json(event)),
+                    session.add(
+                        WorkflowStateEventRow(
+                            event_id=event.event_id,
+                            task_id=event.task_id,
+                            payload_json=_event_json(event),
+                        )
                     )
-            self._state_events.append(event)
-            self._states[current.task_id] = current
+            except IntegrityError as exc:
+                raise ValueError("task state compare-and-swap conflict") from exc
 
     def save_contract(self, contract: TaskContract) -> None:
         """Persist the understanding result before any business tool execution."""
         with self._lock:
-            if contract.task_id not in self._states:
-                raise ValueError("workflow task was not initialized")
-            if self._tool_results:
-                existing_task_results = [
-                    result for result in self._tool_results if result.task_id == contract.task_id
-                ]
-                if existing_task_results:
+            if self._database is None:
+                if contract.task_id not in self._states:
+                    raise ValueError("workflow task was not initialized")
+                if any(result.task_id == contract.task_id for result in self._tool_results):
                     raise ValueError("contract cannot change after tool execution")
-            existing = self._contracts.get(contract.task_id)
-            if existing is not None and contract.contract_version < existing.contract_version:
-                raise ValueError("contract version cannot decrease")
-            if self._database is not None:
-                with self._database:
-                    self._database.execute(
-                        "UPDATE workflow_tasks SET contract_json = ? WHERE task_id = ?",
-                        (contract.model_dump_json(), contract.task_id),
+                existing = self._contracts.get(contract.task_id)
+                if existing is not None and contract.contract_version < existing.contract_version:
+                    raise ValueError("contract version cannot decrease")
+                self._contracts[contract.task_id] = contract
+                return
+            with self._database.session() as session:
+                row = session.get(WorkflowTaskRow, contract.task_id)
+                if row is None:
+                    raise ValueError("workflow task was not initialized")
+                attempt = session.scalar(
+                    select(WorkflowToolResultRow.sequence_id).where(
+                        WorkflowToolResultRow.task_id == contract.task_id
                     )
-            self._contracts[contract.task_id] = contract
+                )
+                if attempt is not None:
+                    raise ValueError("contract cannot change after tool execution")
+                if row.contract_json is not None:
+                    existing = TaskContract.model_validate_json(row.contract_json)
+                    if contract.contract_version < existing.contract_version:
+                        raise ValueError("contract version cannot decrease")
+                row.contract_json = contract.model_dump_json()
 
     def save_plan(self, plan: TaskPlan) -> None:
-        """Persist an LLM candidate as the current plan before tool execution."""
+        """Persist the current plan while retaining immutable prior versions."""
         with self._lock:
-            if plan.task_id not in self._states:
-                raise ValueError("workflow task was not initialized")
-            existing = self._plans.get(plan.task_id)
-            if existing is not None and plan == existing:
-                return
-            if any(result.task_id == plan.task_id for result in self._tool_results):
-                if existing is not None and plan.planning_version <= existing.planning_version:
+            if self._database is None:
+                if plan.task_id not in self._states:
+                    raise ValueError("workflow task was not initialized")
+                existing = self._plans.get(plan.task_id)
+                if existing == plan:
+                    return
+                executed = any(result.task_id == plan.task_id for result in self._tool_results)
+                if (
+                    executed
+                    and existing is not None
+                    and plan.planning_version <= existing.planning_version
+                ):
                     raise ValueError("replan version must increase after tool execution")
-            elif existing is not None and plan.planning_version < existing.planning_version:
-                raise ValueError("plan version cannot decrease")
-            if self._database is not None:
-                with self._database:
-                    if existing is not None:
-                        self._database.execute(
-                            """
-                            INSERT OR IGNORE INTO workflow_plan_history
-                            (task_id, planning_version, plan_json)
-                            VALUES (?, ?, ?)
-                            """,
-                            (
-                                existing.task_id,
-                                existing.planning_version,
-                                existing.model_dump_json(),
-                            ),
-                        )
-                    self._database.execute(
-                        "UPDATE workflow_tasks SET plan_json = ? WHERE task_id = ?",
-                        (plan.model_dump_json(), plan.task_id),
+                if (
+                    not executed
+                    and existing is not None
+                    and plan.planning_version < existing.planning_version
+                ):
+                    raise ValueError("plan version cannot decrease")
+                self._plans[plan.task_id] = plan
+                return
+            with self._database.session() as session:
+                row = session.get(WorkflowTaskRow, plan.task_id)
+                if row is None:
+                    raise ValueError("workflow task was not initialized")
+                existing = TaskPlan.model_validate_json(row.plan_json) if row.plan_json else None
+                if existing == plan:
+                    return
+                executed = session.scalar(
+                    select(WorkflowToolResultRow.sequence_id).where(
+                        WorkflowToolResultRow.task_id == plan.task_id
                     )
-            self._plans[plan.task_id] = plan
+                )
+                if (
+                    executed is not None
+                    and existing is not None
+                    and plan.planning_version <= existing.planning_version
+                ):
+                    raise ValueError("replan version must increase after tool execution")
+                if (
+                    executed is None
+                    and existing is not None
+                    and plan.planning_version < existing.planning_version
+                ):
+                    raise ValueError("plan version cannot decrease")
+                if existing is not None:
+                    prior = session.scalar(
+                        select(WorkflowPlanHistoryRow.sequence_id).where(
+                            WorkflowPlanHistoryRow.task_id == existing.task_id,
+                            WorkflowPlanHistoryRow.planning_version == existing.planning_version,
+                            WorkflowPlanHistoryRow.plan_json == existing.model_dump_json(),
+                        )
+                    )
+                    if prior is None:
+                        session.add(
+                            WorkflowPlanHistoryRow(
+                                task_id=existing.task_id,
+                                planning_version=existing.planning_version,
+                                plan_json=existing.model_dump_json(),
+                            )
+                        )
+                row.plan_json = plan.model_dump_json()
 
     def save_tool_result(self, result: ToolResult) -> None:
-        """Append one unique tool attempt."""
+        """Append one unique immutable tool attempt."""
         with self._lock:
-            existing = next(
-                (item for item in self._tool_results if item.tool_call_id == result.tool_call_id),
-                None,
-            )
-            if existing is not None and existing == result:
+            if self._database is None:
+                existing = next(
+                    (
+                        item
+                        for item in self._tool_results
+                        if item.tool_call_id == result.tool_call_id
+                    ),
+                    None,
+                )
+                if existing == result:
+                    return
+                if existing is not None:
+                    raise ValueError("tool result already exists")
+                self._tool_results.append(result)
                 return
-                raise ValueError("tool result already exists")
-            if self._database is not None:
-                with self._database:
-                    self._database.execute(
-                        "INSERT INTO workflow_tool_results VALUES (?, ?, ?)",
-                        (result.tool_call_id, result.task_id, result.model_dump_json()),
+            with self._database.session() as session:
+                payload = session.scalar(
+                    select(WorkflowToolResultRow.payload_json).where(
+                        WorkflowToolResultRow.tool_call_id == result.tool_call_id
                     )
-            self._tool_results.append(result)
+                )
+                if payload is not None:
+                    if ToolResult.model_validate_json(payload) == result:
+                        return
+                    raise ValueError("tool result already exists")
+                session.add(
+                    WorkflowToolResultRow(
+                        tool_call_id=result.tool_call_id,
+                        task_id=result.task_id,
+                        payload_json=result.model_dump_json(),
+                    )
+                )
 
     def save_step_result(self, result: StepResult, execution: StepExecutionRecord) -> None:
         """Save exactly one final result per planned step."""
         with self._lock:
-            if result.step_id in self._step_results:
-                if (
-                    self._step_results[result.step_id] == result
-                    and self._step_executions[result.step_id] == execution
-                ):
-                    return
-                raise ValueError("step result already exists")
-            if self._database is not None:
-                task_id = _task_id_for_step(self._plans, result.step_id)
-                with self._database:
-                    self._database.execute(
-                        "INSERT INTO workflow_step_results VALUES (?, ?, ?, ?)",
-                        (
-                            result.step_id,
-                            task_id,
-                            result.model_dump_json(),
-                            _execution_json(execution),
-                        ),
+            if self._database is None:
+                existing = self._step_results.get(result.step_id)
+                if existing is not None:
+                    if existing == result and self._step_executions[result.step_id] == execution:
+                        return
+                    raise ValueError("step result already exists")
+                self._step_results[result.step_id] = result
+                self._step_executions[result.step_id] = execution
+                return
+            with self._database.session() as session:
+                row = session.scalar(
+                    select(WorkflowStepResultRow).where(
+                        WorkflowStepResultRow.step_id == result.step_id
                     )
-            self._step_results[result.step_id] = result
-            self._step_executions[result.step_id] = execution
+                )
+                if row is not None:
+                    if (
+                        StepResult.model_validate_json(row.result_json) == result
+                        and _execution_from_json(row.execution_json) == execution
+                    ):
+                        return
+                    raise ValueError("step result already exists")
+                task_id = self._task_id_for_step(session, result.step_id)
+                session.add(
+                    WorkflowStepResultRow(
+                        step_id=result.step_id,
+                        task_id=task_id,
+                        result_json=result.model_dump_json(),
+                        execution_json=_execution_json(execution),
+                    )
+                )
 
     def save_task_result(self, result: TaskResult) -> None:
         """Save exactly one terminal result per task."""
         with self._lock:
-            if result.task_id in self._task_results:
-                if self._task_results[result.task_id] == result:
+            if self._database is None:
+                existing = self._task_results.get(result.task_id)
+                if existing == result:
                     return
-                raise ValueError("task result already exists")
-            if self._database is not None:
-                with self._database:
-                    self._database.execute(
-                        "UPDATE workflow_tasks SET task_result_json = ? WHERE task_id = ?",
-                        (result.model_dump_json(), result.task_id),
-                    )
-            self._task_results[result.task_id] = result
+                if existing is not None:
+                    raise ValueError("task result already exists")
+                self._task_results[result.task_id] = result
+                return
+            with self._database.session() as session:
+                row = session.get(WorkflowTaskRow, result.task_id)
+                if row is None:
+                    raise ValueError("workflow task was not initialized")
+                if row.task_result_json is not None:
+                    if TaskResult.model_validate_json(row.task_result_json) == result:
+                        return
+                    raise ValueError("task result already exists")
+                row.task_result_json = result.model_dump_json()
 
     def save_verification_result(self, result: VerificationResult) -> None:
-        """Append a verification attempt and retain the latest result for recovery."""
+        """Append verification history and retain the latest result for recovery."""
         with self._lock:
-            existing = self._verification_results.get(result.task_id)
-            if existing is not None and existing == result:
+            if self._database is None:
+                if self._verification_results.get(result.task_id) == result:
+                    return
+                self._verification_results[result.task_id] = result
                 return
-            if self._database is not None:
-                with self._database:
-                    if existing is not None:
-                        self._database.execute(
-                            """
-                            INSERT OR IGNORE INTO workflow_verification_history
-                            (task_id, verification_json)
-                            VALUES (?, ?)
-                            """,
-                            (existing.task_id, existing.model_dump_json()),
+            with self._database.session() as session:
+                row = session.get(WorkflowTaskRow, result.task_id)
+                if row is None:
+                    raise ValueError("workflow task was not initialized")
+                if row.verification_json == result.model_dump_json():
+                    return
+                if row.verification_json is not None:
+                    prior = session.scalar(
+                        select(WorkflowVerificationHistoryRow.sequence_id).where(
+                            WorkflowVerificationHistoryRow.task_id == result.task_id,
+                            WorkflowVerificationHistoryRow.verification_json
+                            == row.verification_json,
                         )
-                    self._database.execute(
-                        "UPDATE workflow_tasks SET verification_json = ? WHERE task_id = ?",
-                        (result.model_dump_json(), result.task_id),
                     )
-            self._verification_results[result.task_id] = result
+                    if prior is None:
+                        session.add(
+                            WorkflowVerificationHistoryRow(
+                                task_id=result.task_id,
+                                verification_json=row.verification_json,
+                            )
+                        )
+                row.verification_json = result.model_dump_json()
 
     def acquire_execution(self, task_id: str, owner_id: str) -> None:
-        """Prevent concurrent start/resume for one task."""
+        """Prevent concurrent start/resume for one task with a bounded lease."""
         with self._lock:
-            if self._database is not None:
+            if self._database is None:
+                owner = self._execution_leases.get(task_id)
+                if owner is not None and owner != owner_id:
+                    raise ValueError("task execution lease conflict")
                 if task_id in self._task_results:
                     raise ValueError("terminal task cannot be resumed")
-                expires_at = time.time() + 600
-                self._database.execute(
-                    "DELETE FROM workflow_leases WHERE expires_at <= ?",
-                    (time.time(),),
-                )
-                try:
-                    self._database.execute(
-                        "INSERT INTO workflow_leases VALUES (?, ?, ?)",
-                        (task_id, owner_id, expires_at),
+                self._execution_leases[task_id] = owner_id
+                return
+            now = datetime.now(UTC)
+            try:
+                with self._database.session() as session:
+                    task = session.get(WorkflowTaskRow, task_id)
+                    if task is None:
+                        raise ValueError("workflow task was not initialized")
+                    if task.task_result_json is not None:
+                        raise ValueError("terminal task cannot be resumed")
+                    session.execute(
+                        delete(WorkflowLeaseRow).where(WorkflowLeaseRow.expires_at <= now)
                     )
-                except sqlite3.IntegrityError as exc:
-                    self._database.rollback()
-                    raise ValueError("task execution lease conflict") from exc
-                self._database.commit()
-            owner = self._execution_leases.get(task_id)
-            if owner is not None and owner != owner_id:
-                raise ValueError("task execution lease conflict")
-            if task_id in self._task_results:
-                raise ValueError("terminal task cannot be resumed")
-            self._execution_leases[task_id] = owner_id
+                    session.add(
+                        WorkflowLeaseRow(
+                            task_id=task_id,
+                            owner_id=owner_id,
+                            expires_at=now + timedelta(minutes=10),
+                        )
+                    )
+            except IntegrityError as exc:
+                raise ValueError("task execution lease conflict") from exc
 
     def release_execution(self, task_id: str, owner_id: str) -> None:
         """Release only the caller's task lease."""
         with self._lock:
-            if self._execution_leases.get(task_id) == owner_id:
-                del self._execution_leases[task_id]
-            if self._database is not None:
-                self._database.execute(
-                    "DELETE FROM workflow_leases WHERE task_id = ? AND owner_id = ?",
-                    (task_id, owner_id),
+            if self._database is None:
+                if self._execution_leases.get(task_id) == owner_id:
+                    del self._execution_leases[task_id]
+                return
+            with self._database.session() as session:
+                session.execute(
+                    delete(WorkflowLeaseRow).where(
+                        WorkflowLeaseRow.task_id == task_id,
+                        WorkflowLeaseRow.owner_id == owner_id,
+                    )
                 )
-                self._database.commit()
 
     def state_for(self, task_id: str) -> TaskState:
-        """Return the authoritative state snapshot."""
         with self._lock:
-            return self._states[task_id]
+            if self._database is None:
+                return self._states[task_id]
+            with self._database.session() as session:
+                row = session.get(WorkflowTaskRow, task_id)
+                if row is None:
+                    raise KeyError(task_id)
+                return TaskState.model_validate_json(row.state_json)
 
     def request_for(self, task_id: str) -> TaskRequest:
-        """Return the immutable original request."""
         with self._lock:
-            return self._requests[task_id]
+            if self._database is None:
+                return self._requests[task_id]
+            with self._database.session() as session:
+                row = session.get(WorkflowTaskRow, task_id)
+                if row is None:
+                    raise KeyError(task_id)
+                return TaskRequest.model_validate_json(row.request_json)
 
     def contract_for(self, task_id: str) -> TaskContract | None:
-        """Return the latest persisted contract, if understanding completed."""
         with self._lock:
-            return self._contracts.get(task_id)
+            if self._database is None:
+                return self._contracts.get(task_id)
+            with self._database.session() as session:
+                row = session.get(WorkflowTaskRow, task_id)
+                if row is None:
+                    raise KeyError(task_id)
+                return (
+                    TaskContract.model_validate_json(row.contract_json)
+                    if row.contract_json
+                    else None
+                )
 
     def plan_for(self, task_id: str) -> TaskPlan | None:
-        """Return the latest persisted plan, if planning completed."""
         with self._lock:
-            return self._plans.get(task_id)
+            if self._database is None:
+                return self._plans.get(task_id)
+            with self._database.session() as session:
+                row = session.get(WorkflowTaskRow, task_id)
+                if row is None:
+                    raise KeyError(task_id)
+                return TaskPlan.model_validate_json(row.plan_json) if row.plan_json else None
 
     def task_result_for(self, task_id: str) -> TaskResult | None:
-        """Return the terminal result when one has been committed."""
         with self._lock:
-            return self._task_results.get(task_id)
+            if self._database is None:
+                return self._task_results.get(task_id)
+            with self._database.session() as session:
+                row = session.get(WorkflowTaskRow, task_id)
+                if row is None:
+                    raise KeyError(task_id)
+                return (
+                    TaskResult.model_validate_json(row.task_result_json)
+                    if row.task_result_json
+                    else None
+                )
 
     def step_results_for(self, task_id: str) -> tuple[StepResult, ...]:
-        """Return task-owned step results in deterministic plan order."""
-        with self._lock:
-            plan = self._plans.get(task_id)
-            if plan is None:
-                return ()
-            return tuple(
-                result
-                for step in plan.steps
-                if (result := self._step_results.get(step.step_id)) is not None
-            )
+        plan = self.plan_for(task_id)
+        if plan is None:
+            return ()
+        by_id = {item.step_id: item for item in self.step_results()}
+        return tuple(by_id[step.step_id] for step in plan.steps if step.step_id in by_id)
 
     def step_execution_for(self, step_id: str) -> StepExecutionRecord | None:
-        """Return the operational envelope for one completed step."""
         with self._lock:
-            return self._step_executions.get(step_id)
+            if self._database is None:
+                return self._step_executions.get(step_id)
+            with self._database.session() as session:
+                payload = session.scalar(
+                    select(WorkflowStepResultRow.execution_json).where(
+                        WorkflowStepResultRow.step_id == step_id
+                    )
+                )
+                return _execution_from_json(payload) if payload else None
 
     def tool_results_for(self, task_id: str) -> tuple[ToolResult, ...]:
-        """Return task-owned tool attempts in append order."""
         with self._lock:
-            return tuple(result for result in self._tool_results if result.task_id == task_id)
+            if self._database is None:
+                return tuple(result for result in self._tool_results if result.task_id == task_id)
+            with self._database.session() as session:
+                payloads = session.scalars(
+                    select(WorkflowToolResultRow.payload_json)
+                    .where(WorkflowToolResultRow.task_id == task_id)
+                    .order_by(WorkflowToolResultRow.sequence_id)
+                )
+                return tuple(ToolResult.model_validate_json(payload) for payload in payloads)
 
     def state_events_for(self, task_id: str) -> tuple[TaskStateEvent, ...]:
-        """Return task-owned state events in transition order."""
         with self._lock:
-            return tuple(event for event in self._state_events if event.task_id == task_id)
+            if self._database is None:
+                return tuple(event for event in self._state_events if event.task_id == task_id)
+            with self._database.session() as session:
+                payloads = session.scalars(
+                    select(WorkflowStateEventRow.payload_json)
+                    .where(WorkflowStateEventRow.task_id == task_id)
+                    .order_by(WorkflowStateEventRow.sequence_id)
+                )
+                return tuple(_event_from_json(payload) for payload in payloads)
 
     def step_results(self) -> tuple[StepResult, ...]:
-        """Return step results in persistence order."""
         with self._lock:
-            return tuple(self._step_results.values())
+            if self._database is None:
+                return tuple(self._step_results.values())
+            with self._database.session() as session:
+                payloads = session.scalars(
+                    select(WorkflowStepResultRow.result_json).order_by(
+                        WorkflowStepResultRow.sequence_id
+                    )
+                )
+                return tuple(StepResult.model_validate_json(payload) for payload in payloads)
 
     def tool_results(self) -> tuple[ToolResult, ...]:
-        """Return every attempt in append order."""
         with self._lock:
-            return tuple(self._tool_results)
+            if self._database is None:
+                return tuple(self._tool_results)
+            with self._database.session() as session:
+                payloads = session.scalars(
+                    select(WorkflowToolResultRow.payload_json).order_by(
+                        WorkflowToolResultRow.sequence_id
+                    )
+                )
+                return tuple(ToolResult.model_validate_json(payload) for payload in payloads)
 
     def state_events(self) -> tuple[TaskStateEvent, ...]:
-        """Return immutable state events in transition order."""
         with self._lock:
-            return tuple(self._state_events)
+            if self._database is None:
+                return tuple(self._state_events)
+            with self._database.session() as session:
+                payloads = session.scalars(
+                    select(WorkflowStateEventRow.payload_json).order_by(
+                        WorkflowStateEventRow.sequence_id
+                    )
+                )
+                return tuple(_event_from_json(payload) for payload in payloads)
 
     def verification_result_for(self, task_id: str) -> VerificationResult:
-        """Return the persisted deterministic verification result."""
         with self._lock:
-            return self._verification_results[task_id]
+            if self._database is None:
+                return self._verification_results[task_id]
+            with self._database.session() as session:
+                row = session.get(WorkflowTaskRow, task_id)
+                if row is None or row.verification_json is None:
+                    raise KeyError(task_id)
+                return VerificationResult.model_validate_json(row.verification_json)
 
     def close(self) -> None:
-        """Close the optional durable SQLite connection."""
-        with self._lock:
-            if self._database is not None:
-                self._database.close()
-                self._database = None
+        if self._owns_database and self._database is not None:
+            self._database.dispose()
+            self._database = None
 
-    def _setup(self) -> None:
-        assert self._database is not None
-        self._database.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS workflow_tasks (
-                task_id TEXT PRIMARY KEY,
-                request_json TEXT NOT NULL,
-                contract_json TEXT NOT NULL,
-                plan_json TEXT NOT NULL,
-                state_json TEXT NOT NULL,
-                task_result_json TEXT,
-                verification_json TEXT
-            );
-            CREATE TABLE IF NOT EXISTS workflow_state_events (
-                event_id TEXT PRIMARY KEY,
-                task_id TEXT NOT NULL,
-                payload_json TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS workflow_tool_results (
-                tool_call_id TEXT PRIMARY KEY,
-                task_id TEXT NOT NULL,
-                payload_json TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS workflow_step_results (
-                step_id TEXT PRIMARY KEY,
-                task_id TEXT NOT NULL,
-                result_json TEXT NOT NULL,
-                execution_json TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS workflow_leases (
-                task_id TEXT PRIMARY KEY,
-                owner_id TEXT NOT NULL,
-                expires_at REAL NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS workflow_plan_history (
-                task_id TEXT NOT NULL,
-                planning_version INTEGER NOT NULL,
-                plan_json TEXT NOT NULL,
-                UNIQUE(task_id, planning_version, plan_json)
-            );
-            CREATE TABLE IF NOT EXISTS workflow_verification_history (
-                task_id TEXT NOT NULL,
-                verification_json TEXT NOT NULL,
-                UNIQUE(task_id, verification_json)
-            );
-            """
-        )
-        self._database.commit()
+    def _task_id_for_step(self, session: object, step_id: str) -> str:
+        # Kept local to avoid exposing ORM types through the application port.
+        from sqlalchemy.orm import Session
 
-    def _load(self) -> None:
-        assert self._database is not None
-        for row in self._database.execute(
-            """
-            SELECT task_id, request_json, contract_json, plan_json, state_json,
-                   task_result_json, verification_json
-            FROM workflow_tasks
-            """
-        ):
-            task_id = str(row[0])
-            self._requests[task_id] = TaskRequest.model_validate_json(row[1])
-            if row[2] != "null":
-                self._contracts[task_id] = TaskContract.model_validate_json(row[2])
-            if row[3] != "null":
-                self._plans[task_id] = TaskPlan.model_validate_json(row[3])
-            self._states[task_id] = TaskState.model_validate_json(row[4])
-            if row[5] is not None:
-                self._task_results[task_id] = TaskResult.model_validate_json(row[5])
-            if row[6] is not None:
-                self._verification_results[task_id] = VerificationResult.model_validate_json(row[6])
-        for row in self._database.execute(
-            "SELECT payload_json FROM workflow_tool_results ORDER BY rowid"
-        ):
-            self._tool_results.append(ToolResult.model_validate_json(row[0]))
-        for row in self._database.execute(
-            "SELECT result_json, execution_json FROM workflow_step_results ORDER BY rowid"
-        ):
-            result = StepResult.model_validate_json(row[0])
-            self._step_results[result.step_id] = result
-            self._step_executions[result.step_id] = _execution_from_json(row[1])
-        for row in self._database.execute(
-            "SELECT payload_json FROM workflow_state_events ORDER BY rowid"
-        ):
-            self._state_events.append(_event_from_json(row[0]))
-
-
-def _task_id_for_step(plans: dict[str, TaskPlan], step_id: str) -> str:
-    return next(
-        task_id
-        for task_id, plan in plans.items()
-        if any(step.step_id == step_id for step in plan.steps)
-    )
+        assert isinstance(session, Session)
+        rows = session.scalars(select(WorkflowTaskRow)).all()
+        for row in rows:
+            if row.plan_json is None:
+                continue
+            plan = TaskPlan.model_validate_json(row.plan_json)
+            if any(step.step_id == step_id for step in plan.steps):
+                return row.task_id
+        raise ValueError("step does not belong to a persisted plan")
 
 
 def _event_json(event: TaskStateEvent) -> str:
@@ -542,3 +648,6 @@ def _execution_from_json(payload: str) -> StepExecutionRecord:
         failed_dependencies=tuple(raw["failed_dependencies"]),
         attempts=tuple(ToolAttemptSummary(**item) for item in raw["attempts"]),
     )
+
+
+__all__ = ["InMemoryWorkflowRepository"]

@@ -150,6 +150,65 @@ def test_database_statement_timeout_cannot_exceed_frozen_limit(
         get_settings()
 
 
+def test_local_persistence_defaults_to_checkpoint_sqlite_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///enterprise.db")
+    monkeypatch.delenv("PERSISTENCE_DATABASE_URL", raising=False)
+    settings = get_settings()
+
+    assert settings.effective_persistence_database_url == (
+        f"sqlite:///{settings.checkpoint_database_path}"
+    )
+    assert settings.database_provider == "mock"
+    assert settings.knowledge_provider == "mock"
+
+
+def test_production_requires_postgres_migrations_and_real_boundary_providers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///enterprise.db")
+    monkeypatch.setenv("PERSISTENCE_DATABASE_URL", "sqlite:///copilot.db")
+
+    with pytest.raises(ConfigurationError, match="SETTINGS"):
+        get_settings()
+
+
+def test_valid_production_profile_is_strict_and_separates_databases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("PERSISTENCE_DATABASE_URL", "postgresql+psycopg://user:secret@db/copilot")
+    monkeypatch.setenv("PERSISTENCE_AUTO_CREATE_SCHEMA", "false")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://readonly:secret@business/quality")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlalchemy")
+    monkeypatch.setenv("KNOWLEDGE_PROVIDER", "http")
+    monkeypatch.setenv("RAG_BASE_URL", "https://rag.internal.example")
+
+    settings = get_settings()
+
+    assert settings.app_env == "production"
+    assert settings.persistence_auto_create_schema is False
+    assert settings.effective_persistence_database_url.endswith("/copilot")
+
+
+def test_production_requires_checkpoint_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("PERSISTENCE_DATABASE_URL", "postgresql+psycopg://user:secret@db/copilot")
+    monkeypatch.setenv("PERSISTENCE_AUTO_CREATE_SCHEMA", "false")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://readonly:secret@business/quality")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlalchemy")
+    monkeypatch.setenv("KNOWLEDGE_PROVIDER", "http")
+    monkeypatch.setenv("RAG_BASE_URL", "https://rag.internal.example")
+    monkeypatch.setenv("CHECKPOINT_ENABLED", "false")
+
+    with pytest.raises(ConfigurationError, match="SETTINGS"):
+        get_settings()
+
+
 @pytest.mark.parametrize(
     ("name", "value"),
     [

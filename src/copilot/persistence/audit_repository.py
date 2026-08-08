@@ -1,13 +1,17 @@
 """Append-only persistence boundary for tool execution audit records."""
 
 import json
-import sqlite3
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from threading import RLock
 
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+
 from copilot.contracts import JsonObject, ToolResultStatus
+from copilot.persistence.database import PersistenceDatabase, coerce_database
+from copilot.persistence.models import WorkflowGraphAuditRow, WorkflowToolAuditRow
 from copilot.security.redaction import redact_for_logging
 from copilot.services.workflows.models import WorkflowAuditRecord
 from copilot.tools.base import ToolAuditRecord
@@ -16,78 +20,77 @@ from copilot.tools.base import ToolAuditRecord
 class InMemoryToolAuditRepository:
     """Thread-safe local audit repository with one record per invocation attempt."""
 
-    def __init__(self, database_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        database_path: PersistenceDatabase | Path | None = None,
+        *,
+        initialize_schema: bool = True,
+    ) -> None:
         self._records: list[ToolAuditRecord] = []
         self._call_ids: set[str] = set()
         self._lock = RLock()
-        self._database = _database(database_path)
-        if self._database is not None:
-            self._database.execute(
-                """
-                CREATE TABLE IF NOT EXISTS workflow_tool_audit (
-                    event_id TEXT PRIMARY KEY,
-                    payload_json TEXT NOT NULL
-                )
-                """
-            )
-            self._database.commit()
-            for row in self._database.execute(
-                "SELECT payload_json FROM workflow_tool_audit ORDER BY rowid"
-            ):
-                record = _tool_record(row[0])
-                self._records.append(record)
-                self._call_ids.add(record.tool_call_id)
+        self._database, self._owns_database = coerce_database(
+            database_path,
+            initialize_schema=initialize_schema,
+        )
 
     def append(self, record: ToolAuditRecord) -> None:
         """Append one record and reject attempts to rewrite an existing call audit."""
         with self._lock:
+            if self._database is not None:
+                try:
+                    with self._database.session() as session:
+                        session.add(
+                            WorkflowToolAuditRow(
+                                event_id=record.tool_call_id,
+                                task_id=record.task_id,
+                                payload_json=_tool_json(record),
+                            )
+                        )
+                except IntegrityError as exc:
+                    raise ValueError("tool call audit record already exists") from exc
+                return
             if record.tool_call_id in self._call_ids:
                 raise ValueError("tool call audit record already exists")
-            if self._database is not None:
-                with self._database:
-                    self._database.execute(
-                        "INSERT INTO workflow_tool_audit VALUES (?, ?)",
-                        (record.tool_call_id, _tool_json(record)),
-                    )
             self._records.append(record)
             self._call_ids.add(record.tool_call_id)
 
     def list(self) -> tuple[ToolAuditRecord, ...]:
         """Return an immutable snapshot in append order."""
         with self._lock:
+            if self._database is not None:
+                with self._database.session() as session:
+                    payloads = session.scalars(
+                        select(WorkflowToolAuditRow.payload_json).order_by(
+                            WorkflowToolAuditRow.sequence_id
+                        )
+                    )
+                    return tuple(_tool_record(item) for item in payloads)
             return tuple(self._records)
 
     def close(self) -> None:
         with self._lock:
-            if self._database is not None:
-                self._database.close()
+            if self._owns_database and self._database is not None:
+                self._database.dispose()
                 self._database = None
 
 
 class InMemoryWorkflowAuditRepository:
     """Thread-safe append-only workflow event sink."""
 
-    def __init__(self, database_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        database_path: PersistenceDatabase | Path | None = None,
+        *,
+        initialize_schema: bool = True,
+    ) -> None:
         self._records: list[WorkflowAuditRecord] = []
         self._event_ids: set[str] = set()
         self._lock = RLock()
-        self._database = _database(database_path)
-        if self._database is not None:
-            self._database.execute(
-                """
-                CREATE TABLE IF NOT EXISTS workflow_graph_audit (
-                    event_id TEXT PRIMARY KEY,
-                    payload_json TEXT NOT NULL
-                )
-                """
-            )
-            self._database.commit()
-            for row in self._database.execute(
-                "SELECT payload_json FROM workflow_graph_audit ORDER BY rowid"
-            ):
-                record = _workflow_record(row[0])
-                self._records.append(record)
-                self._event_ids.add(record.event_id)
+        self._database, self._owns_database = coerce_database(
+            database_path,
+            initialize_schema=initialize_schema,
+        )
 
     def append(self, record: WorkflowAuditRecord) -> None:
         """Append one unique structured event or fail closed."""
@@ -99,31 +102,42 @@ class InMemoryWorkflowAuditRepository:
             ),
         )
         with self._lock:
+            if self._database is not None:
+                try:
+                    with self._database.session() as session:
+                        session.add(
+                            WorkflowGraphAuditRow(
+                                event_id=record.event_id,
+                                task_id=record.task_id,
+                                payload_json=_workflow_json(record),
+                            )
+                        )
+                except IntegrityError as exc:
+                    raise ValueError("workflow audit event already exists") from exc
+                return
             if record.event_id in self._event_ids:
                 raise ValueError("workflow audit event already exists")
-            if self._database is not None:
-                with self._database:
-                    self._database.execute(
-                        "INSERT INTO workflow_graph_audit VALUES (?, ?)",
-                        (record.event_id, _workflow_json(record)),
-                    )
             self._records.append(record)
             self._event_ids.add(record.event_id)
 
     def list(self) -> tuple[WorkflowAuditRecord, ...]:
         """Return workflow events in append order."""
         with self._lock:
+            if self._database is not None:
+                with self._database.session() as session:
+                    payloads = session.scalars(
+                        select(WorkflowGraphAuditRow.payload_json).order_by(
+                            WorkflowGraphAuditRow.sequence_id
+                        )
+                    )
+                    return tuple(_workflow_record(item) for item in payloads)
             return tuple(self._records)
 
     def close(self) -> None:
         with self._lock:
-            if self._database is not None:
-                self._database.close()
+            if self._owns_database and self._database is not None:
+                self._database.dispose()
                 self._database = None
-
-
-def _database(path: Path | None) -> sqlite3.Connection | None:
-    return sqlite3.connect(path, check_same_thread=False) if path is not None else None
 
 
 def _tool_json(record: ToolAuditRecord) -> str:

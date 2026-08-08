@@ -10,8 +10,9 @@ layer boundary, composition root, and transaction boundary where static analysis
 
 Most packages remain scaffolds. Today, the stable domain contracts, governed tool runtime, one
 deterministic offline Supplier Quality LangGraph workflow, and an optional structured LLM
-understanding/planning path are implemented. General enterprise adapters, distributed persistence,
-and MCP interoperability are not. A path
+understanding/planning path are implemented. Stage 17 adds SQLAlchemy-backed SQLite/PostgreSQL
+business persistence, Alembic migrations, PostgreSQL checkpointing, and container deployment.
+General enterprise adapters and MCP interoperability are not. A path
 in this document identifies an approved boundary, not proof that every capability is implemented.
 
 ## 1. System Architecture
@@ -54,7 +55,7 @@ renderer implementation directly.
 | Application | `copilot.services`, `copilot.agent`, `copilot.policies` | LangGraph workflow, deterministic validation, optional LLM planning/repair/replan, structured approval policy, and checkpoint resume implemented |
 | Governed capability runtime | `copilot.tools.base`, `registry`, `executor`, `runner`, `schema` | Implemented application-facing port, registration, authorization, execution, evidence, and audit sequence |
 | Capability adapters | `copilot.tools.knowledge`, `database`, `analytics`, `reporting`, offline mock module | HTTP knowledge, SQLAlchemy SQLite database, deterministic analytics, and deterministic PDF/JSON reporting adapters are implemented |
-| Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | DeepSeek/Mock structured LLM adapters, Evidence Ledger, deterministic verification, SQLite workflow/checkpoint/approval/audit storage, execution leases, local atomic Artifact storage, and bounded local observability support this stage |
+| Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | DeepSeek/Mock structured LLM adapters, Evidence Ledger, deterministic verification, SQLAlchemy SQLite/PostgreSQL workflow/approval/audit storage, SQLite/PostgreSQL checkpoints, execution leases, local atomic Artifact storage, and bounded local observability support this stage |
 | Cross-cutting security | `copilot.security`, `copilot.policies` | Source/trust findings, sensitive-data registry, recursive redaction, output guard, centralized permission matrix, and table/field access policy |
 | Interfaces | `copilot.api`, `copilot.cli` | Natural-language submission, task/step/Evidence/Artifact query, controlled Artifact download, cooperative cancellation, health, and approval detail/resolution API/CLI are implemented |
 | Protocol boundary | `copilot.mcp` | Future Phase 5 boundary; scaffold only |
@@ -275,6 +276,11 @@ class TaskService:
 
 Scripts under `scripts/` call reusable package APIs. They are not composition roots for business
 logic.
+
+The deployment persistence boundary uses `PERSISTENCE_DATABASE_URL`. `DATABASE_URL` belongs only
+to the governed enterprise business Database Tool. API workers validate the Alembic and
+checkpoint schemas but do not create or migrate them. See
+[ADR-006](adr/ADR-006-deployment-persistence-boundary.md).
 
 `build_application(settings)` is the shared API/CLI composition function. In mock mode it installs
 the bounded offline structured provider; in DeepSeek mode it installs the configured real

@@ -2,12 +2,12 @@
 
 ## Run Metadata
 
-- Run ID: `20260807T090519.602530Z-da0d4f78`
+- Run ID: `20260807T082526.573091Z-da0d4f78`
 - Mode: `mock`
 - Seed: `42`
 - Git commit: `7bad10abc4903623ba07db9d933607e09863f8fb`
-- Started: `2026-08-07T09:05:19.602530+00:00`
-- Duration: `2765 ms`
+- Started: `2026-08-07T08:25:26.573091+00:00`
+- Duration: `2804 ms`
 
 ## Dataset
 
@@ -57,11 +57,11 @@
 - average_replan_count: 0.03333333333333333333333333333 (0.03333333333333333333333333333/1) [lower_is_better]
 - max_replan_count: 1 (1/1) [informational]
 - replan_exhausted_count: 0 (0/1) [lower_is_better]
-- latency_average_ms: 88.53333333333333333333333333 (88.53333333333333333333333333/1) [informational]
-- latency_p50_ms: 95 (95/1) [informational]
-- latency_p95_ms: 136 (136/1) [informational]
-- latency_min_ms: 44 (44/1) [informational]
-- latency_max_ms: 150 (150/1) [informational]
+- latency_average_ms: 89.76666666666666666666666667 (89.76666666666666666666666667/1) [informational]
+- latency_p50_ms: 97 (97/1) [informational]
+- latency_p95_ms: 137 (137/1) [informational]
+- latency_min_ms: 43 (43/1) [informational]
+- latency_max_ms: 143 (143/1) [informational]
 - total_input_tokens: 6840 (6840/1) [informational]
 - total_output_tokens: 4560 (4560/1) [informational]
 - total_tokens: 11400 (11400/1) [informational]
@@ -150,9 +150,9 @@ numeric_accuracy: 100.00% (4/4) [higher_is_better]
 
 ## Latency, Token Usage and Cost
 
-- latency_average_ms: 88.53333333333333333333333333 (88.53333333333333333333333333/1) [informational]
-- latency_p50_ms: 95 (95/1) [informational]
-- latency_p95_ms: 136 (136/1) [informational]
+- latency_average_ms: 89.76666666666666666666666667 (89.76666666666666666666666667/1) [informational]
+- latency_p50_ms: 97 (97/1) [informational]
+- latency_p95_ms: 137 (137/1) [informational]
 - total_tokens: 11400 (11400/1) [informational]
 - estimated_total_cost: 0 (0/1) [informational]
 

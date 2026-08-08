@@ -30,6 +30,7 @@ from copilot.config import Settings
 from copilot.contracts import SpanKind, SpanStatus
 from copilot.services.approval_service import ApprovalService, ApprovalServiceError
 from copilot.services.artifact_service import ArtifactService, ArtifactServiceError
+from copilot.services.health import ReadinessService
 from copilot.services.observability import (
     EventName,
     NoopObservability,
@@ -46,6 +47,20 @@ class HealthResponse(BaseModel):
     status: Literal["ok"]
 
 
+class LivenessResponse(BaseModel):
+    """Process-only health contract."""
+
+    status: Literal["live"]
+
+
+class ReadinessResponse(BaseModel):
+    """Dependency-aware task acceptance contract."""
+
+    status: Literal["ready", "degraded", "not_ready"]
+    accepts_tasks: bool
+    dependencies: dict[str, Literal["ok", "unavailable", "not_configured"]]
+
+
 def create_app(
     *,
     task_service: NaturalLanguageTaskService | None = None,
@@ -53,6 +68,7 @@ def create_app(
     artifact_service: ArtifactService | None = None,
     settings: Settings | None = None,
     observability: ObservabilityPort | None = None,
+    readiness: ReadinessService | None = None,
     lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] | None = None,
 ) -> FastAPI:
     """Create a framework adapter; concrete runtime ownership remains in bootstrap."""
@@ -70,6 +86,7 @@ def create_app(
     if settings is not None:
         application.state.settings = settings
     application.state.observability = observability or NoopObservability()
+    application.state.readiness = readiness
 
     @application.middleware("http")
     async def correlation_context(
@@ -147,6 +164,32 @@ def create_app(
     async def health() -> HealthResponse:
         return HealthResponse(status="ok")
 
+    @application.get("/health/live", response_model=LivenessResponse, status_code=200)
+    async def liveness() -> LivenessResponse:
+        return LivenessResponse(status="live")
+
+    @application.get(
+        "/health/ready",
+        response_model=ReadinessResponse,
+        responses={503: {"model": ReadinessResponse}},
+    )
+    def readiness_status(response: Response) -> ReadinessResponse:
+        service: ReadinessService | None = application.state.readiness
+        if service is None:
+            response.status_code = 503
+            return ReadinessResponse(
+                status="not_ready",
+                accepts_tasks=False,
+                dependencies={"database": "not_configured"},
+            )
+        snapshot = service.check()
+        response.status_code = 200 if snapshot.accepts_tasks else 503
+        return ReadinessResponse(
+            status=snapshot.status,
+            accepts_tasks=snapshot.accepts_tasks,
+            dependencies=dict(snapshot.dependencies),
+        )
+
     application.include_router(tasks_router)
     application.include_router(artifacts_router)
     application.include_router(approvals_router)
@@ -162,4 +205,10 @@ def create_app(
 
 app = create_app()
 
-__all__ = ["HealthResponse", "app", "create_app"]
+__all__ = [
+    "HealthResponse",
+    "LivenessResponse",
+    "ReadinessResponse",
+    "app",
+    "create_app",
+]
