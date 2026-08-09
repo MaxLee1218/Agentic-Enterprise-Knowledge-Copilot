@@ -14,6 +14,7 @@ x-copilot-environment: &copilot-production-environment
   ARTIFACT_DIR: /app/data/artifacts
   LLM_PROVIDER: deepseek
   LLM_API_KEY: ${LLM_API_KEY:?inject the model credential}
+  LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
   IDENTITY_PROVIDER: trusted_headers
   IDENTITY_SIGNING_SECRET: ${IDENTITY_SIGNING_SECRET:?inject a 32-byte minimum signing secret}
   CHECKPOINT_ENABLED: "true"

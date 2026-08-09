@@ -1,12 +1,11 @@
 # Stage 17.1 Engineering Report
 
-Date: 2026-08-08
+Date: 2026-08-09
 
 This report records the production-security and MCP-readiness hardening performed after the Stage
-18 readiness review. It does not claim that MCP is implemented. The final decision is intentionally
-conservative: all code-level P0 findings were remediated, but the production deployment evidence
-gate cannot pass on this host because no Docker daemon, real PostgreSQL test URL, or live RAG test
-endpoint is available.
+18 readiness review. It does not claim that MCP is implemented. Docker Desktop and isolated
+validation dependencies became available on 2026-08-09, so the previously blocked production
+deployment evidence was re-executed and Gate 6 now passes.
 
 ## 1. Baseline
 
@@ -51,7 +50,7 @@ the finding IDs and also tests both symptoms independently.
 | S18-P1-02: registry lacked dynamic namespace/provenance/revocation | CONFIRMED | external-origin capabilities could collide or remain stale | REMEDIATED with protocol-neutral metadata, generation, atomic refresh, collision denial, and revoke |
 | S18-P1-03: cancellation stopped waiting but not work | CONFIRMED | a running thread could continue and commit late output | REMEDIATED with truthful state, cooperative tokens, live invocation registry, late-result discard; adapters that cannot be interrupted are explicitly non-cancellable |
 | S18-P1-04: audit/trace context did not span boundaries | CONFIRMED | thread/network work could lose correlation and tenant audit scope | REMEDIATED across async, copied thread context, HTTP headers, tenant audit, and parallel-isolation tests |
-| S18-P1-05: deployment proved only demo topology | CONFIRMED | production startup and external dependencies were not demonstrated | CODE REMEDIATED, EVIDENCE OPEN; production manifest/config and real adapters exist, but full runtime validation is NOT VERIFIED on this host |
+| S18-P1-05: deployment proved only demo topology | CONFIRMED | production startup and external dependencies were not demonstrated | REMEDIATED; immutable image, PostgreSQL, Compose, authenticated vertical slice, dependency recovery, persistence recovery, and SIGTERM drain were executed |
 
 Each confirmed issue was traced through its affected class/function and exercised by a regression or
 security invariant test. No finding was closed solely because this report says it was fixed.
@@ -133,6 +132,8 @@ server-side statement timeout, portable approved templates, and a business-schem
 - `tests/security/test_executor_approval_boundary.py` — direct executor/policy/approval invariants.
 - `tests/security/test_cancellation_semantics.py` — truthful cancellation and shutdown invariants.
 - `tests/security/test_observability_boundaries.py` — async/thread/HTTP/isolation/redaction invariants.
+- `tests/fixtures/deployment/Dockerfile.rag` and `rag_contract_server.py` — controlled, non-root
+  external RAG/model HTTP contracts used only for deployment validation.
 - `evaluation/reports/runs/20260808T084409.666364Z-da0d4f78/{manifest.json,report.json,report.md}`
   — pre-change baseline artifact.
 - `evaluation/reports/runs/20260808T102416.906429Z-da0d4f78/{manifest.json,report.json,report.md}`
@@ -308,8 +309,9 @@ and production configuration.
   indexes but no task FK so pre-task denials and lifecycle events remain recordable.
 - Fresh SQLite upgrade/downgrade: PASS.
 - Existing Stage 17 SQLite upgrade, backfill, quarantine, FK/index/unique integrity: PASS.
-- Real PostgreSQL upgrade/repository/restart test: NOT VERIFIED because `TEST_POSTGRES_URL` is not
-  configured on this host.
+- Real PostgreSQL upgrade/repository/restart test: PASS against PostgreSQL 16.4. The test covered
+  Alembic upgrade, tenant-scoped repositories, approval resume, checkpoint restart recovery, and
+  cross-tenant denial.
 
 ## 8. Test Results
 
@@ -320,20 +322,21 @@ and production configuration.
 | Integration | 65 passed, 2 skipped, 1 dependency deprecation warning |
 | Smoke | 20 passed |
 | Security | 18 passed, 1 dependency deprecation warning |
-| Total executed pytest passes | 534 passed, 2 environmental skips |
+| Real PostgreSQL opt-in integration | 1 passed |
+| Total executed pytest passes | 535 passed, 2 environmental skips in the generic command |
 | Coverage | 81.96% (reported as 82%); required 80% reached |
-| Evaluation | 30/30; no regression; run `20260808T103329.122160Z-da0d4f78` |
+| Evaluation | 30/30; no regression; run `20260809T015516.523336Z-da0d4f78` |
 
 The integration skips are explicit:
 
 - `test_postgres_persistence.py`: `TEST_POSTGRES_URL is not configured`.
 - `test_live_rag_api.py`: `RUN_LIVE_RAG_TESTS=1` and a live Enterprise RAG Engine are not configured.
 
-Final evaluation latency was average 91.37 ms, p50 96 ms, p95 146 ms, compared with baseline
+Final evaluation latency was average 91.8 ms, p50 93 ms, p95 146 ms, compared with baseline
 94.5/97/147 ms. The change therefore did not produce a material offline vertical-slice latency
 regression. Safety leakage rates and missing-audit counts remained zero in the evaluation report.
 
-Static checks also passed: Ruff, format (357 files), Mypy (354 source files), documentation,
+Static checks also passed: Ruff, format (358 files), Mypy (355 source files), documentation,
 architecture boundaries, and Actionlint.
 
 ## 9. Build / Deployment Validation
@@ -346,16 +349,29 @@ architecture boundaries, and Actionlint.
 | sdist | PASS | 227 KiB; SHA-256 `9d8a710cab0170ec3d352acdff51ae26355462146cd60b555639dda89bc02622` |
 | Development Compose config | PASS | standalone `docker-compose ... config --quiet`, exit 0 |
 | Production Compose config | PASS | required images/URLs/secrets supplied as non-secret validation placeholders, exit 0 |
-| Docker daemon | UNAVAILABLE | `/var/run/docker.sock` missing |
-| Docker image build | NOT VERIFIED | environment does not provide a Docker daemon |
-| Compose startup/health/smoke/down | NOT VERIFIED | environment does not provide a Docker daemon; approved RAG image/runtime not available |
-| PostgreSQL tenant integration | NOT VERIFIED | `TEST_POSTGRES_URL` absent; test skipped explicitly |
+| Docker daemon | PASS | Docker Desktop 29.6.2 server, Linux arm64 engine |
+| Docker image build | PASS | Copilot image `sha256:5a742dad8844e7970a8fc4b47ed5537a1ba34c2c737bfdc5acb7c1002cb53869`; non-root UID 10001; healthcheck and import verified; history scan found no secret material |
+| Compose startup/health/smoke/down | PASS | Project `stage17-gate6`; migration and RAG health one-shots exited 0; API/PostgreSQL/RAG healthy; authenticated task completed through all four tools |
+| PostgreSQL tenant integration | PASS | PostgreSQL 16.4 integration test: 1/1; migration, repositories, checkpoint/restart, approval resume, and cross-tenant denial |
 | Alembic SQLite fresh/existing migration | PASS | 2/2 targeted tests passed |
-| Alembic PostgreSQL migration | NOT VERIFIED | no PostgreSQL endpoint |
-| Liveness/readiness behavior | PASS in process | live remains 200 during dependency failure; ready becomes 503; business schema is probed when real adapter is selected |
-| Live RAG readiness | NOT VERIFIED | live RAG test not enabled |
+| Alembic PostgreSQL migration | PASS | production one-shot migrations `20260807_0001` and `20260808_0002` exited 0 |
+| Liveness/readiness behavior | PASS in container | stopping RAG or persistence PostgreSQL kept live at 200, changed ready to 503, and stopped task acceptance; both recovered automatically to ready 200 |
+| RAG/LLM HTTP adapter readiness | PASS | controlled external contract fixture exercised real HTTP RAG and production DeepSeek adapter inside the Compose network; no live vendor credential was used |
 | Cancellation/resource shutdown | PASS in security tests | active invocation receives shutdown cancellation and resources close |
-| Container SIGTERM/drain | NOT VERIFIED | requires a running container topology |
+| Container SIGTERM/drain | PASS | SIGTERM during an 8.24 s active request drained it to HTTP 201/COMPLETED, then Uvicorn shutdown completed with exit 0 and no OOM |
+
+The authenticated vertical slice created task
+`T-b149f1da44f3473bb8a1b237f0b0a1d3`: four steps succeeded, three evidence records were persisted,
+and one 31,629-byte JSON artifact was generated. After API restart, the task and artifact remained
+readable and the downloaded checksum matched
+`ab1a04eb18de23cf77c06b470b75a45a5694d202165d3cd8508582ea9098bfbe`.
+
+Three non-passing attempts were retained as evidence rather than hidden: the first image build hit
+a transient registry timeout and passed on retry; production configuration correctly rejected a
+loopback RAG URL inherited from the local `.env`; and the host-side live-RAG pytest was intercepted
+by the host HTTP proxy, while the same HTTP adapter contract passed from the production container
+network. The controlled fixture validates the deployed protocol boundaries but is not evidence of
+compatibility with a particular live RAG or model vendor.
 
 The production manifest is materially different from the development/demo manifest and contains no
 committed credential defaults. Configuration parsing is not treated as proof that the topology can
@@ -381,8 +397,8 @@ start.
 - **P3 — placeholder coverage display:** empty MCP scaffold modules remain visible as zero-statement
   modules; they contain no implementation and must not be interpreted as MCP coverage.
 
-These items are not themselves Stage 18 blockers. The separate missing production runtime evidence
-is listed in Section 13 and is blocking.
+These items are not themselves Stage 18 blockers. Live-vendor acceptance remains an operational
+follow-up rather than a substitute for the deterministic deployment gate executed here.
 
 ## 11. Stage 18 Readiness Gate
 
@@ -393,7 +409,7 @@ is listed in Section 13 and is blocking.
 | 3. Identity / Tenant / Security | PASS | Signed production identity, no fallback, mandatory repository tenant filters, cross-tenant suite, redaction tests |
 | 4. Checkpoint / Cancellation / Recovery | PASS | Scoped checkpoint IDs, resume reauthorization, bounded retry, truthful cancellation, late-commit prevention, shutdown cleanup tests |
 | 5. Cross-network Observability | PASS | async/thread context propagation, RAG HTTP trace header, parallel isolation, audit correlation/redaction |
-| 6. CI / Deployment / Operations | **FAIL** | static CI-equivalent checks/build/Compose config/docs pass, but real PostgreSQL, Compose startup, image build, health round trip, and SIGTERM are NOT VERIFIED |
+| 6. CI / Deployment / Operations | PASS | CI-equivalent checks, immutable image, PostgreSQL 16.4, migration one-shots, Compose startup, authenticated vertical slice, dependency recovery, artifact persistence, active-request SIGTERM drain, and clean shutdown |
 | 7. Critical Path Demo / Mock | PASS | production validation rejects demo/mock/SQLite critical providers; production paths use trusted identity, PostgreSQL persistence/business DB, HTTP RAG, DeepSeek, and migrated schema |
 
 Acceptance criteria audit:
@@ -427,12 +443,12 @@ Acceptance criteria audit:
 | 25 | PASS | Parallel trace isolation |
 | 26 | PASS | Logs/trace/audit secret redaction |
 | 27 | PASS | Production/development config separation |
-| 28 | **NOT VERIFIED** | Real PostgreSQL tenant test skipped |
+| 28 | PASS | Real PostgreSQL migration, tenant, approval, checkpoint, and restart test |
 | 29 | PASS | Alembic fresh/existing SQLite migration tests |
-| 30 | **NOT VERIFIED (conditional)** | Docker daemon unavailable |
-| 31 | **NOT VERIFIED** | Full Compose topology not started |
+| 30 | PASS | Docker image built and inspected as non-root with healthcheck |
+| 31 | PASS | Full production Compose topology started and passed authenticated smoke |
 | 32 | PASS | Production startup validation tests |
-| 33 | **NOT VERIFIED** | In-process shutdown passes; container SIGTERM not run |
+| 33 | PASS | Active HTTP request drained to completion under container SIGTERM; exit 0 |
 | 34 | PASS | Ruff |
 | 35 | PASS | Format check |
 | 36 | PASS | Mypy |
@@ -444,12 +460,14 @@ Acceptance criteria audit:
 | 42 | PASS | Evaluation 30/30, no critical regression |
 | 43 | PASS | Architecture check |
 | 44 | PASS | Readiness audit re-executed in this section |
-| 45 | **FAIL** | Gate 6 fails |
+| 45 | PASS | Gate 6 passes |
 | 46 | PASS | Open P0 = 0 |
-| 47 | **FAIL** | One blocking deployment-evidence P1 remains open |
+| 47 | PASS | Open blocking P1 = 0 |
 | 48 | PASS | No MCP behavior implemented |
 
-Because criteria 28, 31, 33, 45, and 47 are not satisfied, the stage cannot be declared complete.
+All 48 acceptance criteria are satisfied. Criteria 39 continues to report the two intentionally
+opt-in skips in the generic suite; the PostgreSQL path was executed separately and the deployed
+RAG/LLM HTTP path was exercised through the production container network.
 
 ## 12. Open P0
 
@@ -461,26 +479,11 @@ deployment dependencies.
 
 ## 13. Open Blocking P1
 
-**Count: 1.**
+**Count: 0.**
 
-### S17.1-BP1-01 — Production deployment evidence is incomplete
-
-- **Blocker:** no Docker daemon/socket, `TEST_POSTGRES_URL`, approved RAG runtime/image, or complete
-  production topology is available in this execution environment.
-- **Root Cause:** an environment capability gap, not an application fallback: the Docker client
-  cannot connect to `/var/run/docker.sock`; the PostgreSQL and live-RAG tests explicitly skip.
-- **Affected Architecture:** persistence migration/repositories/checkpoints, container composition,
-  health/readiness round trip, graceful SIGTERM/drain, and production operations.
-- **Security Impact:** the code-level tenant and startup controls are covered locally, but there is
-  no executable evidence on this host that PostgreSQL preserves them or that the complete topology
-  starts, drains, and shuts down without cross-tenant or late-commit behavior.
-- **Required Design Decision:** none. Do not weaken the gate or substitute SQLite/config parsing for
-  the required evidence. Operations must provide an isolated Docker/PostgreSQL/RAG validation
-  environment and approved non-production secrets/images.
-- **Recommended Next Action:** run the existing PostgreSQL test with `TEST_POSTGRES_URL`, then build
-  the immutable image and execute production Compose startup, authenticated smoke, readiness
-  failure/recovery, active-call SIGTERM, and clean shutdown. Record image digest and logs without
-  secrets; if all pass, rerun Gate 6 and close this finding.
+`S17.1-BP1-01` is closed by the deployment evidence in Section 9. Validation used isolated,
+non-production credentials and controlled external-service contracts. It did not weaken startup,
+identity, tenant, policy, approval, or evidence checks.
 
 ## 14. MCP Boundary Confirmation
 
@@ -496,15 +499,14 @@ deployment dependencies.
 ## 15. Final Decision
 
 ```text
-STAGE 17.1 NOT COMPLETE
+STAGE 17.1 COMPLETE
 
 P0: 0
-Blocking P1: 1
+Blocking P1: 0
 
-STAGE 18 READINESS: NOT READY
+STAGE 18 READINESS: READY
 ```
 
-The remaining blocker is production runtime evidence: real PostgreSQL tenant/migration/recovery,
-full Compose startup and health, Docker image execution, and container SIGTERM/drain are NOT
-VERIFIED. Stage 18 MCP implementation must not begin until those checks pass and the readiness audit
-is updated with their evidence.
+The production runtime evidence blocker is closed. This decision authorizes readiness to begin the
+separately governed Stage 18 work; it does not claim that any MCP client, server, transport, or
+protocol behavior has already been implemented.
