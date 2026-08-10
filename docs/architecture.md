@@ -115,9 +115,8 @@ Additional mandatory boundaries:
   policy before persistence or publication.
 - SDK-specific MCP types stop at `copilot.mcp.protocol`; internal code uses
   `copilot.contracts.mcp`.
-- Imported MCP capabilities, when Phase 5 is authorized, use stable server namespaces and the
-  existing governed executor. Exported capabilities are deny-by-default and explicitly
-  allowlisted.
+- Implemented imported MCP capabilities use stable server namespaces and the existing governed
+  executor. Exported capabilities are deny-by-default and explicitly allowlisted.
 - Framework-, vendor-, and database-specific types do not cross into domain contracts.
 
 ### Stage 17.1 security and execution boundaries
@@ -149,8 +148,9 @@ recovery state from colliding across tenants.
 The registry preserves frozen local tool names while supporting qualified names for approved
 non-local namespaces. Each immutable registration carries origin, provenance, schema version,
 registration source, cancellation mode, and generation. Namespace refresh validates the complete
-replacement before one locked commit; revocation removes future lookup immediately. These are
-general lifecycle primitives, not external discovery or MCP behavior.
+replacement before one locked commit; revocation removes future lookup immediately. Stage 18 now
+uses these protocol-neutral primitives for approved external discovery without changing frozen
+local tool contracts.
 
 Cancellation is cooperative. The deterministic Analytics adapter checks its token at bounded
 safe points. Current synchronous Knowledge HTTP, Database, and Report adapters are explicitly
@@ -423,6 +423,8 @@ before implementation.
 - [Observability](observability.md)
 - [Performance analysis and limits](performance.md)
 - [Frozen design baseline](design/design_baseline.md)
+- [ADR-008: Governed MCP Protocol 2025-11-25](adr/ADR-008-mcp-protocol-2025-11-25.md)
+- [MCP architecture](mcp-architecture.md)
 - [Domain contracts](domain-contracts.md)
 - [Deterministic Supplier Quality workflow](deterministic-workflow.md)
 - [Repository-wide contributor rules](../AGENTS.md)

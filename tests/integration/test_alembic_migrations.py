@@ -51,7 +51,9 @@ def test_fresh_database_upgrade_reaches_head_and_safe_downgrade(
         )
         with engine.connect() as connection:
             revision = MigrationContext.configure(connection).get_current_revision()
-            assert revision == "20260808_0002"
+            assert revision == "20260809_0003"
+        mcp_tables = {"mcp_connections", "mcp_sessions", "mcp_invocations"}
+        assert mcp_tables.issubset(inspect(engine).get_table_names())
 
         with engine.begin() as connection:
             connection.execute(text("PRAGMA foreign_keys = ON"))
@@ -134,7 +136,7 @@ def test_existing_stage17_rows_are_backfilled_and_unknown_ownership_is_quarantin
             "T-UNKNOWN": "TENANT-LEGACY-UNSCOPED",
         }
         assert child_tenant == "TENANT-A"
-        assert revision == "20260808_0002"
+        assert revision == "20260809_0003"
     finally:
         engine.dispose()
         get_settings.cache_clear()

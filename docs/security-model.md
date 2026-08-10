@@ -2,7 +2,8 @@
 
 The frozen Supplier Quality Analysis v1.1 design remains authoritative for identity, task state,
 policy, approval, tool execution, Evidence, and verification. Stage 17.1 hardens those boundaries;
-it does not add business capabilities, change the frozen four-tool scope, or implement MCP.
+it does not add business capabilities or change the frozen four-tool scope. Stage 18 separately
+adds a governed optional MCP boundary documented in `mcp-security.md`.
 
 ## Security goals and protected assets
 

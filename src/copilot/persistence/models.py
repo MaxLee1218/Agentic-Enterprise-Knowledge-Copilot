@@ -301,7 +301,71 @@ class WorkflowGraphAuditRow(PersistenceBase):
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class MCPConnectionRow(PersistenceBase):
+    """Tenant-scoped non-secret approved MCP connection configuration."""
+
+    __tablename__ = "mcp_connections"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "namespace", name="uq_mcp_connections_tenant_namespace"),
+        Index("ix_mcp_connections_tenant_server", "tenant_id", "server_id"),
+    )
+
+    tenant_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    server_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    namespace: Mapped[str] = mapped_column(String(200), nullable=False)
+    transport: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MCPSessionRow(PersistenceBase):
+    """Per-server, per-tenant negotiated session and recovery snapshot."""
+
+    __tablename__ = "mcp_sessions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "connection_id"],
+            ["mcp_connections.tenant_id", "mcp_connections.connection_id"],
+            name="fk_mcp_sessions_tenant_connection",
+            ondelete="CASCADE",
+        ),
+        Index("ix_mcp_sessions_tenant_connection", "tenant_id", "connection_id"),
+        Index("ix_mcp_sessions_tenant_state", "tenant_id", "state"),
+    )
+
+    tenant_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    server_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MCPInvocationRow(PersistenceBase):
+    """Minimized append-only MCP invocation audit metadata."""
+
+    __tablename__ = "mcp_invocations"
+    __table_args__ = (
+        Index("ix_mcp_invocations_tenant_task", "tenant_id", "task_id"),
+        Index("ix_mcp_invocations_tenant_session", "tenant_id", "session_id"),
+    )
+
+    tenant_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    invocation_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    trace_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 __all__ = [
+    "MCPConnectionRow",
+    "MCPInvocationRow",
+    "MCPSessionRow",
     "PersistenceBase",
     "WorkflowApprovalHistoryRow",
     "WorkflowApprovalRow",

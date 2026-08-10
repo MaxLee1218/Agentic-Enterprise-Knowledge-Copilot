@@ -14,6 +14,7 @@ from copilot.bootstrap.container import build_application
 from copilot.config import PROJECT_ROOT, Settings, get_settings
 from copilot.contracts import ApprovalResolutionAction, ApprovalStatus, TaskStatus
 from copilot.persistence.checkpoint import migrate_postgres_checkpoints
+from copilot.persistence.mcp_connection_repository import MCPConnectionRepository
 from copilot.services.approval_service import ApprovalResolutionCommand
 from copilot.services.task_intake import (
     NaturalLanguageTaskCommand,
@@ -21,6 +22,7 @@ from copilot.services.task_intake import (
     TrustedCallerContext,
 )
 from copilot.services.task_service import TaskNotFoundError
+from tests.mcp_helpers import stdio_connection
 
 POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL")
 
@@ -65,6 +67,17 @@ def test_postgres_migration_round_trip_and_restart_recovery(
     )
 
     with build_application(settings) as first:
+        mcp_connections = MCPConnectionRepository(
+            first.persistence_database, initialize_schema=False
+        )
+        mcp_connection = stdio_connection()
+        mcp_connections.save(mcp_connection, tenant_id=caller.tenant_id)
+        assert (
+            mcp_connections.get(mcp_connection.connection_id, tenant_id=caller.tenant_id)
+            == mcp_connection
+        )
+        with pytest.raises(KeyError):
+            mcp_connections.get(mcp_connection.connection_id, tenant_id="TENANT-POSTGRES-OTHER")
         with pytest.raises(WorkflowInterrupted) as captured:
             first.task_service.submit(command_input, caller)
         task_id = captured.value.task_id

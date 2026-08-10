@@ -137,7 +137,7 @@ class ToolRegistry:
         )
         self._allowed_names = frozenset(str(name) for name in approved)
         self._allowed_risk_levels = frozenset(approved_risks)
-        self._allowed_namespaces = frozenset(
+        self._allowed_namespaces = set(
             validate_namespace(namespace) for namespace in allowed_namespaces
         )
         self._entries: dict[str, RegisteredTool] = {}
@@ -149,6 +149,17 @@ class ToolRegistry:
         """Return the current atomic registry generation."""
         with self._lock:
             return self._generation
+
+    def approve_namespace(self, namespace: str) -> None:
+        """Admit one configuration-authorized external namespace without altering entries."""
+        namespace = validate_namespace(namespace)
+        if namespace == "local":
+            return
+        with self._lock:
+            owner_prefix = f"{namespace}."
+            if any(name.startswith(owner_prefix) for name in self._entries):
+                return
+            self._allowed_namespaces.add(namespace)
 
     def register(
         self,

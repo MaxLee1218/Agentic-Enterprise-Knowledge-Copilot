@@ -45,6 +45,7 @@ from copilot.persistence.identifiers import UuidIdentifierFactory
 from copilot.persistence.task_repository import WorkflowRepository
 from copilot.policies.approval import SupplierQualityApprovalPolicy
 from copilot.policies.data_access import DataAccessPolicy
+from copilot.policies.mcp_access import MCPAccessPolicy, MCPAwareToolAuthorizer
 from copilot.policies.offline import OfflineSupplierQualityAuthorizer
 from copilot.policies.permissions import PermissionMatrix
 from copilot.security import OutputGuard, PromptInjectionDetector, SensitiveDataRegistry
@@ -153,6 +154,7 @@ def build_workflow_container(
     use_real_database: bool | None = None,
     interrupt_after: tuple[str, ...] = (),
     llm_provider: LLMProvider | None = None,
+    mcp_access_policy: MCPAccessPolicy | None = None,
 ) -> WorkflowContainer:
     """Construct all application ports and offline adapters without global mutable state."""
     observability_context = ObservabilityContextManager()
@@ -308,14 +310,24 @@ def build_workflow_container(
     )
     approval_policy = SupplierQualityApprovalPolicy()
     cancellations = InvocationCancellationRegistry()
+    local_authorizer = OfflineSupplierQualityAuthorizer(
+        approval_repository,
+        clock=clock,
+        permission_matrix=permission_matrix,
+        data_access_policy=data_access_policy,
+    )
+    authorizer = (
+        MCPAwareToolAuthorizer(
+            local_authorizer=local_authorizer,
+            policy=mcp_access_policy,
+            approval_repository=approval_repository,
+        )
+        if mcp_access_policy is not None
+        else local_authorizer
+    )
     executor = ToolExecutor(
         registry=registry,
-        authorizer=OfflineSupplierQualityAuthorizer(
-            approval_repository,
-            clock=clock,
-            permission_matrix=permission_matrix,
-            data_access_policy=data_access_policy,
-        ),
+        authorizer=authorizer,
         evidence_recorder=evidence,
         audit_sink=tool_audit,
         clock=clock,

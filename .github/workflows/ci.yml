@@ -60,6 +60,18 @@ jobs:
       - name: Run security regression tests
         run: pytest tests/security
 
+      - name: Run MCP 2025-11-25 contract and unit gates
+        run: pytest tests/unit/mcp tests/contract/mcp
+
+      - name: Run real hermetic MCP client/server integration and smoke gates
+        run: pytest tests/integration/mcp tests/smoke/mcp
+
+      - name: Run MCP security gates
+        run: pytest tests/security/mcp
+
+      - name: Run MCP interoperability and safety evaluation
+        run: python evaluation/run_mcp_eval.py --output evaluation/reports/mcp-ci.json
+
       - name: Run offline Agent evaluation regression gate
         run: >-
           python evaluation/run_eval.py

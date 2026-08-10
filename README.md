@@ -7,7 +7,8 @@ Artifact. Stage 17 packages the implemented Stage 0–16 vertical slice as an in
 migration-driven, Docker-ready service with SQLite development storage and PostgreSQL deployment
 persistence. Stage 17.1 hardens identity, mandatory execution context, tenant persistence,
 approval enforcement, registry lifecycle, cancellation, correlation, and production configuration
-without adding a business capability.
+without adding a business capability. Stage 18 adds an optional governed MCP `2025-11-25`
+client/server interoperability boundary while preserving that frozen business behavior.
 
 The **Enterprise RAG Engine is a separate service and repository**. The Copilot consumes its
 approved HTTP contract through the Knowledge Tool; this repository does not copy, embed, or
@@ -23,6 +24,7 @@ User -> API / CLI -> Task Understanding -> Planner -> Policy / Approval
 External boundaries:
   Enterprise RAG Engine       Copilot PostgreSQL       Artifact filesystem/volume
   Enterprise business DB     (internal state)          (report bytes)
+  Approved MCP servers       Authenticated MCP clients (optional Stage 18 edges)
 ```
 
 The Copilot persistence database and enterprise business database are deliberately different:
@@ -37,9 +39,9 @@ create a second workflow or bypass Policy, Approval, Registry/Executor, Evidence
 Observability, or Verification.
 
 See [Architecture](docs/architecture.md), the [frozen v1.1 baseline](docs/design/design_baseline.md),
-and [ADR-006](docs/adr/ADR-006-deployment-persistence-boundary.md). The separation between this
-hardening stage and any future interoperability stage is recorded in
-[ADR-007](docs/adr/ADR-007-stage-18-mcp-readiness-boundary.md).
+and [ADR-006](docs/adr/ADR-006-deployment-persistence-boundary.md). Stage 18 admission is recorded
+in [ADR-007](docs/adr/ADR-007-stage-18-mcp-readiness-boundary.md); the pinned protocol decision is
+[ADR-008](docs/adr/ADR-008-mcp-protocol-2025-11-25.md).
 
 ## Supported vertical slice
 
@@ -57,7 +59,8 @@ Current boundaries are intentional:
   calls expose cancellation-requested state and their late output is discarded;
 - no bundled enterprise IAM/SSO: production verifies a short-lived signed assertion from an
   approved upstream gateway, while Demo Identity is restricted to explicit development/test use;
-- no MCP behavior. MCP files are future placeholders, not an implementation.
+- no automatic MCP trust or export: only approved server namespaces and explicit export rules are
+  implemented; MCP does not broaden the frozen four-tool business scope.
 
 ## Requirements and installation
 
@@ -246,6 +249,9 @@ API and CLI use the same Task Service and LangGraph. CLI exit codes are document
 | `LOG_LEVEL` / `LOG_FORMAT` | `INFO` / `json` | structured stdout/stderr |
 | `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `5` / `10` | size for deployment concurrency |
 | `MAX_TASK_STEPS` | `10` | may be tightened, not expanded past policy |
+| `MCP_ENABLED` | `false` | explicit opt-in; client/server roles separately enabled |
+| `MCP_PROTOCOL_REVISION` | `2025-11-25` | pinned; upgrades require ADR and compatibility gates |
+| `MCP_JWT_ISSUER` / `MCP_JWT_AUDIENCE` | blank | required for HTTP server mode |
 
 The complete safe template is [.env.example](.env.example). The production adapter validates a
 gateway-signed user, tenant, roles, scopes, data scope, purpose, and timestamp; the upstream
@@ -285,6 +291,7 @@ pytest tests/integration tests/contract tests/smoke
 pytest tests/security
 python evaluation/run_eval.py --mode mock --seed 42 \
   --baseline evaluation/baselines/supplier_quality_v1.json --fail-on-regression
+python evaluation/run_mcp_eval.py --output /tmp/mcp-evaluation.json
 python scripts/check_docs.py
 python scripts/check_architecture.py
 python -m build
@@ -308,9 +315,20 @@ Reports are written to `evaluation/reports`. The checked-in Mock baseline valida
 regression behavior; it is not evidence of live-model, live-RAG, production-data, or production
 latency quality. See [Offline Agent Evaluation](docs/evaluation.md).
 
+## MCP interoperability (implemented, optional)
+
+Stage 18 implements real stdio and Streamable HTTP clients, isolated per-server sessions,
+capability discovery/normalization/import, explicit server export, JWT Bearer authorization,
+resources, prompts, policy-gated sampling/elicitation/roots, progress, persistence,
+reconnect/revocation and hermetic real-SDK tests. Imported and exported tool calls use the existing
+Registry, Executor, Policy, Approval, Evidence, Audit and Observability path.
+
+MCP is off by default. Production OAuth/IdP issuance, public TLS/reverse proxy and approval of each
+remote server remain deployment responsibilities. See [MCP Architecture](docs/mcp-architecture.md),
+[MCP Security](docs/mcp-security.md), and [MCP Operations](docs/mcp-operations.md).
+
 ## Roadmap
 
-Stage 17.1 is production security and readiness hardening only. **Stage 18: MCP Interoperability is
-not implemented and remains a separate future phase that requires a passing readiness gate.**
-Existing MCP directories and documentation are placeholders and do not mean MCP client, server,
-transport, OAuth, import, or export behavior exists.
+Stage 18 MCP interoperability is implemented as an optional boundary. Future roadmap work includes
+additional reviewed third-party interoperability profiles, production IdP-specific deployment
+adapters and any later MCP revision after the ADR-008 upgrade process.

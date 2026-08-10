@@ -119,10 +119,44 @@ class Settings(BaseSettings):
     max_replan_count: int = Field(default=2, ge=0, le=2)
     max_total_execution_seconds: int = Field(default=300, ge=1, le=3600)
     graph_recursion_limit: int = Field(default=100, ge=20, le=1000)
+    # Stage 18 MCP interoperability is opt-in and pinned to one reviewed revision.
+    mcp_enabled: bool = False
+    mcp_client_enabled: bool = False
+    mcp_server_enabled: bool = False
+    mcp_protocol_revision: Literal["2025-11-25"] = "2025-11-25"
+    mcp_http_host: str = Field(default="127.0.0.1", min_length=1, max_length=255)
+    mcp_http_port: int = Field(default=8765, ge=1, le=65535)
+    mcp_http_path: str = Field(default="/mcp", min_length=2, max_length=100)
+    mcp_allow_public_bind: bool = False
+    mcp_allowed_hosts: tuple[str, ...] = ("127.0.0.1", "localhost")
+    mcp_allowed_origins: tuple[str, ...] = ()
+    mcp_export_allowlist: tuple[str, ...] = ()
+    mcp_connect_timeout_seconds: float = Field(default=10, gt=0, le=60)
+    mcp_initialize_timeout_seconds: float = Field(default=15, gt=0, le=60)
+    mcp_invocation_timeout_seconds: float = Field(default=60, gt=0, le=300)
+    mcp_sampling_enabled: bool = False
+    mcp_elicitation_enabled: bool = False
+    mcp_jwt_issuer: str | None = Field(default=None, max_length=512)
+    mcp_jwt_audience: str | None = Field(default=None, max_length=512)
+    mcp_jwt_signing_key: SecretStr | None = None
+    mcp_env_credential_names: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def validate_environment_profile(self) -> Settings:
         """Fail fast on unsafe production-only combinations."""
+        if (self.mcp_client_enabled or self.mcp_server_enabled) and not self.mcp_enabled:
+            raise ValueError("MCP_ENABLED must be true when an MCP role is enabled")
+        if self.mcp_http_host in {"0.0.0.0", "::"} and not self.mcp_allow_public_bind:
+            raise ValueError("Public MCP bind requires MCP_ALLOW_PUBLIC_BIND=true")
+        if not self.mcp_http_path.startswith("/") or "//" in self.mcp_http_path:
+            raise ValueError("MCP_HTTP_PATH must be a canonical absolute path")
+        if self.mcp_server_enabled and (
+            self.mcp_jwt_issuer is None
+            or self.mcp_jwt_audience is None
+            or self.mcp_jwt_signing_key is None
+            or len(self.mcp_jwt_signing_key.get_secret_value().encode("utf-8")) < 32
+        ):
+            raise ValueError("MCP Server requires issuer, audience, and a strong JWT key")
         if self.app_env != "production":
             return self
         if self.debug:
