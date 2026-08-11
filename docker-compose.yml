@@ -21,6 +21,26 @@ services:
       retries: 12
     networks: [copilot]
 
+  business-postgres:
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: supplier_quality
+      POSTGRES_USER: quality_seed
+      # Local synthetic-demo values only. Runtime uses the separate SELECT-only role below.
+      POSTGRES_PASSWORD: ${BUSINESS_POSTGRES_PASSWORD:-quality_seed_local_password}
+    ports:
+      - "${BUSINESS_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - business-postgres-data:/var/lib/postgresql/data
+      - ./docker/business-db-init.sql:/docker-entrypoint-initdb.d/001-readonly-role.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quality_seed -d supplier_quality"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [copilot]
+
   enterprise-rag-engine:
     # Build/tag the independent RAG repository or set RAG_IMAGE to an approved image.
     image: ${RAG_IMAGE:-enterprise-rag-engine:local}
@@ -40,8 +60,8 @@ services:
       LOG_FORMAT: json
       PERSISTENCE_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-copilot}:${POSTGRES_PASSWORD:-copilot_local_password}@postgres:5432/${POSTGRES_DB:-copilot}
       PERSISTENCE_AUTO_CREATE_SCHEMA: "false"
-      DATABASE_URL: sqlite:////app/data/database/enterprise_demo.db
-      DATABASE_PROVIDER: mock
+      DATABASE_URL: postgresql+psycopg://quality_readonly:quality_readonly_local_password@business-postgres:5432/supplier_quality
+      DATABASE_PROVIDER: sqlalchemy
       KNOWLEDGE_PROVIDER: http
       RAG_BASE_URL: http://enterprise-rag-engine:8000
       ARTIFACT_DIR: /app/data/artifacts
@@ -50,6 +70,26 @@ services:
     command: ["python", "-m", "copilot.persistence.migrate"]
     depends_on:
       postgres:
+        condition: service_healthy
+    networks: [copilot]
+
+  seed-business-database:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql+psycopg://quality_seed:${BUSINESS_POSTGRES_PASSWORD:-quality_seed_local_password}@business-postgres:5432/supplier_quality
+    command:
+      [
+        "python",
+        "scripts/seed_demo_database.py",
+        "--reset",
+        "--profile-output",
+        "/tmp/supplier_quality_dataset_profile.json",
+      ]
+    depends_on:
+      business-postgres:
         condition: service_healthy
     networks: [copilot]
 
@@ -90,6 +130,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      seed-business-database:
+        condition: service_completed_successfully
       rag-health:
         condition: service_completed_successfully
     healthcheck:
@@ -108,6 +150,7 @@ services:
 
 volumes:
   postgres-data:
+  business-postgres-data:
   artifact-data:
 
 networks:

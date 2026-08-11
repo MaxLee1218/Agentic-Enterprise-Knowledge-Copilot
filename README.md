@@ -99,14 +99,22 @@ starting the API.
 To use the real read-only business Database Tool with the synthetic SQLite fixture:
 
 ```bash
-python scripts/seed_demo_database.py
+python scripts/seed_demo_database.py --reset
 export DATABASE_PROVIDER=sqlalchemy
 export DATABASE_URL=sqlite:///data/database/enterprise_demo.db
 ```
 
 This database is enterprise business data for Tool reads; it is not Copilot persistence.
-The same allowlisted adapter accepts PostgreSQL in production, uses a server-side read-only
-transaction and statement timeout, and is included in `/health/ready` dependency checks.
+The deterministic dataset contains 17 fictional suppliers and exactly 5,000 incoming inspections
+across all 12 months of 2026. It writes a query-derived profile to
+`data/demo/supplier_quality_dataset_profile.json`. See the
+[demo business database guide](docs/demo-business-database.md) and
+[contract audit](docs/database-contract-audit.md).
+
+The same allowlisted adapter accepts PostgreSQL, uses a server-side read-only transaction and
+statement timeout, and is included in `/health/ready` dependency checks. Development Compose now
+uses a separate seeded `business-postgres` service and SELECT-only runtime role; it does not reuse
+the Copilot persistence PostgreSQL database.
 
 ## Docker Compose
 
@@ -129,12 +137,15 @@ docker compose build
 docker compose up
 ```
 
-Compose starts `postgres`, `enterprise-rag-engine`, one-shot `migrate` and `rag-health` services,
+Compose starts persistence `postgres`, the separate synthetic `business-postgres`,
+`enterprise-rag-engine`, one-shot `migrate`, `seed-business-database`, and `rag-health` services,
 and `copilot-api`. The migration service runs Alembic and the official LangGraph PostgreSQL saver
-setup; `rag-health` uses the Copilot's real HTTP Knowledge client without assuming utilities exist
-inside the independent RAG image. Both must succeed before the API starts. The API reaches RAG as
-`http://enterprise-rag-engine:8000`, never through container-local `localhost`. Local ports default
-to Copilot `8000`, RAG `8001`, and PostgreSQL `5432`.
+setup; the business seed service initializes only the existing Supplier Quality ORM tables;
+`rag-health` uses the Copilot's real HTTP Knowledge client without assuming utilities exist inside
+the independent RAG image. All one-shot dependencies must succeed before the API starts. The API
+reaches RAG as `http://enterprise-rag-engine:8000`, never through container-local `localhost`.
+Local ports default to Copilot `8000`, RAG `8001`, persistence PostgreSQL `5432`, and business
+PostgreSQL `5433`.
 
 The committed PostgreSQL credentials are local demo values only. Never use them in production.
 For an already-running RAG outside Compose, run the API outside Compose with an approved

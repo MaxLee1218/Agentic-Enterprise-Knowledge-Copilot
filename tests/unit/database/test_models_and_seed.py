@@ -56,10 +56,15 @@ def test_seed_is_deterministic_repeatable_and_contains_boundary_cases(tmp_path: 
     second = seed_demo_database(database_url)
 
     assert first == second
-    assert second.supplier_count == 5
+    assert second.supplier_count == 17
     assert second.deviation_count == 4
-    assert second.inspection_count == 13
+    assert second.inspection_count == 5000
     assert second.corrective_action_count == 4
+    assert second.tenant_count == 2
+    assert second.start_date.isoformat() == "2026-01-01"
+    assert second.end_date.isoformat() == "2026-12-31"
+    assert second.months_covered == 12
+    assert first.dataset_checksum == second.dataset_checksum
 
     connection = DatabaseConnection(database_url, read_only=True)
     try:

@@ -1,0 +1,911 @@
+{
+  "business_pattern_oracle": {
+    "S-100": [
+      "walkthrough_control"
+    ],
+    "S-200": [
+      "walkthrough_control"
+    ],
+    "SUP-001": [
+      "stable_good"
+    ],
+    "SUP-002": [
+      "persistent_poor"
+    ],
+    "SUP-003": [
+      "stable_good"
+    ],
+    "SUP-004": [
+      "persistent_poor"
+    ],
+    "SUP-005": [
+      "deteriorating"
+    ],
+    "SUP-006": [
+      "improving"
+    ],
+    "SUP-007": [
+      "incident_spike"
+    ],
+    "SUP-008": [
+      "high_volume",
+      "moderate_quality"
+    ],
+    "SUP-009": [
+      "low_volume_high_rate"
+    ],
+    "SUP-010": [
+      "stable_good"
+    ],
+    "SUP-011": [
+      "seasonal_average"
+    ],
+    "SUP-012": [
+      "stable_good"
+    ],
+    "SUP-013": [
+      "seasonal_average"
+    ],
+    "SUP-014": [
+      "stable_good"
+    ],
+    "SUP-015": [
+      "stable_good"
+    ]
+  },
+  "dataset_checksum": "7afe142367bd8a69d3051d90b5dca694545cf7b62da4a56c8a60e9e06bc07bd4",
+  "end_date": "2026-12-31",
+  "inspection_record_count": 5000,
+  "months_covered": [
+    "2026-01",
+    "2026-02",
+    "2026-03",
+    "2026-04",
+    "2026-05",
+    "2026-06",
+    "2026-07",
+    "2026-08",
+    "2026-09",
+    "2026-10",
+    "2026-11",
+    "2026-12"
+  ],
+  "quarterly_quality": [
+    {
+      "defect_count": 180,
+      "defect_rate": 0.015,
+      "inspected_count": 12000,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 49,
+      "supplier_code": "S-100",
+      "tenant_id": "TENANT-A"
+    },
+    {
+      "defect_count": 180,
+      "defect_rate": 0.015051,
+      "inspected_count": 11959,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": 5.1e-05,
+      "record_count": 51,
+      "supplier_code": "S-100",
+      "tenant_id": "TENANT-A"
+    },
+    {
+      "defect_count": 188,
+      "defect_rate": 0.014852,
+      "inspected_count": 12658,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": -0.000199,
+      "record_count": 53,
+      "supplier_code": "S-100",
+      "tenant_id": "TENANT-A"
+    },
+    {
+      "defect_count": 172,
+      "defect_rate": 0.015114,
+      "inspected_count": 11380,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": 0.000262,
+      "record_count": 47,
+      "supplier_code": "S-100",
+      "tenant_id": "TENANT-A"
+    },
+    {
+      "defect_count": 80,
+      "defect_rate": 0.008,
+      "inspected_count": 10000,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 44,
+      "supplier_code": "S-200",
+      "tenant_id": "TENANT-A"
+    },
+    {
+      "defect_count": 81,
+      "defect_rate": 0.007941,
+      "inspected_count": 10200,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": -5.9e-05,
+      "record_count": 46,
+      "supplier_code": "S-200",
+      "tenant_id": "TENANT-A"
+    },
+    {
+      "defect_count": 83,
+      "defect_rate": 0.008088,
+      "inspected_count": 10262,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": 0.000147,
+      "record_count": 47,
+      "supplier_code": "S-200",
+      "tenant_id": "TENANT-A"
+    },
+    {
+      "defect_count": 82,
+      "defect_rate": 0.008475,
+      "inspected_count": 9676,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": 0.000387,
+      "record_count": 43,
+      "supplier_code": "S-200",
+      "tenant_id": "TENANT-A"
+    },
+    {
+      "defect_count": 184,
+      "defect_rate": 0.007059,
+      "inspected_count": 26065,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 149,
+      "supplier_code": "SUP-001",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 198,
+      "defect_rate": 0.0071,
+      "inspected_count": 27888,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": 4.1e-05,
+      "record_count": 159,
+      "supplier_code": "SUP-001",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 204,
+      "defect_rate": 0.006997,
+      "inspected_count": 29156,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": -0.000103,
+      "record_count": 166,
+      "supplier_code": "SUP-001",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 173,
+      "defect_rate": 0.006827,
+      "inspected_count": 25342,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": -0.00017,
+      "record_count": 146,
+      "supplier_code": "SUP-001",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 638,
+      "defect_rate": 0.048403,
+      "inspected_count": 13181,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 80,
+      "supplier_code": "SUP-002",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 698,
+      "defect_rate": 0.04788,
+      "inspected_count": 14578,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": -0.000523,
+      "record_count": 88,
+      "supplier_code": "SUP-002",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 726,
+      "defect_rate": 0.048329,
+      "inspected_count": 15022,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": 0.000449,
+      "record_count": 90,
+      "supplier_code": "SUP-002",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 810,
+      "defect_rate": 0.048009,
+      "inspected_count": 16872,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": -0.00032,
+      "record_count": 102,
+      "supplier_code": "SUP-002",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 58,
+      "defect_rate": 0.006009,
+      "inspected_count": 9652,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 67,
+      "supplier_code": "SUP-003",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 65,
+      "defect_rate": 0.006163,
+      "inspected_count": 10546,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": 0.000154,
+      "record_count": 73,
+      "supplier_code": "SUP-003",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 64,
+      "defect_rate": 0.005883,
+      "inspected_count": 10879,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": -0.00028,
+      "record_count": 75,
+      "supplier_code": "SUP-003",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 75,
+      "defect_rate": 0.006221,
+      "inspected_count": 12055,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": 0.000338,
+      "record_count": 85,
+      "supplier_code": "SUP-003",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 435,
+      "defect_rate": 0.040711,
+      "inspected_count": 10685,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 72,
+      "supplier_code": "SUP-004",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 528,
+      "defect_rate": 0.041221,
+      "inspected_count": 12809,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": 0.00051,
+      "record_count": 84,
+      "supplier_code": "SUP-004",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 596,
+      "defect_rate": 0.040948,
+      "inspected_count": 14555,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": -0.000273,
+      "record_count": 96,
+      "supplier_code": "SUP-004",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 476,
+      "defect_rate": 0.040989,
+      "inspected_count": 11613,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": 4.1e-05,
+      "record_count": 78,
+      "supplier_code": "SUP-004",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 105,
+      "defect_rate": 0.009372,
+      "inspected_count": 11203,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 72,
+      "supplier_code": "SUP-005",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 130,
+      "defect_rate": 0.010083,
+      "inspected_count": 12893,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": 0.000711,
+      "record_count": 84,
+      "supplier_code": "SUP-005",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 587,
+      "defect_rate": 0.039601,
+      "inspected_count": 14823,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": 0.029518,
+      "record_count": 96,
+      "supplier_code": "SUP-005",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 533,
+      "defect_rate": 0.043542,
+      "inspected_count": 12241,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": 0.003941,
+      "record_count": 78,
+      "supplier_code": "SUP-005",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 580,
+      "defect_rate": 0.041944,
+      "inspected_count": 13828,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 77,
+      "supplier_code": "SUP-006",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 408,
+      "defect_rate": 0.027296,
+      "inspected_count": 14947,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": -0.014648,
+      "record_count": 83,
+      "supplier_code": "SUP-006",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 237,
+      "defect_rate": 0.015387,
+      "inspected_count": 15403,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": -0.011909,
+      "record_count": 85,
+      "supplier_code": "SUP-006",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 126,
+      "defect_rate": 0.009326,
+      "inspected_count": 13511,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": -0.006061,
+      "record_count": 75,
+      "supplier_code": "SUP-006",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 106,
+      "defect_rate": 0.009623,
+      "inspected_count": 11015,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 66,
+      "supplier_code": "SUP-007",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 131,
+      "defect_rate": 0.010455,
+      "inspected_count": 12530,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": 0.000832,
+      "record_count": 76,
+      "supplier_code": "SUP-007",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 490,
+      "defect_rate": 0.033957,
+      "inspected_count": 14430,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": 0.023502,
+      "record_count": 88,
+      "supplier_code": "SUP-007",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 108,
+      "defect_rate": 0.009469,
+      "inspected_count": 11406,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": -0.024488,
+      "record_count": 70,
+      "supplier_code": "SUP-007",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 777,
+      "defect_rate": 0.018186,
+      "inspected_count": 42726,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 139,
+      "supplier_code": "SUP-008",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 954,
+      "defect_rate": 0.017885,
+      "inspected_count": 53342,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": -0.000301,
+      "record_count": 175,
+      "supplier_code": "SUP-008",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 1000,
+      "defect_rate": 0.017844,
+      "inspected_count": 56042,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": -4.1e-05,
+      "record_count": 183,
+      "supplier_code": "SUP-008",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 852,
+      "defect_rate": 0.018012,
+      "inspected_count": 47303,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": 0.000168,
+      "record_count": 153,
+      "supplier_code": "SUP-008",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 150,
+      "defect_rate": 0.058708,
+      "inspected_count": 2555,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 34,
+      "supplier_code": "SUP-009",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 157,
+      "defect_rate": 0.058213,
+      "inspected_count": 2697,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": -0.000495,
+      "record_count": 36,
+      "supplier_code": "SUP-009",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 155,
+      "defect_rate": 0.055876,
+      "inspected_count": 2774,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": -0.002337,
+      "record_count": 37,
+      "supplier_code": "SUP-009",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 144,
+      "defect_rate": 0.056493,
+      "inspected_count": 2549,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": 0.000617,
+      "record_count": 33,
+      "supplier_code": "SUP-009",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 63,
+      "defect_rate": 0.008038,
+      "inspected_count": 7838,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 60,
+      "supplier_code": "SUP-010",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 66,
+      "defect_rate": 0.007746,
+      "inspected_count": 8520,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": -0.000292,
+      "record_count": 65,
+      "supplier_code": "SUP-010",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 72,
+      "defect_rate": 0.007999,
+      "inspected_count": 9001,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": 0.000253,
+      "record_count": 68,
+      "supplier_code": "SUP-010",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 78,
+      "defect_rate": 0.007799,
+      "inspected_count": 10001,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": -0.0002,
+      "record_count": 77,
+      "supplier_code": "SUP-010",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 132,
+      "defect_rate": 0.01428,
+      "inspected_count": 9244,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 58,
+      "supplier_code": "SUP-011",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 166,
+      "defect_rate": 0.016074,
+      "inspected_count": 10327,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": 0.001794,
+      "record_count": 65,
+      "supplier_code": "SUP-011",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 241,
+      "defect_rate": 0.019741,
+      "inspected_count": 12208,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": 0.003667,
+      "record_count": 76,
+      "supplier_code": "SUP-011",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 160,
+      "defect_rate": 0.016255,
+      "inspected_count": 9843,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": -0.003486,
+      "record_count": 61,
+      "supplier_code": "SUP-011",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 43,
+      "defect_rate": 0.005614,
+      "inspected_count": 7660,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 61,
+      "supplier_code": "SUP-012",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 45,
+      "defect_rate": 0.005631,
+      "inspected_count": 7992,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": 1.7e-05,
+      "record_count": 64,
+      "supplier_code": "SUP-012",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 45,
+      "defect_rate": 0.005489,
+      "inspected_count": 8198,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": -0.000142,
+      "record_count": 66,
+      "supplier_code": "SUP-012",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 41,
+      "defect_rate": 0.005512,
+      "inspected_count": 7438,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": 2.3e-05,
+      "record_count": 59,
+      "supplier_code": "SUP-012",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 125,
+      "defect_rate": 0.016824,
+      "inspected_count": 7430,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 44,
+      "supplier_code": "SUP-013",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 149,
+      "defect_rate": 0.017922,
+      "inspected_count": 8314,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": 0.001098,
+      "record_count": 49,
+      "supplier_code": "SUP-013",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 160,
+      "defect_rate": 0.018957,
+      "inspected_count": 8440,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": 0.001035,
+      "record_count": 50,
+      "supplier_code": "SUP-013",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 219,
+      "defect_rate": 0.022987,
+      "inspected_count": 9527,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": 0.00403,
+      "record_count": 57,
+      "supplier_code": "SUP-013",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 35,
+      "defect_rate": 0.009063,
+      "inspected_count": 3862,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 34,
+      "supplier_code": "SUP-014",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 46,
+      "defect_rate": 0.009496,
+      "inspected_count": 4844,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": 0.000433,
+      "record_count": 42,
+      "supplier_code": "SUP-014",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 48,
+      "defect_rate": 0.009283,
+      "inspected_count": 5171,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": -0.000213,
+      "record_count": 45,
+      "supplier_code": "SUP-014",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 40,
+      "defect_rate": 0.00905,
+      "inspected_count": 4420,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": -0.000233,
+      "record_count": 39,
+      "supplier_code": "SUP-014",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 18,
+      "defect_rate": 0.006942,
+      "inspected_count": 2593,
+      "quarter": "2026-Q1",
+      "quarter_over_quarter_delta": null,
+      "record_count": 29,
+      "supplier_code": "SUP-015",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 18,
+      "defect_rate": 0.00632,
+      "inspected_count": 2848,
+      "quarter": "2026-Q2",
+      "quarter_over_quarter_delta": -0.000622,
+      "record_count": 32,
+      "supplier_code": "SUP-015",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 19,
+      "defect_rate": 0.006391,
+      "inspected_count": 2973,
+      "quarter": "2026-Q3",
+      "quarter_over_quarter_delta": 7.1e-05,
+      "record_count": 33,
+      "supplier_code": "SUP-015",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 21,
+      "defect_rate": 0.006333,
+      "inspected_count": 3316,
+      "quarter": "2026-Q4",
+      "quarter_over_quarter_delta": -5.8e-05,
+      "record_count": 36,
+      "supplier_code": "SUP-015",
+      "tenant_id": "TENANT-DEMO"
+    }
+  ],
+  "records_per_month": {
+    "2026-01": 376,
+    "2026-02": 367,
+    "2026-03": 392,
+    "2026-04": 407,
+    "2026-05": 424,
+    "2026-06": 441,
+    "2026-07": 461,
+    "2026-08": 460,
+    "2026-09": 433,
+    "2026-10": 419,
+    "2026-11": 412,
+    "2026-12": 408
+  },
+  "seed": 20260811,
+  "start_date": "2026-01-01",
+  "supplier_count": 17,
+  "supplier_quality": [
+    {
+      "defect_count": 720,
+      "defect_rate": 0.015001,
+      "inspected_count": 47997,
+      "record_count": 200,
+      "supplier_code": "S-100",
+      "tenant_id": "TENANT-A"
+    },
+    {
+      "defect_count": 326,
+      "defect_rate": 0.008122,
+      "inspected_count": 40138,
+      "record_count": 180,
+      "supplier_code": "S-200",
+      "tenant_id": "TENANT-A"
+    },
+    {
+      "defect_count": 759,
+      "defect_rate": 0.006999,
+      "inspected_count": 108451,
+      "record_count": 620,
+      "supplier_code": "SUP-001",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 2872,
+      "defect_rate": 0.048145,
+      "inspected_count": 59653,
+      "record_count": 360,
+      "supplier_code": "SUP-002",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 262,
+      "defect_rate": 0.006074,
+      "inspected_count": 43132,
+      "record_count": 300,
+      "supplier_code": "SUP-003",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 2035,
+      "defect_rate": 0.040977,
+      "inspected_count": 49662,
+      "record_count": 330,
+      "supplier_code": "SUP-004",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 1355,
+      "defect_rate": 0.026486,
+      "inspected_count": 51160,
+      "record_count": 330,
+      "supplier_code": "SUP-005",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 1351,
+      "defect_rate": 0.023419,
+      "inspected_count": 57689,
+      "record_count": 320,
+      "supplier_code": "SUP-006",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 835,
+      "defect_rate": 0.016909,
+      "inspected_count": 49381,
+      "record_count": 300,
+      "supplier_code": "SUP-007",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 3583,
+      "defect_rate": 0.017968,
+      "inspected_count": 199413,
+      "record_count": 650,
+      "supplier_code": "SUP-008",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 606,
+      "defect_rate": 0.057305,
+      "inspected_count": 10575,
+      "record_count": 140,
+      "supplier_code": "SUP-009",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 279,
+      "defect_rate": 0.00789,
+      "inspected_count": 35360,
+      "record_count": 270,
+      "supplier_code": "SUP-010",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 699,
+      "defect_rate": 0.016794,
+      "inspected_count": 41622,
+      "record_count": 260,
+      "supplier_code": "SUP-011",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 174,
+      "defect_rate": 0.005561,
+      "inspected_count": 31288,
+      "record_count": 250,
+      "supplier_code": "SUP-012",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 653,
+      "defect_rate": 0.019371,
+      "inspected_count": 33711,
+      "record_count": 200,
+      "supplier_code": "SUP-013",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 169,
+      "defect_rate": 0.009236,
+      "inspected_count": 18297,
+      "record_count": 160,
+      "supplier_code": "SUP-014",
+      "tenant_id": "TENANT-DEMO"
+    },
+    {
+      "defect_count": 76,
+      "defect_rate": 0.006479,
+      "inspected_count": 11730,
+      "record_count": 130,
+      "supplier_code": "SUP-015",
+      "tenant_id": "TENANT-DEMO"
+    }
+  ],
+  "tenant_count": 2
+}

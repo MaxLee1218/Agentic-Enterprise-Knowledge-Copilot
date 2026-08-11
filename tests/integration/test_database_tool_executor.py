@@ -4,19 +4,28 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from copilot.contracts import EvidenceType, ToolCall, ToolResultStatus
+from copilot.contracts.base import JsonMapping
 from copilot.evidence.ledger import InMemoryEvidenceLedger
+from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.persistence.audit_repository import InMemoryToolAuditRepository
 from copilot.policies.offline import OfflineSupplierQualityAuthorizer
+from copilot.services.task_intake import (
+    NaturalLanguageTaskCommand,
+    RequestSource,
+    TaskOutputFormat,
+    TrustedCallerContext,
+)
 from copilot.services.workflows.models import SupplierQualityCommand
 from copilot.tools import ToolExecutor, ToolRegistry
 from copilot.tools.database import DatabaseConnection, DatabaseTool
 from copilot.tools.database.seed import seed_demo_database
 from tests.execution_helpers import execution_context
-from tests.unit.database.helpers import database_arguments
+from tests.unit.database.helpers import database_arguments, database_context
 from tests.workflow_helpers import build_test_container
 
 pytestmark = pytest.mark.integration
@@ -89,3 +98,105 @@ def test_full_workflow_can_use_real_database_tool(tmp_path: Path) -> None:
     assert database_result.output is not None
     assert database_result.output.root["row_count"] == 3
     assert any(item.source_type is EvidenceType.DATABASE for item in execution.evidence)
+
+
+def test_real_templates_enforce_tenant_supplier_quarter_and_trend_scope(tmp_path: Path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'scope.db'}"
+    seed_demo_database(database_url)
+    tool = DatabaseTool(DatabaseConnection(database_url, read_only=True))
+    try:
+        primary = tool.execute(
+            database_arguments(
+                supplier_ids=["SUP-005"],
+                start_date="2026-07-01",
+                end_date="2026-09-30",
+            ),
+            database_context(),
+        )
+        trend = tool.execute(
+            database_arguments(
+                supplier_ids=["SUP-005"],
+                start_date="2026-07-01",
+                end_date="2026-09-30",
+                template_id="supplier_quality_trend_v1",
+            ),
+            database_context(),
+        )
+        isolation = tool.execute(
+            database_arguments(
+                tenant_id="TENANT-A",
+                supplier_ids=["SUP-005"],
+            ),
+            database_context(tenant_id="TENANT-A"),
+        )
+        walkthrough = tool.execute(
+            database_arguments(
+                tenant_id="TENANT-A",
+                supplier_ids=["S-100"],
+            ),
+            database_context(tenant_id="TENANT-A"),
+        )
+    finally:
+        tool.close()
+
+    primary_rows = cast(list[JsonMapping], primary.output.root["rows"])
+    primary_row_count = cast(int, primary.output.root["row_count"])
+    trend_row_count = cast(int, trend.output.root["row_count"])
+    assert primary_row_count == 3
+    assert {row["period"] for row in primary_rows} == {
+        "2026-07",
+        "2026-08",
+        "2026-09",
+    }
+    assert trend_row_count > primary_row_count
+    assert isolation.output.root["empty_result"] is True
+    assert walkthrough.output.root["row_count"] == 3
+
+
+def test_natural_language_workflow_uses_real_business_database_end_to_end(
+    tmp_path: Path,
+) -> None:
+    database_url = f"sqlite:///{tmp_path / 'natural-real.db'}"
+    seed_demo_database(database_url)
+    caller = TrustedCallerContext(
+        user_id="U-QUALITY",
+        tenant_id="TENANT-DEMO",
+        data_scope=("quality.v1", "supplier-quality-policy-v1"),
+    )
+
+    with build_test_container(
+        tmp_path / "natural-real-artifacts",
+        database_url=database_url,
+        use_real_database=True,
+        llm_provider=OfflineMockLLM(),
+    ) as container:
+        execution = container.task_service.submit(
+            NaturalLanguageTaskCommand(
+                task=(
+                    "Analyze SUP-005 supplier quality for Q2 2026, compare the quality "
+                    "policy, and generate a JSON management report."
+                ),
+                output_format=TaskOutputFormat.JSON,
+                source=RequestSource.API,
+                trace_id="TRACE-REAL-BUSINESS-DATABASE",
+            ),
+            caller,
+        )
+
+    assert execution.task_result.final_status.value == "COMPLETED"
+    database_result = execution.step_results[1]
+    analytics_result = execution.step_results[2]
+    assert database_result.output is not None
+    assert database_result.output.root["row_count"] == 3
+    rows = database_result.output.root["rows"]
+    assert isinstance(rows, list)
+    assert {row["supplier_id"] for row in rows if isinstance(row, dict)} == {"SUP-005"}
+    assert analytics_result.output is not None
+    assert analytics_result.output.root["empty_result"] is False
+    assert execution.verification_result is not None
+    assert execution.verification_result.status.value == "PASSED"
+    assert {item.source_type for item in execution.evidence} == {
+        EvidenceType.DOCUMENT,
+        EvidenceType.DATABASE,
+        EvidenceType.CALCULATION,
+    }

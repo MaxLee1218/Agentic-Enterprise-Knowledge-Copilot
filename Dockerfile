@@ -27,6 +27,7 @@ RUN python -m pip install /wheels/*.whl \
 
 COPY alembic.ini ./alembic.ini
 COPY migrations ./migrations
+COPY scripts/seed_demo_database.py ./scripts/seed_demo_database.py
 RUN mkdir -p /app/data/artifacts \
     && chown -R appuser:appuser /app
 
