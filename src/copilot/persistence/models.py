@@ -99,6 +99,12 @@ class WorkflowStepResultRow(PersistenceBase):
             name="fk_workflow_step_results_tenant_task",
             ondelete="CASCADE",
         ),
+        UniqueConstraint(
+            "tenant_id",
+            "task_id",
+            "step_id",
+            name="uq_workflow_step_results_tenant_task_step",
+        ),
         Index(
             "ix_workflow_step_results_tenant_task_sequence",
             "tenant_id",
@@ -109,7 +115,7 @@ class WorkflowStepResultRow(PersistenceBase):
 
     sequence_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tenant_id: Mapped[str] = mapped_column(String(200), nullable=False)
-    step_id: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    step_id: Mapped[str] = mapped_column(String(200), nullable=False)
     task_id: Mapped[str] = mapped_column(String(200), nullable=False)
     result_json: Mapped[str] = mapped_column(Text, nullable=False)
     execution_json: Mapped[str] = mapped_column(Text, nullable=False)

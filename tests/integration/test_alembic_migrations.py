@@ -51,7 +51,13 @@ def test_fresh_database_upgrade_reaches_head_and_safe_downgrade(
         )
         with engine.connect() as connection:
             revision = MigrationContext.configure(connection).get_current_revision()
-            assert revision == "20260809_0003"
+            assert revision == "20260812_0004"
+        step_uniques = {
+            tuple(item["column_names"])
+            for item in inspector.get_unique_constraints("workflow_step_results")
+        }
+        assert ("tenant_id", "task_id", "step_id") in step_uniques
+        assert ("step_id",) not in step_uniques
         mcp_tables = {"mcp_connections", "mcp_sessions", "mcp_invocations"}
         assert mcp_tables.issubset(inspect(engine).get_table_names())
 
@@ -136,7 +142,129 @@ def test_existing_stage17_rows_are_backfilled_and_unknown_ownership_is_quarantin
             "T-UNKNOWN": "TENANT-LEGACY-UNSCOPED",
         }
         assert child_tenant == "TENANT-A"
-        assert revision == "20260809_0003"
+        assert revision == "20260812_0004"
     finally:
         engine.dispose()
         get_settings.cache_clear()
+
+
+def test_existing_step_results_upgrade_without_data_loss_and_allow_task_local_ids(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = f"sqlite:///{tmp_path / 'step-result-upgrade.db'}"
+    _configure_migration_environment(monkeypatch, database_url)
+    configuration = Config(str(PROJECT_ROOT / "alembic.ini"))
+    command.upgrade(configuration, "20260809_0003")
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            _insert_task(connection, "TENANT-A", "T-A")
+            _insert_task(connection, "TENANT-A", "T-B")
+            _insert_step_result(connection, "TENANT-A", "T-A", "step-1-knowledge-search", "A")
+
+        command.upgrade(configuration, "head")
+        command.upgrade(configuration, "head")
+
+        with engine.begin() as connection:
+            _insert_step_result(connection, "TENANT-A", "T-B", "step-1-knowledge-search", "B")
+            rows = connection.execute(
+                text(
+                    "SELECT tenant_id, task_id, step_id, result_json "
+                    "FROM workflow_step_results ORDER BY task_id"
+                )
+            ).all()
+            assert [tuple(row) for row in rows] == [
+                ("TENANT-A", "T-A", "step-1-knowledge-search", "A"),
+                ("TENANT-A", "T-B", "step-1-knowledge-search", "B"),
+            ]
+            with pytest.raises(IntegrityError):
+                _insert_step_result(
+                    connection,
+                    "TENANT-A",
+                    "T-A",
+                    "step-1-knowledge-search",
+                    "duplicate",
+                )
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()
+
+
+def test_step_result_downgrade_refuses_cross_task_step_id_reuse(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = f"sqlite:///{tmp_path / 'unsafe-step-result-downgrade.db'}"
+    _configure_migration_environment(monkeypatch, database_url)
+    configuration = Config(str(PROJECT_ROOT / "alembic.ini"))
+    command.upgrade(configuration, "head")
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            _insert_task(connection, "TENANT-A", "T-A")
+            _insert_task(connection, "TENANT-A", "T-B")
+            _insert_step_result(connection, "TENANT-A", "T-A", "step-1", "A")
+            _insert_step_result(connection, "TENANT-A", "T-B", "step-1", "B")
+
+        with pytest.raises(RuntimeError, match="step_id is reused across tasks"):
+            command.downgrade(configuration, "20260809_0003")
+
+        with engine.connect() as connection:
+            assert MigrationContext.configure(connection).get_current_revision() == "20260812_0004"
+            assert (
+                connection.execute(text("SELECT count(*) FROM workflow_step_results")).scalar_one()
+                == 2
+            )
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()
+
+
+def _configure_migration_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    database_url: str,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("PERSISTENCE_DATABASE_URL", database_url)
+    get_settings.cache_clear()
+
+
+def _insert_task(connection: object, tenant_id: str, task_id: str) -> None:
+    from sqlalchemy.engine import Connection
+
+    assert isinstance(connection, Connection)
+    connection.execute(
+        text(
+            "INSERT INTO workflow_tasks "
+            "(task_id, tenant_id, request_json, contract_json, plan_json, state_json) "
+            "VALUES (:task_id, :tenant_id, '{}', NULL, NULL, '{}')"
+        ),
+        {"task_id": task_id, "tenant_id": tenant_id},
+    )
+
+
+def _insert_step_result(
+    connection: object,
+    tenant_id: str,
+    task_id: str,
+    step_id: str,
+    payload: str,
+) -> None:
+    from sqlalchemy.engine import Connection
+
+    assert isinstance(connection, Connection)
+    connection.execute(
+        text(
+            "INSERT INTO workflow_step_results "
+            "(tenant_id, task_id, step_id, result_json, execution_json) "
+            "VALUES (:tenant_id, :task_id, :step_id, :payload, '{}')"
+        ),
+        {
+            "tenant_id": tenant_id,
+            "task_id": task_id,
+            "step_id": step_id,
+            "payload": payload,
+        },
+    )

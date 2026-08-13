@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from alembic import command
 from alembic.config import Config
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import IntegrityError
 
 from copilot.agent.graph import WorkflowInterrupted
 from copilot.bootstrap.container import build_application
@@ -30,6 +33,74 @@ pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(not POSTGRES_URL, reason="TEST_POSTGRES_URL is not configured"),
 ]
+
+
+def test_postgres_step_result_identity_is_tenant_task_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert POSTGRES_URL is not None
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("PERSISTENCE_DATABASE_URL", POSTGRES_URL)
+    get_settings.cache_clear()
+    command.upgrade(Config(str(PROJECT_ROOT / "alembic.ini")), "head")
+    engine = create_engine(POSTGRES_URL)
+    suffix = uuid4().hex
+    first_task = f"T-STEP-A-{suffix}"
+    second_task = f"T-STEP-B-{suffix}"
+    try:
+        unique_column_sets = {
+            tuple(item["column_names"])
+            for item in inspect(engine).get_unique_constraints("workflow_step_results")
+        }
+        assert ("tenant_id", "task_id", "step_id") in unique_column_sets
+        assert ("step_id",) not in unique_column_sets
+
+        with engine.connect() as connection:
+            transaction = connection.begin()
+            connection.execute(
+                text(
+                    "INSERT INTO workflow_tasks "
+                    "(task_id, tenant_id, request_json, contract_json, plan_json, state_json) "
+                    "VALUES (:first_task, 'TENANT-A', '{}', NULL, NULL, '{}'), "
+                    "(:second_task, 'TENANT-A', '{}', NULL, NULL, '{}')"
+                ),
+                {"first_task": first_task, "second_task": second_task},
+            )
+            for task_id, payload in ((first_task, "A"), (second_task, "B")):
+                connection.execute(
+                    text(
+                        "INSERT INTO workflow_step_results "
+                        "(tenant_id, task_id, step_id, result_json, execution_json) "
+                        "VALUES ('TENANT-A', :task_id, 'step-1-knowledge-search', :payload, '{}')"
+                    ),
+                    {"task_id": task_id, "payload": payload},
+                )
+            assert (
+                connection.execute(
+                    text(
+                        "SELECT count(*) FROM workflow_step_results "
+                        "WHERE task_id IN (:first_task, :second_task) "
+                        "AND step_id = 'step-1-knowledge-search'"
+                    ),
+                    {"first_task": first_task, "second_task": second_task},
+                ).scalar_one()
+                == 2
+            )
+            with pytest.raises(IntegrityError), connection.begin_nested():
+                connection.execute(
+                    text(
+                        "INSERT INTO workflow_step_results "
+                        "(tenant_id, task_id, step_id, result_json, execution_json) "
+                        "VALUES ('TENANT-A', :task_id, 'step-1-knowledge-search', "
+                        "'duplicate', '{}')"
+                    ),
+                    {"task_id": first_task},
+                )
+            transaction.rollback()
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()
 
 
 def test_postgres_migration_round_trip_and_restart_recovery(

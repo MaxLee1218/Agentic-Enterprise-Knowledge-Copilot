@@ -118,15 +118,23 @@ the Copilot persistence PostgreSQL database.
 
 ## Docker Compose
 
-First obtain an approved independently packaged RAG image and set its tag:
+### Local Enterprise E2E
+
+For the browser-to-Artifact single-machine topology with separate RAG, Business PostgreSQL, and
+Copilot PostgreSQL services, see [Local Enterprise E2E](docs/local-enterprise-e2e.md).
+
+Build the formal image in the owning sibling repository:
 
 ```bash
-export RAG_IMAGE=approved-registry.example/enterprise-rag-engine:VERSION
+cd ../Enterprise-RAG-Engine
+docker build -t enterprise-rag-engine:local .
+cd ../Agentic-Enterprise-Knowledge-Copilot
 ```
 
-The current sibling Enterprise RAG Engine source checkout does not itself provide a Dockerfile.
-Its owning deployment must publish or otherwise supply this image; this Copilot repository does
-not invent that packaging or copy the RAG source.
+The Local Enterprise Compose consumes that image, explicitly ingests the sibling's five controlled
+Supplier Quality PDFs into its own named RAG volume, and uses a backend-only local generation stub
+by default so retrieved document contexts are not silently sent to an external provider. See the
+guide for the fresh-volume sequence and the separate Planner/RAG data-egress boundaries.
 
 Then start this repository:
 

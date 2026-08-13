@@ -3,10 +3,23 @@
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import Table, UniqueConstraint, select
 
 from copilot.persistence.database import PersistenceDatabase, PersistenceSchemaError
-from copilot.persistence.models import WorkflowApprovalRow
+from copilot.persistence.models import WorkflowApprovalRow, WorkflowStepResultRow
+
+
+def test_step_result_identity_is_scoped_to_tenant_and_task() -> None:
+    table = WorkflowStepResultRow.__table__
+    assert isinstance(table, Table)
+    unique_column_sets = {
+        tuple(column.name for column in constraint.columns)
+        for constraint in table.constraints
+        if isinstance(constraint, UniqueConstraint)
+    }
+
+    assert ("tenant_id", "task_id", "step_id") in unique_column_sets
+    assert ("step_id",) not in unique_column_sets
 
 
 def test_session_rolls_back_and_remains_usable_after_failure(tmp_path: Path) -> None:

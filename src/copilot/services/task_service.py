@@ -725,6 +725,15 @@ def _evidence_view(item: EvidenceItem, producer: str | None) -> TaskEvidenceView
     formula = _first_string(reference, "formula", "calculation_formula") or _first_string(
         data, "formula"
     )
+    if formula is None:
+        formulas = reference.get("formulas")
+        if isinstance(formulas, dict):
+            normalized_formulas = [
+                f"{key}: {value}"
+                for key, value in sorted(formulas.items())
+                if isinstance(key, str) and isinstance(value, str) and value
+            ]
+            formula = "; ".join(normalized_formulas) or None
     source = query_id or document or _first_string(reference, "engine_version", "algorithm_version")
     fields = ", ".join(sorted(str(key) for key in data)[:8])
     summary = f"{item.source_type.value} evidence"

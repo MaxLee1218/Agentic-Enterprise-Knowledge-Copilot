@@ -1,0 +1,275 @@
+name: agentic-enterprise-knowledge-copilot-local-enterprise
+
+x-copilot-persistence-environment: &copilot-persistence-environment
+  APP_ENV: development
+  DEBUG: "false"
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_FORMAT: json
+  PERSISTENCE_DATABASE_URL: postgresql+psycopg://${COPILOT_POSTGRES_USER:-copilot}:${COPILOT_POSTGRES_PASSWORD:-copilot_local_enterprise_password}@copilot-postgres:5432/${COPILOT_POSTGRES_DB:-copilot}
+  PERSISTENCE_AUTO_CREATE_SCHEMA: "false"
+  DATABASE_URL: postgresql+psycopg://${BUSINESS_READONLY_USER:-quality_readonly}:${BUSINESS_READONLY_PASSWORD:-quality_readonly_local_enterprise_password}@business-postgres:5432/${BUSINESS_POSTGRES_DB:-supplier_quality}
+  DATABASE_PROVIDER: sqlalchemy
+  KNOWLEDGE_PROVIDER: http
+  RAG_BASE_URL: http://enterprise-rag-engine:8000
+  ARTIFACT_DIR: /app/data/artifacts
+  CHECKPOINT_ENABLED: "true"
+  IDENTITY_PROVIDER: demo
+  DEMO_USER_ID: ${DEMO_USER_ID:-U-LOCAL-ENTERPRISE}
+  DEMO_TENANT_ID: ${DEMO_TENANT_ID:-TENANT-DEMO}
+  DEMO_APPROVAL_ROLES: ${DEMO_APPROVAL_ROLES:-["quality_analyst"]}
+  TASK_FORCE_READ_ONLY: "true"
+  TASK_REQUIRE_APPROVAL_BY_DEFAULT: ${TASK_REQUIRE_APPROVAL_BY_DEFAULT:-false}
+  MCP_ENABLED: "false"
+  NO_PROXY: 127.0.0.1,localhost,enterprise-rag-engine,copilot-postgres,business-postgres,${NO_PROXY:-}
+  no_proxy: 127.0.0.1,localhost,enterprise-rag-engine,copilot-postgres,business-postgres,${no_proxy:-}
+
+x-enterprise-rag-environment: &enterprise-rag-environment
+  MINI_RAG_SKIP_DOTENV: "1"
+  DEEPSEEK_API_KEY: ${ENTERPRISE_RAG_DEEPSEEK_API_KEY:-local-generation-stub}
+  DEEPSEEK_BASE_URL: ${ENTERPRISE_RAG_DEEPSEEK_BASE_URL:-http://rag-generation-stub:8000}
+  DEEPSEEK_MODEL: ${ENTERPRISE_RAG_DEEPSEEK_MODEL:-local-grounded-generation}
+  DEEPSEEK_TIMEOUT: ${ENTERPRISE_RAG_DEEPSEEK_TIMEOUT:-30}
+  VECTOR_DB_PATH: /app/data/supplier_quality/chroma
+  VECTOR_COLLECTION_NAME: ${ENTERPRISE_RAG_COLLECTION:-supplier_quality_demo}
+  RAG_CHUNK_MODE: ${ENTERPRISE_RAG_CHUNK_MODE:-standard}
+  RAG_PARENT_STORE_PATH: /app/data/parents/parents.sqlite3
+  FAQ_DB_PATH: /app/data/faq.db
+  FAQ_CACHE_ENABLED: "false"
+  QUERY_REWRITE_ENABLED: ${ENTERPRISE_RAG_QUERY_REWRITE_ENABLED:-false}
+  RERANKER_ENABLED: ${ENTERPRISE_RAG_RERANKER_ENABLED:-true}
+  RERANKER_LOCAL_FILES_ONLY: ${ENTERPRISE_RAG_RERANKER_LOCAL_FILES_ONLY:-false}
+  NO_PROXY: 127.0.0.1,localhost,rag-generation-stub,${NO_PROXY:-}
+  no_proxy: 127.0.0.1,localhost,rag-generation-stub,${no_proxy:-}
+
+services:
+  copilot-postgres:
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${COPILOT_POSTGRES_DB:-copilot}
+      POSTGRES_USER: ${COPILOT_POSTGRES_USER:-copilot}
+      POSTGRES_PASSWORD: ${COPILOT_POSTGRES_PASSWORD:-copilot_local_enterprise_password}
+    expose:
+      - "5432"
+    volumes:
+      - copilot-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [enterprise-backend]
+
+  business-postgres:
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${BUSINESS_POSTGRES_DB:-supplier_quality}
+      POSTGRES_USER: ${BUSINESS_POSTGRES_ADMIN_USER:-quality_seed}
+      POSTGRES_PASSWORD: ${BUSINESS_POSTGRES_ADMIN_PASSWORD:-quality_seed_local_enterprise_password}
+      BUSINESS_READONLY_USER: ${BUSINESS_READONLY_USER:-quality_readonly}
+      BUSINESS_READONLY_PASSWORD: ${BUSINESS_READONLY_PASSWORD:-quality_readonly_local_enterprise_password}
+    expose:
+      - "5432"
+    volumes:
+      - business-postgres-data:/var/lib/postgresql/data
+      - ./docker/business-db-init.sh:/docker-entrypoint-initdb.d/001-readonly-role.sh:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [enterprise-backend]
+
+  copilot-migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    environment:
+      <<: *copilot-persistence-environment
+      LLM_PROVIDER: mock
+    command: ["python", "-m", "copilot.persistence.migrate"]
+    depends_on:
+      copilot-postgres:
+        condition: service_healthy
+    networks: [enterprise-backend]
+
+  business-db-seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg://${BUSINESS_POSTGRES_ADMIN_USER:-quality_seed}:${BUSINESS_POSTGRES_ADMIN_PASSWORD:-quality_seed_local_enterprise_password}@business-postgres:5432/${BUSINESS_POSTGRES_DB:-supplier_quality}
+    command:
+      [
+        "python",
+        "scripts/seed_demo_database.py",
+        "--reset",
+        "--profile-output",
+        "/tmp/supplier_quality_dataset_profile.json",
+      ]
+    depends_on:
+      business-postgres:
+        condition: service_healthy
+    networks: [enterprise-backend]
+
+  rag-generation-stub:
+    build:
+      context: tests/fixtures/deployment
+      dockerfile: Dockerfile.rag-generation
+    restart: unless-stopped
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()",
+        ]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+    networks: [enterprise-backend]
+
+  enterprise-rag-engine:
+    image: ${ENTERPRISE_RAG_IMAGE:-enterprise-rag-engine:local}
+    restart: unless-stopped
+    environment: *enterprise-rag-environment
+    depends_on:
+      rag-generation-stub:
+        condition: service_healthy
+    expose:
+      - "8000"
+    volumes:
+      - enterprise-rag-data:/app/data
+      - ${ENTERPRISE_RAG_DOCUMENTS_PATH:-../Enterprise-RAG-Engine/enterprise-documents}:/app/enterprise-documents:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()",
+        ]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      retries: 12
+    networks: [enterprise-backend]
+
+  enterprise-rag-ingest:
+    image: ${ENTERPRISE_RAG_IMAGE:-enterprise-rag-engine:local}
+    profiles: [ingest]
+    restart: "no"
+    environment: *enterprise-rag-environment
+    command:
+      [
+        "python",
+        "scripts/ingest.py",
+        "--input",
+        "/app/enterprise-documents/pdf",
+        "--extensions",
+        ".pdf",
+        "--persist-path",
+        "/app/data/supplier_quality/chroma",
+        "--collection",
+        "${ENTERPRISE_RAG_COLLECTION:-supplier_quality_demo}",
+        "--reset",
+      ]
+    volumes:
+      - enterprise-rag-data:/app/data
+      - ${ENTERPRISE_RAG_DOCUMENTS_PATH:-../Enterprise-RAG-Engine/enterprise-documents}:/app/enterprise-documents:ro
+    networks: [enterprise-backend]
+
+  copilot-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *copilot-persistence-environment
+      LLM_PROVIDER: ${COPILOT_LLM_PROVIDER:-deepseek}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      LLM_CONNECT_TIMEOUT_SECONDS: ${LLM_CONNECT_TIMEOUT_SECONDS:-10}
+      LLM_READ_TIMEOUT_SECONDS: ${LLM_READ_TIMEOUT_SECONDS:-60}
+      RAG_TIMEOUT_SECONDS: ${RAG_TIMEOUT_SECONDS:-10}
+      RAG_MAX_ATTEMPTS: ${RAG_MAX_ATTEMPTS:-3}
+    expose:
+      - "8000"
+    volumes:
+      - copilot-artifacts:/app/data/artifacts
+    depends_on:
+      copilot-postgres:
+        condition: service_healthy
+      copilot-migrate:
+        condition: service_completed_successfully
+      business-db-seed:
+        condition: service_completed_successfully
+      enterprise-rag-engine:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3).read()",
+        ]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 18
+    stop_grace_period: 30s
+    networks: [enterprise-edge, enterprise-backend]
+
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8080}:8080"
+    depends_on:
+      copilot-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--spider",
+          "http://127.0.0.1:8080/health",
+        ]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 12
+    networks: [enterprise-edge]
+
+volumes:
+  copilot-postgres-data:
+  business-postgres-data:
+  copilot-artifacts:
+  enterprise-rag-data:
+
+networks:
+  enterprise-edge:
+    driver: bridge
+  enterprise-backend:
+    driver: bridge

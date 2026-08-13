@@ -10,7 +10,7 @@ from copilot.api.app import create_app
 from copilot.api.dependencies import get_caller_context, get_task_service
 from copilot.bootstrap.container import WorkflowContainer, build_workflow_container
 from copilot.config import Settings
-from copilot.contracts import SpanKind, SpanStatus
+from copilot.contracts import SpanKind, SpanStatus, TaskPlan
 from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.persistence.identifiers import SequentialIdentifierFactory
 from copilot.security.identity import DemoIdentityProvider
@@ -20,7 +20,37 @@ from tests.workflow_helpers import fixed_clock
 TASK_TEXT = "Analyze Q2 2026 supplier quality and generate a JSON report."
 
 
-def _client(tmp_path: Path) -> tuple[TestClient, WorkflowContainer]:
+class _TaskLocalStepIdOfflineMock(OfflineMockLLM):
+    @staticmethod
+    def _plan(payload: dict[str, object], node_name: str) -> TaskPlan:
+        plan = OfflineMockLLM._plan(payload, node_name)
+        identifiers = {
+            "knowledge_search": "step-1-knowledge-search",
+            "database_query": "step-2-database-query",
+            "analysis_engine": "step-3-analysis",
+            "report_generator": "step-4-report",
+        }
+        prior_ids = {step.step_id: identifiers[step.tool_name] for step in plan.steps}
+        return plan.model_copy(
+            update={
+                "steps": tuple(
+                    step.model_copy(
+                        update={
+                            "step_id": identifiers[step.tool_name],
+                            "dependency": tuple(prior_ids[item] for item in step.dependency),
+                        }
+                    )
+                    for step in plan.steps
+                )
+            }
+        )
+
+
+def _client(
+    tmp_path: Path,
+    *,
+    llm_provider: OfflineMockLLM | None = None,
+) -> tuple[TestClient, WorkflowContainer]:
     settings = Settings(
         app_env="test",
         database_url="sqlite:///unused-stage13-api.db",
@@ -33,7 +63,7 @@ def _client(tmp_path: Path) -> tuple[TestClient, WorkflowContainer]:
         ids=SequentialIdentifierFactory(),
         clock=fixed_clock,
         sleeper=lambda _seconds: None,
-        llm_provider=OfflineMockLLM(),
+        llm_provider=llm_provider or OfflineMockLLM(),
     )
     application = create_app(
         task_service=container.task_service,
@@ -69,12 +99,78 @@ def test_complete_task_can_be_queried_with_steps_evidence_and_artifact(tmp_path:
         assert all("input" not in item for item in steps.json()["steps"])
         assert evidence.json()["evidence"]
         assert all("content" not in item for item in evidence.json()["evidence"])
+        calculation = next(
+            item for item in evidence.json()["evidence"] if item["type"] == "CALCULATION"
+        )
+        assert calculation["formula"]
+        assert calculation["input_evidence_ids"]
         assert "location" not in artifact
         assert not Path(artifact["filename"]).is_absolute()
         assert downloaded.status_code == 200
         assert downloaded.headers["content-type"] == artifact["media_type"]
         assert downloaded.headers["x-artifact-id"] == artifact["artifact_id"]
         assert downloaded.content
+    finally:
+        container.close()
+
+
+def test_two_sequential_tasks_reuse_frozen_step_ids_without_cross_task_reads(
+    tmp_path: Path,
+) -> None:
+    client, container = _client(tmp_path, llm_provider=_TaskLocalStepIdOfflineMock())
+    try:
+        with client:
+            first = client.post(
+                "/v1/tasks",
+                json={"task": TASK_TEXT, "output_format": "json"},
+            )
+            second = client.post(
+                "/v1/tasks",
+                json={
+                    "task": "Analyze Q2 2026 supplier quality and generate a PDF report.",
+                    "output_format": "pdf",
+                },
+            )
+            assert first.status_code == 201
+            assert second.status_code == 201
+            first_task_id = first.json()["task_id"]
+            second_task_id = second.json()["task_id"]
+            assert first_task_id != second_task_id
+
+            first_task = client.get(f"/v1/tasks/{first_task_id}")
+            second_task = client.get(f"/v1/tasks/{second_task_id}")
+            first_steps = client.get(f"/v1/tasks/{first_task_id}/steps").json()["steps"]
+            second_steps = client.get(f"/v1/tasks/{second_task_id}/steps").json()["steps"]
+            first_evidence = client.get(f"/v1/tasks/{first_task_id}/evidence").json()["evidence"]
+            second_evidence = client.get(f"/v1/tasks/{second_task_id}/evidence").json()["evidence"]
+            first_artifacts = client.get(f"/v1/tasks/{first_task_id}/artifacts").json()["artifacts"]
+            second_artifacts = client.get(f"/v1/tasks/{second_task_id}/artifacts").json()[
+                "artifacts"
+            ]
+
+        first_step_ids = {item["step_id"] for item in first_steps}
+        second_step_ids = {item["step_id"] for item in second_steps}
+        assert first_task.json()["status"] == second_task.json()["status"] == "COMPLETED"
+        assert (
+            first_step_ids
+            == second_step_ids
+            == {
+                "step-1-knowledge-search",
+                "step-2-database-query",
+                "step-3-analysis",
+                "step-4-report",
+            }
+        )
+        assert all(item["status"] == "SUCCESS" for item in (*first_steps, *second_steps))
+        assert {item["step_id"] for item in first_evidence}.issubset(first_step_ids)
+        assert {item["step_id"] for item in second_evidence}.issubset(second_step_ids)
+        assert {item["evidence_id"] for item in first_evidence}.isdisjoint(
+            item["evidence_id"] for item in second_evidence
+        )
+        assert len(first_artifacts) == len(second_artifacts) == 1
+        assert first_artifacts[0]["task_id"] == first_task_id
+        assert second_artifacts[0]["task_id"] == second_task_id
+        assert first_artifacts[0]["artifact_id"] != second_artifacts[0]["artifact_id"]
     finally:
         container.close()
 

@@ -352,6 +352,11 @@ Task lifecycle boundary
   `- TaskResult and Artifact references
 ```
 
+`TaskStep.step_id` is unique within its owning Task, not across the database. Accordingly, a
+persisted Workflow StepResult is identified by `(tenant_id, task_id, step_id)`; every repository
+read and write retains the tenant and task scope even when different Tasks reuse the same frozen
+step identifiers.
+
 State changes use compare-and-swap or equivalent optimistic concurrency. Each accepted transition
 updates the authoritative `TaskState` version and appends its immutable audit event consistently.
 Plans, tool attempts, approvals, evidence, and artifacts are appended or versioned; they are not

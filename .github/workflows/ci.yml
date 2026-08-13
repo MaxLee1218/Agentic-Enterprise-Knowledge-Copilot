@@ -156,5 +156,14 @@ jobs:
           LLM_API_KEY: ci-only-placeholder
           IDENTITY_SIGNING_SECRET: ci-only-identity-signing-secret-32-bytes
         run: docker compose -f docker-compose.production.yml config
+      - name: Validate Local Enterprise Compose topology
+        env:
+          ENTERPRISE_RAG_IMAGE: enterprise-rag-engine:ci-placeholder
+          COPILOT_LLM_PROVIDER: mock
+        run: >-
+          docker compose
+          --env-file .env.local-enterprise.example
+          -f docker-compose.local-enterprise.yml
+          config
       - name: Build Copilot image
         run: docker build --tag enterprise-copilot:ci .
