@@ -1,14 +1,17 @@
 # Deployment Guide
 
-This guide deploys the Stage 17.1 hardened Copilot foundation. It does not deploy the upstream
-enterprise IdP/gateway, a managed secret store, an Enterprise RAG implementation, or MCP. The
-Enterprise RAG Engine remains an independent service and image.
+This guide deploys the hardened Copilot API and compiled execution console. It does not deploy the
+upstream enterprise IdP/gateway, a managed secret store, an Enterprise RAG implementation, or
+MCP. The Enterprise RAG Engine remains an independent service and image.
 
 ## Architecture
 
 ```text
 Client
-  -> Copilot API
+  -> approved identity gateway (external)
+  -> frontend Nginx / React SPA
+       -> same-origin /api proxy
+       -> Copilot API
        -> Copilot PostgreSQL (task/state/evidence/approval/audit/artifact metadata/checkpoints)
        -> Artifact volume (report content)
        -> Enterprise RAG Engine (approved HTTP contract)
@@ -23,6 +26,7 @@ directly.
 ## Prerequisites
 
 - Docker Engine and Docker Compose v2, or Python 3.11 plus PostgreSQL 16.
+- An immutable frontend image built from `frontend/Dockerfile`.
 - An approved Enterprise RAG Engine endpoint or separately built image.
 - A writable, persistent Artifact path.
 - Deployment-managed secrets and backups for a non-demo environment.
@@ -70,19 +74,31 @@ docker inspect enterprise-copilot:stage17 \
 
 No credential, RAG token, database password, or environment-specific URL belongs in the image.
 
+Build the frontend separately. Its first stage performs a locked Node build; the final image is
+the existing unprivileged Nginx runtime and contains no Node dependency tree:
+
+```bash
+docker build --pull -t enterprise-copilot-frontend:stage17 frontend
+```
+
+The frontend image has no secret-bearing environment configuration. It proxies `/api/` to the
+Compose service `copilot-api:8000` and serves React Router deep links through `index.html`.
+
 ## Docker Compose
 
 `docker-compose.yml` is an explicitly development topology. It contains local demo PostgreSQL
 credentials and Mock LLM/business-database providers and must not be promoted as a production
 manifest. `docker-compose.production.yml` is the fail-closed production expectation: it requires
-an immutable Copilot image, approved RAG image, trusted identity secret, model credential,
-PostgreSQL URL/credentials, and read-only enterprise business database URL. It contains no secret
-defaults and runs migration as a one-shot dependency before the API.
+immutable Copilot and frontend images, an approved RAG image, trusted identity secret, model
+credential, PostgreSQL URL/credentials, and read-only enterprise business database URL. It
+contains no secret defaults and runs migration as a one-shot dependency before the API.
 
 Obtain the independently packaged RAG image first:
 
 ```bash
 export RAG_IMAGE=approved-registry.example/enterprise-rag-engine:VERSION
+export COPILOT_IMAGE=approved-registry.example/enterprise-copilot:VERSION
+export FRONTEND_IMAGE=approved-registry.example/enterprise-copilot-frontend:VERSION
 docker compose config
 docker compose build
 docker compose up -d
@@ -96,12 +112,16 @@ docker compose -f docker-compose.production.yml up -d
 docker compose -f docker-compose.production.yml ps
 curl --fail http://127.0.0.1:${COPILOT_PORT:-8000}/health/live
 curl --fail http://127.0.0.1:${COPILOT_PORT:-8000}/health/ready
+curl --fail http://127.0.0.1:${FRONTEND_PORT:-8080}/health
+curl --fail http://127.0.0.1:${FRONTEND_PORT:-8080}/api/health/live
 docker compose -f docker-compose.production.yml down
 ```
 
-The production file intentionally does not publish PostgreSQL or RAG ports. Keep
-`PERSISTENCE_DATABASE_URL` consistent with the composed PostgreSQL credentials, or point it at an
-approved managed PostgreSQL and remove the local database through a reviewed override. The
+The production file intentionally does not publish PostgreSQL or RAG ports. The frontend port is
+bound to host loopback only; an approved gateway on the host or a reviewed deployment override
+must be the user-facing edge. Do not expose this port directly as a substitute for the gateway.
+Keep `PERSISTENCE_DATABASE_URL` consistent with the composed PostgreSQL credentials, or point it
+at an approved managed PostgreSQL and remove the local database through a reviewed override. The
 enterprise business database remains an external, independently governed dependency.
 
 The current sibling Enterprise RAG Engine source checkout has no Dockerfile. Its owner must supply
@@ -109,8 +129,9 @@ an approved image or separately governed image packaging. Do not improvise that 
 the Copilot repository or copy RAG source into this image.
 
 The topology contains `postgres`, `enterprise-rag-engine`, one-shot `migrate` and `rag-health`
-services, and `copilot-api`. Compose waits for PostgreSQL health, a successful migration, and a
-successful real Knowledge-client RAG probe before starting the API. The sidecar probe avoids
+services, `copilot-api`, and `frontend`. Compose waits for PostgreSQL health, a successful
+migration, a successful real Knowledge-client RAG probe, and API readiness before starting the
+frontend. The sidecar probe avoids
 assuming that Python, curl, or wget exists inside the independent RAG image. `RAG_BASE_URL` uses
 the Compose DNS name `http://enterprise-rag-engine:8000`; `localhost` inside the API container
 would address the API container itself.
@@ -157,10 +178,12 @@ image layer, command transcript, or committed file.
 4. Run `python -m copilot.persistence.migrate` once as a deployment job.
 5. Verify the independent RAG with `scripts/check_rag_health.py`.
 6. Configure the upstream trusted gateway to replace spoofable inbound identity headers and sign
-   the normalized identity assertion.
+   the normalized identity assertion; route the browser origin to the frontend and preserve the
+   signed assertion on `/api` requests.
 7. Start `copilot.bootstrap.api:app` using the same composition root as local execution.
-8. Check `/health/live` and `/health/ready`.
-9. Run an authenticated smoke request with approved test data.
+8. Start the frontend only after API readiness succeeds.
+9. Check API `/health/live`, `/health/ready`, and frontend `/health` through the intended routes.
+10. Run an authenticated browser smoke request with approved test data.
 
 Do not have every API worker race to apply migrations.
 

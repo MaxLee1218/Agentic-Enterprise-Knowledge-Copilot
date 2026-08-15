@@ -4,118 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light" />
-    <title>Enterprise Knowledge Copilot</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <meta
+      name="description"
+      content="Governed enterprise Agent task execution, approval, evidence, and Artifact console."
+    />
+    <title>Enterprise Agent Console</title>
   </head>
   <body>
-    <header class="masthead">
-      <div>
-        <p class="eyebrow">Local Enterprise · Governed execution</p>
-        <h1>Supplier Quality Copilot</h1>
-        <p class="lede">
-          Submit a bounded supplier-quality task and inspect every governed step, Evidence item,
-          and report Artifact.
-        </p>
-      </div>
-      <div class="health" id="health" aria-live="polite">
-        <span class="health-dot"></span>
-        <span>Checking readiness…</span>
-      </div>
-    </header>
-
-    <main>
-      <section class="panel task-panel" aria-labelledby="task-heading">
-        <div class="section-heading">
-          <div>
-            <p class="step-label">01 · Request</p>
-            <h2 id="task-heading">Create a governed task</h2>
-          </div>
-          <span class="boundary-note">Browser → /api → Copilot</span>
-        </div>
-
-        <form id="task-form">
-          <label for="task-input">Natural-language task</label>
-          <textarea id="task-input" name="task" rows="5" required>Analyze supplier quality for Q2 2026, compare it with the previous period, check the approved supplier quality policy, and generate a JSON management report.</textarea>
-
-          <div class="form-row">
-            <label class="format-field" for="output-format">
-              Output format
-              <select id="output-format" name="output_format">
-                <option value="json">JSON</option>
-                <option value="pdf">PDF</option>
-              </select>
-            </label>
-            <button id="submit-button" type="submit">Run analysis</button>
-          </div>
-        </form>
-
-        <p class="message" id="message" role="status" aria-live="polite"></p>
-      </section>
-
-      <section class="workspace" id="workspace" hidden>
-        <article class="panel summary-panel">
-          <div class="section-heading">
-            <div>
-              <p class="step-label">02 · Lifecycle</p>
-              <h2>Task status</h2>
-            </div>
-            <button class="secondary" id="refresh-button" type="button">Refresh</button>
-          </div>
-          <dl class="task-facts">
-            <div><dt>Task ID</dt><dd id="task-id">—</dd></div>
-            <div><dt>Status</dt><dd><span class="status" id="task-status">—</span></dd></div>
-            <div><dt>Trace ID</dt><dd id="trace-id">—</dd></div>
-          </dl>
-          <p class="summary" id="task-summary"></p>
-          <div class="approval" id="approval" hidden></div>
-        </article>
-
-        <article class="panel wide-panel">
-          <div class="section-heading">
-            <div>
-              <p class="step-label">03 · Execution</p>
-              <h2>Plan steps</h2>
-            </div>
-            <span class="count" id="step-count">0</span>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr><th>Tool</th><th>Purpose</th><th>Status</th><th>Attempts</th></tr>
-              </thead>
-              <tbody id="steps-body"></tbody>
-            </table>
-          </div>
-        </article>
-
-        <article class="panel">
-          <div class="section-heading">
-            <div>
-              <p class="step-label">04 · Traceability</p>
-              <h2>Evidence</h2>
-            </div>
-            <span class="count" id="evidence-count">0</span>
-          </div>
-          <div class="card-list" id="evidence-list"></div>
-        </article>
-
-        <article class="panel">
-          <div class="section-heading">
-            <div>
-              <p class="step-label">05 · Deliverables</p>
-              <h2>Artifacts</h2>
-            </div>
-            <span class="count" id="artifact-count">0</span>
-          </div>
-          <div class="card-list" id="artifact-list"></div>
-        </article>
-      </section>
-    </main>
-
-    <footer>
-      Local development identity only. Business databases, RAG credentials, and model keys never
-      enter the browser.
-    </footer>
-    <script src="/app.js" defer></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

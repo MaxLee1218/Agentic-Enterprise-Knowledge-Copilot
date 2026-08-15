@@ -13,10 +13,65 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  frontend-quality:
+    name: Frontend quality and real browser E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install backend used by API generation and E2E
+        run: python -m pip install --disable-pip-version-check -e "..[dev]"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.18.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked frontend dependencies
+        run: npm ci
+
+      - name: Verify generated OpenAPI client is current
+        run: npm run api:check
+
+      - name: Run frontend static checks
+        run: |
+          npm run typecheck
+          npm run lint
+          npm run format:check
+
+      - name: Run frontend unit and component tests
+        run: npm run test
+
+      - name: Build production frontend
+        run: npm run build
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Run real browser-to-FastAPI E2E
+        run: npm run test:e2e
+
   quality-gates:
     name: Python 3.11 quality gates
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      APP_ENV: test
+      DATABASE_URL: "sqlite:///:memory:"
 
     steps:
       - name: Check out repository
@@ -147,6 +202,7 @@ jobs:
       - name: Validate production Compose topology
         env:
           COPILOT_IMAGE: enterprise-copilot:ci
+          FRONTEND_IMAGE: enterprise-copilot-frontend:ci
           RAG_IMAGE: enterprise-rag-engine:ci-placeholder
           POSTGRES_DB: copilot
           POSTGRES_USER: copilot
@@ -167,3 +223,5 @@ jobs:
           config
       - name: Build Copilot image
         run: docker build --tag enterprise-copilot:ci .
+      - name: Build frontend image
+        run: docker build --tag enterprise-copilot-frontend:ci frontend

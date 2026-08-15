@@ -100,7 +100,7 @@ def test_openapi_exposes_all_stage13_routes_and_no_internal_storage_fields(
     try:
         schema = cast(FastAPI, client.app).openapi()
         expected = {
-            "/v1/tasks": {"post"},
+            "/v1/tasks": {"get", "post"},
             "/v1/tasks/{task_id}": {"get"},
             "/v1/tasks/{task_id}/steps": {"get"},
             "/v1/tasks/{task_id}/evidence": {"get"},
@@ -127,6 +127,15 @@ def test_openapi_exposes_all_stage13_routes_and_no_internal_storage_fields(
         }
         download = schema["paths"]["/v1/tasks/{task_id}/artifacts/{artifact_id}"]["get"]
         assert "application/octet-stream" in download["responses"]["200"]["content"]
+        task_list = schema["paths"]["/v1/tasks"]["get"]
+        assert task_list["operationId"] == "list_tasks"
+        assert {item["name"] for item in task_list["parameters"]} == {
+            "status",
+            "limit",
+            "offset",
+        }
+        list_schema = schema["components"]["schemas"]["TaskListResponse"]
+        assert set(list_schema["properties"]) == {"items", "total", "limit", "offset"}
     finally:
         container.close()
 

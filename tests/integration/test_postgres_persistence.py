@@ -182,6 +182,14 @@ def test_postgres_migration_round_trip_and_restart_recovery(
     with build_application(settings) as recovered:
         task = recovered.task_service.get_task(task_id, caller)
         assert task.status == TaskStatus.COMPLETED.value
+        task_page = recovered.task_service.list_tasks(
+            caller,
+            status=TaskStatus.COMPLETED,
+            limit=20,
+            offset=0,
+        )
+        assert task_page.total == 1
+        assert tuple(item.task_id for item in task_page.items) == (task_id,)
         assert recovered.repository.task_result_for(task_id, tenant_id=caller.tenant_id) is not None
         assert (
             recovered.approval_repository.get(approval_id, tenant_id=caller.tenant_id).status

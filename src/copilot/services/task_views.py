@@ -28,6 +28,16 @@ class TaskSummaryView:
 
 
 @dataclass(frozen=True, slots=True)
+class TaskListView:
+    """Bounded task history for one authenticated owner and tenant."""
+
+    items: tuple[TaskSummaryView, ...]
+    total: int
+    limit: int
+    offset: int
+
+
+@dataclass(frozen=True, slots=True)
 class TaskStepView:
     """Safe combined view of a planned step and its persisted result."""
 
@@ -82,6 +92,7 @@ class TaskArtifactView:
 __all__ = [
     "TaskArtifactView",
     "TaskEvidenceView",
+    "TaskListView",
     "TaskStepView",
     "TaskSummaryView",
 ]

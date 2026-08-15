@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 
 from copilot.agent.graph import WorkflowInterrupted
 from copilot.api.dependencies import get_caller_context, get_task_service
@@ -14,6 +14,7 @@ from copilot.api.schemas.tasks import (
     TaskErrorResponse,
     TaskEvidenceListResponse,
     TaskFailureResponse,
+    TaskListResponse,
     TaskResponse,
     TaskStepsResponse,
     TaskSubmissionResponse,
@@ -28,6 +29,33 @@ from copilot.services.task_intake import (
 from copilot.services.task_service import NaturalLanguageTaskService
 
 router = APIRouter(prefix="/v1/tasks", tags=["tasks"])
+
+
+@router.get(
+    "",
+    response_model=TaskListResponse,
+    operation_id="list_tasks",
+    responses={
+        403: {"model": TaskErrorResponse},
+        422: {"model": TaskErrorResponse},
+        500: {"model": TaskErrorResponse},
+    },
+)
+def list_tasks(
+    service: Annotated[NaturalLanguageTaskService, Depends(get_task_service)],
+    caller: Annotated[TrustedCallerContext, Depends(get_caller_context)],
+    status: TaskStatus | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> TaskListResponse:
+    """Return one bounded tenant- and owner-scoped task history page."""
+    page = service.list_tasks(caller, status=status, limit=limit, offset=offset)
+    return TaskListResponse(
+        items=tuple(task_response(item) for item in page.items),
+        total=page.total,
+        limit=page.limit,
+        offset=page.offset,
+    )
 
 
 @router.post(
@@ -219,6 +247,7 @@ def cancel_task(
 __all__ = [
     "cancel_task",
     "get_task",
+    "list_tasks",
     "list_task_evidence",
     "list_task_steps",
     "router",

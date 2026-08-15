@@ -77,6 +77,7 @@ LangGraph、Tool、Repository 或文件路径。当前执行模型为请求内�
 | Method | Path | Request | Response | Success |
 |---|---|---|---|---:|
 | POST | `/v1/tasks` | `NaturalLanguageTaskSubmission` | `TaskSubmissionResponse` | 201/202 |
+| GET | `/v1/tasks` | `status?`, `limit`, `offset` | `TaskListResponse` | 200 |
 | GET | `/v1/tasks/{task_id}` | — | `TaskResponse` | 200 |
 | GET | `/v1/tasks/{task_id}/steps` | — | `TaskStepsResponse` | 200 |
 | GET | `/v1/tasks/{task_id}/evidence` | — | `TaskEvidenceListResponse` | 200 |
@@ -87,11 +88,15 @@ LangGraph、Tool、Repository 或文件路径。当前执行模型为请求内�
 查询示例：
 
 ```bash
+curl 'http://127.0.0.1:8000/v1/tasks?status=COMPLETED&limit=20&offset=0'
 curl http://127.0.0.1:8000/v1/tasks/TASK_ID
 curl http://127.0.0.1:8000/v1/tasks/TASK_ID/steps
 curl http://127.0.0.1:8000/v1/tasks/TASK_ID/evidence
 curl http://127.0.0.1:8000/v1/tasks/TASK_ID/artifacts
 ```
+
+任务列表始终由可信调用上下文约束到当前 tenant 和创建用户，按创建时间降序并用 `task_id` 稳定
+排序。`limit` 范围为 1–100，`offset` 必须非负；浏览器不能通过查询参数扩大身份或数据范围。
 
 Artifact 列表只包含 `artifact_id`、安全文件名、格式、媒体类型、checksum、大小和创建时间。
 下载接口验证当前 Demo Identity 对 Task 的访问权、Artifact 与 Task 归属、受控根目录、文件大小和

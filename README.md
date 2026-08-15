@@ -65,6 +65,7 @@ Current boundaries are intentional:
 ## Requirements and installation
 
 - Python 3.11 or later
+- Node.js 22 and npm for frontend development
 - Docker Engine with Compose v2 for the container path
 - PostgreSQL 16 for the deployment/integration path
 - a separately built or approved Enterprise RAG Engine image for the full Compose topology
@@ -115,6 +116,41 @@ The same allowlisted adapter accepts PostgreSQL, uses a server-side read-only tr
 statement timeout, and is included in `/health/ready` dependency checks. Development Compose now
 uses a separate seeded `business-postgres` service and SELECT-only runtime role; it does not reuse
 the Copilot persistence PostgreSQL database.
+
+## Frontend
+
+The implemented React + TypeScript console provides tenant/owner-scoped task history, governed
+task submission, lifecycle and step inspection, minimized Evidence views, verified Artifact
+downloads, cancellation, system health, and an authorized approval workbench. It preserves the
+same-origin `/api` boundary and never accepts browser-selected identity, tenant, role, database,
+RAG source, or tool configuration.
+
+Install and run it against the local API:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+The Vite server listens on `http://127.0.0.1:5173` and proxies `/api` to the API on port 8000.
+Run the frontend quality gates with:
+
+```bash
+npm run api:check
+npm run typecheck
+npm run lint
+npm run format:check
+npm run test
+npm run build
+npm run test:e2e
+```
+
+The Playwright suite starts a hermetic real FastAPI/Task Service/Agent workflow and verifies the
+browser-to-Evidence-to-Artifact path plus approval, rejection, cancellation, and failure UX. See
+[Frontend development](docs/frontend-development.md),
+[Frontend architecture](docs/frontend-architecture.md), and the pre-migration
+[Frontend audit](docs/frontend-audit.md).
 
 ## Docker Compose
 

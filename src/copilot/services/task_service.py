@@ -49,6 +49,7 @@ from copilot.services.task_intake import (
 )
 from copilot.services.task_views import (
     TaskEvidenceView,
+    TaskListView,
     TaskStepView,
     TaskSummaryView,
 )
@@ -79,6 +80,16 @@ class TaskManagementRepository(Protocol):
     """Read/write task persistence required by the management use cases."""
 
     def state_for(self, task_id: str, *, tenant_id: str) -> TaskState: ...
+
+    def list_task_ids(
+        self,
+        *,
+        tenant_id: str,
+        user_id: str,
+        status: str | None,
+        limit: int,
+        offset: int,
+    ) -> tuple[tuple[str, ...], int]: ...
 
     def request_for(self, task_id: str, *, tenant_id: str) -> TaskRequest: ...
 
@@ -348,6 +359,46 @@ class NaturalLanguageTaskService:
             task_id, caller, trace_id=trace_id, permission=Permission.READ_TASK
         )
         return self._task_view(request, state, contract, plan, tenant_id=caller.tenant_id)
+
+    def list_tasks(
+        self,
+        caller: TrustedCallerContext,
+        *,
+        status: TaskStatus | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> TaskListView:
+        """Return bounded newest-first task history for the authenticated owner."""
+        decision = self._permission_matrix.evaluate(
+            AuthorizationRequest(
+                action=Permission.READ_TASK,
+                roles=caller.roles,
+                resource_type="task_collection",
+                purpose=caller.purpose,
+                is_demo_identity=caller.is_demo_identity,
+            )
+        )
+        if not caller.authenticated or not decision.allowed:
+            raise TaskPermissionDeniedError("TASK-COLLECTION")
+        repository = self._require_repository()
+        task_ids, total = repository.list_task_ids(
+            tenant_id=caller.tenant_id,
+            user_id=caller.user_id,
+            status=status.value if status is not None else None,
+            limit=limit,
+            offset=offset,
+        )
+        items = tuple(
+            self._task_view(
+                repository.request_for(task_id, tenant_id=caller.tenant_id),
+                repository.state_for(task_id, tenant_id=caller.tenant_id),
+                repository.contract_for(task_id, tenant_id=caller.tenant_id),
+                repository.plan_for(task_id, tenant_id=caller.tenant_id),
+                tenant_id=caller.tenant_id,
+            )
+            for task_id in task_ids
+        )
+        return TaskListView(items=items, total=total, limit=limit, offset=offset)
 
     def list_task_steps(
         self,

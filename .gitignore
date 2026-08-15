@@ -51,6 +51,14 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# Frontend dependencies, builds, and browser-test output
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+.pnpm-store/
+
 # Translations
 *.mo
 *.pot

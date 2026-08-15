@@ -8,7 +8,8 @@ from pathlib import Path
 from threading import RLock
 from typing import Any, cast
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import JSON, delete, func, select, update
+from sqlalchemy import cast as sql_cast
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 
@@ -486,6 +487,67 @@ class WorkflowRepository:
                 if row is None:
                     raise KeyError(task_id)
                 return TaskState.model_validate_json(row.state_json)
+
+    def list_task_ids(
+        self,
+        *,
+        tenant_id: str,
+        user_id: str,
+        status: str | None,
+        limit: int,
+        offset: int,
+    ) -> tuple[tuple[str, ...], int]:
+        """List one owner's tenant-scoped task IDs newest-first with bounded pagination."""
+        if not tenant_id or not user_id:
+            raise ValueError("tenant_id and user_id are required")
+        if limit < 1 or limit > 100 or offset < 0:
+            raise ValueError("task list pagination is outside the supported bounds")
+        with self._lock:
+            if self._database is None:
+                matching = [
+                    (task_id, request.created_at)
+                    for task_id, request in self._requests.items()
+                    if self._tenants.get(task_id) == tenant_id
+                    and request.user_id == user_id
+                    and (status is None or self._states[task_id].state.value == status)
+                ]
+                matching.sort(key=lambda item: (item[1], item[0]), reverse=True)
+                return (
+                    tuple(task_id for task_id, _created_at in matching[offset : offset + limit]),
+                    len(matching),
+                )
+
+            if self._database.backend == "sqlite":
+                request_user_id = func.json_extract(WorkflowTaskRow.request_json, "$.user_id")
+                task_status = func.json_extract(WorkflowTaskRow.state_json, "$.state")
+                created_at = func.json_extract(WorkflowTaskRow.request_json, "$.created_at")
+            else:
+                request_json = sql_cast(WorkflowTaskRow.request_json, JSON)
+                state_json = sql_cast(WorkflowTaskRow.state_json, JSON)
+                request_user_id = request_json["user_id"].as_string()
+                task_status = state_json["state"].as_string()
+                created_at = request_json["created_at"].as_string()
+            conditions = [
+                WorkflowTaskRow.tenant_id == tenant_id,
+                request_user_id == user_id,
+            ]
+            if status is not None:
+                conditions.append(task_status == status)
+            with self._database.session() as session:
+                total = session.scalar(
+                    select(func.count()).select_from(WorkflowTaskRow).where(*conditions)
+                )
+                task_ids = session.scalars(
+                    select(WorkflowTaskRow.task_id)
+                    .where(*conditions)
+                    .order_by(
+                        created_at.desc(),
+                        WorkflowTaskRow.task_id.desc(),
+                    )
+                    .offset(offset)
+                    .limit(limit)
+                )
+                return tuple(task_ids), int(total or 0)
 
     def request_for(self, task_id: str, *, tenant_id: str) -> TaskRequest:
         with self._lock:

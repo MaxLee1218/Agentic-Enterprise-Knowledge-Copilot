@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
-from typing import Any
 
 from copilot.agent.graph import WorkflowInterrupted
+from copilot.agent.state import AgentGraphState
 from copilot.bootstrap.container import build_workflow_container
 from copilot.config import ConfigurationError, Settings
 from copilot.contracts import ArtifactType
@@ -38,7 +38,7 @@ def _arguments() -> argparse.Namespace:
     return arguments
 
 
-def _summary(state: dict[str, Any], *, run: int) -> dict[str, object]:
+def _summary(state: AgentGraphState, *, run: int) -> dict[str, object]:
     contract = state["contract"]
     plan = state["plan"]
     tools = tuple(step.tool_name for step in plan.steps)
@@ -46,8 +46,7 @@ def _summary(state: dict[str, Any], *, run: int) -> dict[str, object]:
         "year_2026": contract.constraints.year == 2026,
         "quarter_q2": contract.constraints.quarter == 2,
         "output_pdf": (
-            contract.expected_output.artifact_type
-            is ArtifactType.QUALITY_ANALYSIS_REPORT_PDF
+            contract.expected_output.artifact_type is ArtifactType.QUALITY_ANALYSIS_REPORT_PDF
         ),
         "tool_order": tools == EXPECTED_TOOLS,
         "plan_validator": state["route"] == "plan_valid",

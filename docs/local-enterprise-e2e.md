@@ -28,7 +28,7 @@ model key.
 
 | Service | Responsibility | Lifecycle |
 |---|---|---|
-| `frontend` | Minimal internal task UI and same-origin `/api` reverse proxy | long-running, host port `127.0.0.1:8080` |
+| `frontend` | React enterprise execution console and same-origin `/api` reverse proxy | long-running, host port `127.0.0.1:8080` |
 | `copilot-api` | Existing API, LangGraph, policies, tools, Evidence, reporting, and verifier | long-running, internal port 8000 |
 | `copilot-migrate` | Alembic `upgrade head` plus official LangGraph PostgreSQL saver setup | one-shot, successful exit 0 |
 | `copilot-postgres` | Copilot-owned Task, state, Evidence, Approval, Audit, Artifact metadata, and checkpoint data | long-running, private port 5432 |
@@ -221,6 +221,12 @@ The UI displays the real `task_id`, status, `trace_id`, four plan steps, Evidenc
 Artifact list. It does not hard-code successful states. If the task enters `WAITING_APPROVAL`, the
 pending approval ID is displayed; resolution still requires the existing API and an authorized
 approver identity.
+
+The committed demo role is `quality_analyst`, which can submit and inspect tasks but cannot resolve
+an approval. For an isolated approval demonstration, set
+`DEMO_APPROVAL_ROLES=["quality_analyst","quality_data_approver"]` in the uncommitted
+`.env.local-enterprise` before startup. This is development-only authority and is rejected by the
+production configuration profile.
 
 ## Artifact download and automated smoke
 

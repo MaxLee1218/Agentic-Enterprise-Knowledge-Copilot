@@ -128,6 +128,17 @@ class TaskResponse(BaseModel):
     error_summary: str | None
 
 
+class TaskListResponse(BaseModel):
+    """Bounded current-user task history ordered newest-first."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: tuple[TaskResponse, ...]
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1, le=100)
+    offset: int = Field(ge=0)
+
+
 class TaskStepResponse(BaseModel):
     """Public planned-step and persisted-result view."""
 
@@ -194,6 +205,7 @@ __all__ = [
     "TaskEvidenceResponse",
     "TaskErrorResponse",
     "TaskFailureResponse",
+    "TaskListResponse",
     "TaskResponse",
     "TaskStepResponse",
     "TaskStepsResponse",

@@ -50,13 +50,14 @@ def _client(
     tmp_path: Path,
     *,
     llm_provider: OfflineMockLLM | None = None,
+    persistent: bool = False,
 ) -> tuple[TestClient, WorkflowContainer]:
     settings = Settings(
         app_env="test",
         database_url="sqlite:///unused-stage13-api.db",
         artifact_dir=tmp_path / "artifacts",
         checkpoint_database_path=tmp_path / "workflow.db",
-        checkpoint_enabled=False,
+        checkpoint_enabled=persistent,
     )
     container = build_workflow_container(
         settings,
@@ -110,6 +111,53 @@ def test_complete_task_can_be_queried_with_steps_evidence_and_artifact(tmp_path:
         assert downloaded.headers["content-type"] == artifact["media_type"]
         assert downloaded.headers["x-artifact-id"] == artifact["artifact_id"]
         assert downloaded.content
+    finally:
+        container.close()
+
+
+def test_task_history_is_owner_scoped_filtered_and_paginated(tmp_path: Path) -> None:
+    client, container = _client(tmp_path, persistent=True)
+    try:
+        owner = TrustedCallerContext(
+            user_id="U-OWNER",
+            tenant_id="TENANT-DEMO",
+            data_scope=("quality.v1", "supplier-quality-policy-v1"),
+            roles=("quality_analyst",),
+            is_demo_identity=False,
+        )
+        other = owner.model_copy(update={"user_id": "U-OTHER"})
+        application = cast(FastAPI, client.app)
+        with client:
+            application.dependency_overrides[get_caller_context] = lambda: owner
+            first = client.post("/v1/tasks", json={"task": TASK_TEXT})
+            second = client.post(
+                "/v1/tasks",
+                json={"task": TASK_TEXT, "require_approval": True},
+            )
+            application.dependency_overrides[get_caller_context] = lambda: other
+            hidden = client.post("/v1/tasks", json={"task": TASK_TEXT})
+            application.dependency_overrides[get_caller_context] = lambda: owner
+
+            page = client.get("/v1/tasks", params={"limit": 1, "offset": 0})
+            waiting = client.get(
+                "/v1/tasks",
+                params={"status": "WAITING_APPROVAL", "limit": 20, "offset": 0},
+            )
+            invalid = client.get("/v1/tasks", params={"limit": 101})
+
+        assert first.status_code == hidden.status_code == 201
+        assert second.status_code == 202
+        assert page.status_code == 200
+        assert page.json()["total"] == 2
+        assert page.json()["limit"] == 1
+        assert len(page.json()["items"]) == 1
+        assert page.json()["items"][0]["task_id"] == second.json()["task_id"]
+        assert waiting.status_code == 200
+        assert waiting.json()["total"] == 1
+        assert waiting.json()["items"][0]["status"] == "WAITING_APPROVAL"
+        assert invalid.status_code == 422
+        assert invalid.json()["error_code"] == "INVALID_TASK_INPUT"
+        assert hidden.json()["task_id"] not in {item["task_id"] for item in page.json()["items"]}
     finally:
         container.close()
 

@@ -66,7 +66,7 @@ Chatbot
 
 与普通 Chatbot 相比，它不把多步骤工作隐藏在一次文本生成中；与普通 RAG 相比，它不仅检索知识，还查询结构化数据、执行确定性计算、生成 Artifact 和保存证据链；与函数调用 Demo 相比，它增加了计划校验、权限、数据范围、审批、超时/重试、Evidence、Verifier、租户隔离、持久化、审计、评估和部署边界。
 
-但“平台”应谨慎使用：当前生产业务类型只有 `supplier_quality_analysis.v1`，执行计划必须使用冻结的四个工具，分析指标和报告结构固定，没有通用任务市场、任意工具组合、后台队列、Web UI 或多 Agent 协作。
+但“平台”应谨慎使用：当前生产业务类型只有 `supplier_quality_analysis.v1`，执行计划必须使用冻结的四个工具，分析指标和报告结构固定；已有该场景的 Web 执行控制台，但没有通用任务市场、任意工具组合、后台队列或多 Agent 协作。
 
 关键设计权威是 `docs/design/` 下七份冻结 v1.1 文档；当前业务代码必须服从这一基线。Stage 18 的 MCP 是后续明确设计的可选协议边界，不改变 v1.1 业务范围。证据见 `AGENTS.md`、`docs/design/design_baseline.md`、`docs/adr/ADR-007-stage-18-mcp-readiness-boundary.md` 和 `docs/adr/ADR-008-mcp-protocol-2025-11-25.md`。
 
@@ -631,7 +631,7 @@ Knowledge step可以先执行；在 database_query 前，系统创建与精确 a
 | Observability | Structured logs/local metrics/spans | IMPLEMENTED | CONDITIONAL | process-local only |
 | Observability | OpenTelemetry/Prometheus backend | NOT_IMPLEMENTED | NO | no exporter or `/metrics` |
 | API | Task/Approval/Artifact/Health APIs | IMPLEMENTED | CONDITIONAL | route and contract tests |
-| UI | Web UI | NOT_IMPLEMENTED | NO | no frontend |
+| UI | React task execution console | IMPLEMENTED | CONDITIONAL | typed SPA + component/real browser E2E tests |
 | Evaluation | Deterministic offline Agent evaluation | IMPLEMENTED | YES FOR REGRESSION | 30/30 current run |
 | Evaluation | Live LLM/RAG evaluation | NOT_IMPLEMENTED | NO | CLI explicitly rejects live mode |
 | Deployment | Docker image | IMPLEMENTED | CONDITIONAL | build/run verified this audit |
@@ -659,7 +659,7 @@ Knowledge step可以先执行；在 database_query 前，系统创建与精确 a
 | 开放域企业任务 | NOT IMPLEMENTED | 仅 `supplier_quality_analysis.v1`。 |
 | Multi-Agent 协作 | NOT IMPLEMENTED | 当前是一张单 Agent LangGraph。 |
 | Web 搜索 | NOT IMPLEMENTED | 只有批准的 Enterprise RAG，不含互联网搜索。 |
-| Web UI | NOT IMPLEMENTED | 只有 HTTP API 和 CLI。 |
+| 通用管理平台 UI | NOT IMPLEMENTED | 已有冻结供应商质量场景的执行控制台，但没有通用任务/工具管理平台。 |
 | DOCX/XLSX/HTML/Markdown 报告 | NOT IMPLEMENTED | 只有 JSON/PDF renderer。 |
 | 后台长任务、队列和水平 worker | NOT IMPLEMENTED | API 同步执行，无 broker/worker。 |
 | 任意崩溃任务自动恢复 | PARTIAL | 有持久状态/checkpoint/resume primitive，但无自动扫描调度。 |
@@ -999,7 +999,7 @@ LLM 只提出结构化理解和计划，不能授权执行。Registry、Schema�
 
 ### 20.7 当前最大的能力边界是什么？
 
-仅支持一个冻结业务场景、四个工具、两个查询模板、四个指标和两种报告格式；没有通用任务、风险排名、写操作、交互澄清、Web UI、多 Agent 或开放式工具选择。
+仅支持一个冻结业务场景、四个工具、两个查询模板、四个指标和两种报告格式；已有该场景的 Web 执行控制台，但没有通用任务、风险排名、写操作、交互澄清、多 Agent 或开放式工具选择。
 
 ### 20.8 当前最大的生产化限制是什么？
 
