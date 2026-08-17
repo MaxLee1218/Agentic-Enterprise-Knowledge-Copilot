@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from copilot.config import get_settings
 from copilot.mcp.config import load_connection
 from copilot.mcp.protocol import PINNED_PROTOCOL_REVISION, MCPProtocolClient
 from copilot.mcp.security.credential_provider import EnvCredentialProvider
@@ -14,10 +13,16 @@ from copilot.mcp.security.credential_provider import EnvCredentialProvider
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("connection", type=Path)
+    parser.add_argument(
+        "--credential-env",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="Allow NAME as an environment-backed credential reference (repeatable).",
+    )
     args = parser.parse_args()
-    settings = get_settings()
     connection = load_connection(args.connection)
-    credential = EnvCredentialProvider(allowed_names=settings.mcp_env_credential_names).resolve(
+    credential = EnvCredentialProvider(allowed_names=tuple(args.credential_env)).resolve(
         connection.credential_reference
     )
     client = MCPProtocolClient(connection)

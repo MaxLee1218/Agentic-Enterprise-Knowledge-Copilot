@@ -171,18 +171,19 @@ def test_empty_sources_succeed_without_fabricated_evidence() -> None:
 
 
 @pytest.mark.parametrize(
-    ("error", "error_code"),
+    ("error", "error_code", "recoverable"),
     [
-        (RAGTimeoutError("timeout", trace_id="t"), "KNOWLEDGE_TIMEOUT"),
-        (RAGUnavailableError("down", trace_id="t"), "KNOWLEDGE_UNAVAILABLE"),
-        (RAGAuthenticationError("denied", trace_id="t"), "KNOWLEDGE_ACCESS_DENIED"),
-        (RAGInvalidResponseError("invalid", trace_id="t"), "KNOWLEDGE_INVALID_RESPONSE"),
-        (RAGInternalError("internal", trace_id="t"), "KNOWLEDGE_UNAVAILABLE"),
+        (RAGTimeoutError("timeout", trace_id="t"), "KNOWLEDGE_TIMEOUT", True),
+        (RAGUnavailableError("down", trace_id="t"), "KNOWLEDGE_UNAVAILABLE", True),
+        (RAGAuthenticationError("denied", trace_id="t"), "KNOWLEDGE_ACCESS_DENIED", False),
+        (RAGInvalidResponseError("invalid", trace_id="t"), "KNOWLEDGE_INVALID_RESPONSE", False),
+        (RAGInternalError("internal", trace_id="t"), "KNOWLEDGE_UNAVAILABLE", False),
     ],
 )
 def test_tool_maps_rag_errors_to_safe_tool_semantics(
     error: Exception,
     error_code: str,
+    recoverable: bool,
 ) -> None:
     tool = KnowledgeTool(MockKnowledgeClient(ask_error=error))  # type: ignore[arg-type]
 
@@ -190,7 +191,7 @@ def test_tool_maps_rag_errors_to_safe_tool_semantics(
         tool.execute(input_payload(), ToolExecutionContext(call=make_call(tool)))
 
     assert captured.value.error.error_code == error_code
-    assert captured.value.error.recoverable is False
+    assert captured.value.error.recoverable is recoverable
 
 
 def test_registry_executor_records_evidence_and_does_not_amplify_client_retry() -> None:
@@ -222,7 +223,7 @@ def test_registry_executor_records_evidence_and_does_not_amplify_client_retry() 
     assert result.status is ToolResultStatus.TIMEOUT
     assert result.error is not None
     assert result.error.error_code == "KNOWLEDGE_TIMEOUT"
-    assert result.error.recoverable is False
+    assert result.error.recoverable is True
     assert client.ask_call_count == 1
 
 
@@ -263,7 +264,7 @@ def test_executor_with_http_client_stops_after_configured_transport_attempts() -
     assert request_count == 3
     assert result.status is ToolResultStatus.TIMEOUT
     assert result.error is not None
-    assert result.error.recoverable is False
+    assert result.error.recoverable is True
 
 
 def test_registry_executor_success_makes_evidence_available_to_workflow_reader() -> None:

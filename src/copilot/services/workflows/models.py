@@ -99,6 +99,8 @@ class WorkflowAuditRecord:
     status: str | None = None
     duration_ms: int | None = None
     error_type: str | None = None
+    error_code: str | None = None
+    failure_reason: str | None = None
     evidence_ids: tuple[str, ...] = ()
     artifact_id: str | None = None
     metadata: JsonObject = field(default_factory=lambda: JsonObject({}))

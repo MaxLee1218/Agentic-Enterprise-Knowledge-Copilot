@@ -630,7 +630,10 @@ class NaturalLanguageTaskService:
             None,
         )
         errors = [result.error for result in steps if result.error is not None]
-        error_summary = errors[-1].message if errors else None
+        root_errors = [
+            error for error in errors if error.error_code != "STEP_NOT_EXECUTED_UPSTREAM_FAILURE"
+        ]
+        error_summary = (root_errors[0] if root_errors else errors[0]).message if errors else None
         if error_summary is None and task_result is not None and state.state is TaskStatus.FAILED:
             error_summary = task_result.summary
         return TaskSummaryView(

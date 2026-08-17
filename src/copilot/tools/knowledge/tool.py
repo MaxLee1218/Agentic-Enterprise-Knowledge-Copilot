@@ -180,13 +180,13 @@ class KnowledgeTool:
                 error_code="KNOWLEDGE_TIMEOUT",
                 error_type=ErrorType.TIMEOUT,
                 message="Enterprise knowledge retrieval timed out",
-                recoverable=False,
+                recoverable=True,
             ) from exc
         except RAGUnavailableError as exc:
             raise ToolExecutionError(
                 error_code="KNOWLEDGE_UNAVAILABLE",
                 message="Enterprise knowledge retrieval is unavailable",
-                recoverable=False,
+                recoverable=True,
             ) from exc
         except RAGAuthenticationError as exc:
             raise ToolPermissionError(
@@ -203,7 +203,7 @@ class KnowledgeTool:
             raise ToolExecutionError(
                 error_code="KNOWLEDGE_UNAVAILABLE",
                 message="Enterprise knowledge service failed",
-                recoverable=False,
+                recoverable=exc.retryable,
             ) from exc
 
         matches, evidence = _to_frozen_matches(

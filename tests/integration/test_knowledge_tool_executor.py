@@ -38,4 +38,5 @@ def test_explicit_provider_composition_registers_http_knowledge_without_network(
         assert registered is container.knowledge_tool
         assert container.registry.get("database_query") is container.database_tool
         assert container.knowledge_client.base_url == "http://rag.example"
-        assert container.knowledge_client.timeout_seconds == 10
+        assert container.knowledge_client.timeout_seconds == 9
+        assert container.knowledge_client.max_attempts == 1

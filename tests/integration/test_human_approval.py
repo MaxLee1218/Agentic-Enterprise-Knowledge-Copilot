@@ -44,6 +44,7 @@ def caller(*, authorized: bool = True) -> TrustedCallerContext:
         tenant_id=TENANT_ID,
         data_scope=("quality.v1", "supplier-quality-policy-v1"),
         roles=(("quality_data_approver",) if authorized else ()),
+        scopes=("approvals:read", "approvals:resolve"),
     )
 
 
@@ -231,12 +232,47 @@ def test_unauthorized_role_cannot_resolve_an_approval(tmp_path: Path) -> None:
             container.approval_repository.get(approval_id, tenant_id=TENANT_ID).status
             is ApprovalStatus.PENDING
         )
-        denied = {
-            record.event
+        denied = [
+            record
             for record in container.workflow_audit.list(tenant_id=TENANT_ID)
-            if record.task_id == task_id
-        }
-        assert "APPROVAL_PERMISSION_DENIED" in denied
+            if record.task_id == task_id and record.event == "APPROVAL_PERMISSION_DENIED"
+        ]
+        assert len(denied) == 1
+        denial = denied[0]
+        assert denial.actor_id == "U-DEMO"
+        assert denial.scopes == ("approvals:read", "approvals:resolve")
+        assert denial.error_type == "PERMISSION"
+        assert denial.error_code == "APPROVAL_PERMISSION_DENIED"
+        assert denial.failure_reason == "Caller lacks approval permission"
+        assert denial.metadata.root["reason"] == "Caller lacks approval permission"
+        assert denial.metadata.root["error_code"] == "APPROVAL_PERMISSION_DENIED"
+
+
+def test_unauthorized_approval_detail_failure_records_exact_reason_and_trace(
+    tmp_path: Path,
+) -> None:
+    with build_test_container(tmp_path / "artifacts", llm_provider=OfflineMockLLM()) as container:
+        task_id, approval_id = submit_for_approval(container)
+        trace_id = "TRACE-approval-detail-denied"
+
+        with pytest.raises(ApprovalPermissionDeniedError, match="approval permission"):
+            container.approval_service.get(
+                task_id,
+                approval_id,
+                caller(authorized=False),
+                trace_id=trace_id,
+            )
+
+        denial = next(
+            record
+            for record in container.workflow_audit.list(tenant_id=TENANT_ID)
+            if record.task_id == task_id and record.event == "APPROVAL_PERMISSION_DENIED"
+        )
+        assert denial.trace_id == trace_id
+        assert denial.actor_id == "U-DEMO"
+        assert denial.error_type == "PERMISSION"
+        assert denial.error_code == "APPROVAL_PERMISSION_DENIED"
+        assert denial.failure_reason == "Caller lacks approval permission"
 
 
 def test_restart_recovers_persisted_approval_and_checkpoint(tmp_path: Path) -> None:

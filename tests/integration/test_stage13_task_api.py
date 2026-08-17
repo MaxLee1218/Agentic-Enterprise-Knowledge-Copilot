@@ -15,6 +15,7 @@ from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.persistence.identifiers import SequentialIdentifierFactory
 from copilot.security.identity import DemoIdentityProvider
 from copilot.services.task_intake import TrustedCallerContext
+from copilot.tools.mock_supplier_quality import MockBehavior, MockFailureKind
 from tests.workflow_helpers import fixed_clock
 
 TASK_TEXT = "Analyze Q2 2026 supplier quality and generate a JSON report."
@@ -50,6 +51,7 @@ def _client(
     tmp_path: Path,
     *,
     llm_provider: OfflineMockLLM | None = None,
+    knowledge_behavior: MockBehavior | None = None,
     persistent: bool = False,
 ) -> tuple[TestClient, WorkflowContainer]:
     settings = Settings(
@@ -65,6 +67,7 @@ def _client(
         clock=fixed_clock,
         sleeper=lambda _seconds: None,
         llm_provider=llm_provider or OfflineMockLLM(),
+        knowledge_behavior=knowledge_behavior,
     )
     application = create_app(
         task_service=container.task_service,
@@ -75,6 +78,74 @@ def _client(
         identity_provider=DemoIdentityProvider(settings),
     )
     return TestClient(application), container
+
+
+def test_failed_task_summary_and_audit_preserve_the_root_cause(tmp_path: Path) -> None:
+    client, container = _client(
+        tmp_path,
+        knowledge_behavior=MockBehavior(
+            failure_kind=MockFailureKind.PERMANENT,
+            always_fail=True,
+        ),
+    )
+    try:
+        with client:
+            created = client.post("/v1/tasks", json={"task": TASK_TEXT})
+            task = client.get(f"/v1/tasks/{created.json()['task_id']}")
+            steps = client.get(f"/v1/tasks/{created.json()['task_id']}/steps")
+
+        assert created.status_code == 201
+        assert task.status_code == steps.status_code == 200
+        assert task.json()["status"] == "FAILED"
+        step_rows = steps.json()["steps"]
+        root_failure = step_rows[0]
+        downstream_failure = step_rows[1]
+        assert root_failure["error_code"] == "MOCK_PERMANENT_FAILURE"
+        assert downstream_failure["error_code"] == "STEP_NOT_EXECUTED_UPSTREAM_FAILURE"
+        assert task.json()["error_summary"] == root_failure["error_message"]
+        assert task.json()["error_summary"] != downstream_failure["error_message"]
+
+        failure_audits = [
+            record
+            for record in container.workflow_audit.list(tenant_id="TENANT-DEMO")
+            if record.task_id == created.json()["task_id"]
+            and record.error_code == "MOCK_PERMANENT_FAILURE"
+        ]
+        assert failure_audits
+        assert all(
+            record.failure_reason == root_failure["error_message"] for record in failure_audits
+        )
+    finally:
+        container.close()
+
+
+def test_retryable_knowledge_timeout_retries_as_a_separate_tool_attempt(
+    tmp_path: Path,
+) -> None:
+    client, container = _client(
+        tmp_path,
+        knowledge_behavior=MockBehavior(
+            failure_kind=MockFailureKind.TIMEOUT,
+            fail_first_n_attempts=1,
+        ),
+    )
+    try:
+        with client:
+            created = client.post("/v1/tasks", json={"task": TASK_TEXT})
+
+        assert created.status_code == 201
+        assert created.json()["status"] == "COMPLETED"
+        assert container.knowledge_tool.call_count == 2
+        timeout_audits = [
+            record
+            for record in container.workflow_audit.list(tenant_id="TENANT-DEMO")
+            if record.task_id == created.json()["task_id"] and record.event == "tool_attempt_failed"
+        ]
+        assert len(timeout_audits) == 1
+        assert timeout_audits[0].error_code == "KNOWLEDGE_TIMEOUT"
+        assert timeout_audits[0].failure_reason == "Enterprise knowledge retrieval timed out"
+    finally:
+        container.close()
 
 
 def test_complete_task_can_be_queried_with_steps_evidence_and_artifact(tmp_path: Path) -> None:

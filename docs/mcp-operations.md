@@ -24,6 +24,15 @@ python scripts/inspect_mcp_connection.py config/approved-connection.json
 python scripts/smoke_mcp.py config/approved-connection.json
 ```
 
+The smoke command is independent of the application database configuration. If the connection
+uses an environment-backed credential reference, explicitly allow that variable name without
+passing its value on the command line:
+
+```bash
+python scripts/smoke_mcp.py config/approved-connection.json \
+  --credential-env APPROVED_MCP_TOKEN
+```
+
 The HTTP server binds to `127.0.0.1` by default. Public binding requires explicit configuration,
 an approved reverse proxy/TLS boundary and a deployment security review. Inspect health through
 the service process/readiness system and MCP lifecycle/connection/failure/latency/reconnect metrics.

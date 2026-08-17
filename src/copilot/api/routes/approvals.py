@@ -106,6 +106,7 @@ def resolve_approval(
             ),
         ),
         caller,
+        trace_id=str(request.state.trace_id),
     )
     approval = result.approval
     assert approval.resolution_action is not None

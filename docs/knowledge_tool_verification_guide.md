@@ -29,8 +29,11 @@ RAG 的问答扩展字段只存在于 `KnowledgeResult` 和独立 Ask CLI。进�
 matches / match_count / index_snapshot_id / empty_result
 ```
 
-工具单次时限仍为 10 秒、整体时限仍为 25 秒。生产工作流会把 HTTP 超时限制在
-10 秒以内；独立 CLI 使用 `RAG_TIMEOUT_SECONDS` 的完整配置值。
+工具单次时限仍为 10 秒、整体时限仍为 25 秒。生产工作流把每次 HTTP 传输限制为
+9 秒且关闭客户端内层重试，由工作流用独立 ToolResult 执行最多三次受审计重试；
+独立 CLI 使用 `RAG_TIMEOUT_SECONDS` 和 `RAG_MAX_ATTEMPTS` 的完整配置值。本地企业
+Compose 还会在 API 启动前通过一次性 `rag-warmup` 调用真实 `/ask`，避免首个业务任务
+承担模型冷启动时间。
 
 ## 2. 环境变量
 

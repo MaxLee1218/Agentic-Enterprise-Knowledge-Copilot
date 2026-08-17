@@ -99,6 +99,13 @@ The smoke command prints every sanitized Task/Node/Step/Tool span, total and com
 p50/p95, slowest stage/step/tool, failure rate, retries/replans, status, and Artifact. The inspect
 command uses the live Trace when available and durable workflow/tool audit timing after restart.
 
+Every durable workflow failure record carries a normalized `error_type`, stable `error_code`, and
+redacted `failure_reason`. Approval failures additionally bind the actual caller, caller scopes,
+approval ID, and request Trace ID; the reason describes the failed access or decision attempt, not
+the policy reason that originally created the approval. Downstream steps cancelled after an
+upstream failure remain separate audit facts, while the task summary reports the first
+non-propagated root cause.
+
 ## Known limitations
 
 - Trace and metric stores are bounded and process-local; full spans are not checkpoint-persisted.
@@ -107,4 +114,3 @@ command uses the live Trace when available and durable workflow/tool audit timin
   are not presented as wall-clock time.
 - Logger/export failures are best-effort and do not replace business results. Security filtering
   and configured execution limits remain fail-closed at their governed boundaries.
-

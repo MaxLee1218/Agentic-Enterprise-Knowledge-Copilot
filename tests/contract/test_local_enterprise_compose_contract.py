@@ -53,6 +53,7 @@ def test_local_enterprise_topology_has_only_one_browser_facing_port() -> None:
         "copilot-postgres",
         "business-postgres",
         "enterprise-rag-engine",
+        "rag-warmup",
         "rag-generation-stub",
     }.issubset(services)
     published = {
@@ -133,6 +134,13 @@ def test_formal_rag_uses_real_reranking_and_safe_local_generation_by_default() -
     assert rag["depends_on"]["rag-generation-stub"]["condition"] == "service_healthy"
     assert set(services["rag-generation-stub"]["networks"]) == {"enterprise-backend"}
     assert not services["rag-generation-stub"].get("ports")
+    warmup = services["rag-warmup"]
+    assert warmup["depends_on"]["enterprise-rag-engine"]["condition"] == "service_healthy"
+    assert warmup["restart"] == "no"
+    assert set(warmup["networks"]) == {"enterprise-backend"}
+    assert services["copilot-api"]["depends_on"]["rag-warmup"]["condition"] == (
+        "service_completed_successfully"
+    )
 
 
 def test_compose_source_contains_no_host_specific_absolute_path_or_fixture_default() -> None:

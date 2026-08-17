@@ -31,6 +31,7 @@ from copilot.services.approval_service import ApprovalGateService, ApprovalRepos
 from copilot.services.execution import ExecutionContext
 from copilot.services.llm import LLMErrorCode, LLMProviderError
 from copilot.services.observability import NoopObservability, ObservabilityPort
+from copilot.services.workflows.deadlines import tool_attempt_deadline
 from copilot.services.workflows.dependency import DependencyChecker
 from copilot.services.workflows.errors import StepInputError
 from copilot.services.workflows.fixed_plan import SUPPLIER_QUALITY_PLAN_ID
@@ -1310,6 +1311,9 @@ class GraphNodeRuntime:
             )
         definition = self._registry.get(step.tool_name).definition
         attempt = state["retry_counts"].get(step.step_id, 0) + 1
+        prior_results = tuple(
+            result for result in state["tool_results"] if result.step_id == step.step_id
+        )
         call = ToolCall(
             tool_call_id=self._ids.new_id("TC"),
             task_id=state["task_id"],
@@ -1323,7 +1327,12 @@ class GraphNodeRuntime:
             approval_id=(
                 state["approval_id"] if state["approval_step_id"] == step.step_id else None
             ),
-            deadline_at=state["deadline_at"],
+            deadline_at=tool_attempt_deadline(
+                task_deadline=state["deadline_at"],
+                attempt_started_at=started,
+                overall_seconds=definition.timeout.overall_seconds,
+                prior_results=prior_results,
+            ),
             tenant_id=state["contract"].constraints.tenant_id,
             user_id=state["request"].user_id,
         )
@@ -1360,6 +1369,20 @@ class GraphNodeRuntime:
                 f"Tool attempt {attempt} succeeded",
                 **updates,
             )
+        self._emit(
+            state,
+            "tool_attempt_failed",
+            status=result.status.value,
+            error_type=(result.error.error_type.value if result.error is not None else None),
+            error_code=result.error.error_code if result.error is not None else None,
+            failure_reason=result.error.message if result.error is not None else None,
+            metadata=JsonObject(
+                {
+                    "tool_name": result.tool_name,
+                    "attempt": attempt,
+                }
+            ),
+        )
         if self._retry_policy.should_retry(step, definition, result, attempt):
             domain_state = self._transition(
                 state,
@@ -1441,6 +1464,7 @@ class GraphNodeRuntime:
             domain_state=domain_state,
             step_results=[step_result],
             step_executions=[record],
+            errors=[result.error] if result.error is not None else [],
             **{key: value for key, value in updates.items() if key != "domain_state"},
         )
 
@@ -1631,11 +1655,22 @@ class GraphNodeRuntime:
         **updates: object,
     ) -> dict[str, object]:
         completed_at = self._clock()
+        node_errors = updates.get("errors")
+        error = (
+            node_errors[0]
+            if isinstance(node_errors, (list, tuple))
+            and node_errors
+            and isinstance(node_errors[0], TaskError)
+            else None
+        )
         self._emit(
             state,
             "node_completed",
             status=route,
             duration_ms=_duration_ms(started_at, completed_at),
+            error_type=error.error_type.value if error is not None else None,
+            error_code=error.error_code if error is not None else None,
+            failure_reason=error.message if error is not None else None,
             metadata=JsonObject({"node_name": node_name, "route": route}),
         )
         return {"route": route, "route_reason": reason, **updates}
@@ -1647,6 +1682,9 @@ class GraphNodeRuntime:
         *,
         status: str | None = None,
         duration_ms: int | None = None,
+        error_type: str | None = None,
+        error_code: str | None = None,
+        failure_reason: str | None = None,
         metadata: JsonObject | None = None,
     ) -> None:
         safe_metadata = metadata or JsonObject({})
@@ -1667,6 +1705,9 @@ class GraphNodeRuntime:
                 step_id=state["current_step_id"],
                 status=status,
                 duration_ms=duration_ms,
+                error_type=error_type,
+                error_code=error_code,
+                failure_reason=failure_reason,
                 metadata=safe_metadata,
             )
         )

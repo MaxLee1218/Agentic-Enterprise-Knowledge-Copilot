@@ -33,10 +33,17 @@ Supplier ranking is explicitly empty and accompanied by `RANKING_NOT_AVAILABLE`.
 result.
 
 JSON uses stable UTF-8 serialization with sorted keys, enum/UTC encoding, and `allow_nan=false`.
-PDF uses ReportLab with a local CID font, section hierarchy, tables, page headers, and page
-numbers. It has no JavaScript or external network dependency. A canonical JSON representation is
-carried in a non-rendered PDF comment so the independent Verifier can validate the exact model
-without parsing report prose.
+PDF uses ReportLab with a local CID font, page headers, page numbers, and a layered management
+layout. The first five pages contain executive summary, supplier-month overview, controlled policy
+context, findings/actions, and methodology/limitations. Raw metrics, full Evidence/lineage, and
+execution trace remain in appendices. Ratios are formatted as percentages and ratio deltas as
+percentage points without changing canonical values. It has no JavaScript or external network
+dependency. A canonical JSON representation is carried in a non-rendered PDF comment so the
+independent Verifier can validate the exact model without parsing report prose.
+
+An empty contract `supplier_ids` list remains the authorized resolved-scope sentinel. Management
+display coverage uses existing supplier dimensions in Calculation Evidence and never interprets
+that sentinel as zero suppliers. Supplier order is alphanumeric, not a risk ranking.
 
 ## Artifact persistence and integrity
 

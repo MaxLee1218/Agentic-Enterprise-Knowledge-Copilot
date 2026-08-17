@@ -7,8 +7,10 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+from reportlab.platypus import PageBreak, Paragraph
 
 from copilot.contracts import ArtifactType, JsonObject, RiskLevel
+from copilot.tools.analytics.schemas import AnalyticsResult
 from copilot.tools.reporting import (
     JsonReportRenderer,
     PdfReportRenderer,
@@ -23,7 +25,17 @@ from copilot.tools.reporting.exceptions import (
     ReportInputError,
     ReportSizeLimitError,
 )
-from copilot.tools.reporting.renderer import extract_pdf_report_model
+from copilot.tools.reporting.presentation import (
+    format_metric_value,
+    observed_supplier_ids,
+    supplier_overview_rows,
+)
+from copilot.tools.reporting.renderer import (
+    _appendices,
+    _build_styles,
+    _management_pages,
+    extract_pdf_report_model,
+)
 from tests.unit.tools.reporting.helpers import (
     TASK_ID,
     TENANT_ID,
@@ -75,6 +87,165 @@ def test_pdf_renderer_carries_same_model_and_required_visible_sections() -> None
     assert rendered.content.startswith(b"%PDF-")
     assert ReportDocument.model_validate(extract_pdf_report_model(rendered.content)) == document
     assert rendered.media_type == "application/pdf"
+
+
+def test_pdf_renderer_is_byte_deterministic_for_the_same_report_model() -> None:
+    document = _document(ReportFormat.PDF)
+
+    assert (
+        PdfReportRenderer().render(document).content == PdfReportRenderer().render(document).content
+    )
+
+
+def test_management_formatting_preserves_units_and_raw_metric_values() -> None:
+    assert format_metric_value(18_994, "count") == "18,994"
+    assert format_metric_value(0.0587, "ratio") == "5.87%"
+    assert format_metric_value(0.0018, "ratio_delta") == "+0.18 pp"
+    assert format_metric_value(-0.0025, "ratio_delta") == "-0.25 pp"
+    assert format_metric_value(None, "ratio") == "N/A"
+
+    document = _document()
+    assert document.key_metrics[2].value == 0.0125
+    assert supplier_overview_rows(document)[0].defect_rates == ()
+
+
+def test_empty_authorized_scope_uses_calculation_dimensions_not_literal_zero() -> None:
+    items = evidence_items()
+    request = report_request().model_copy(
+        update={"scope": report_request().scope.model_copy(update={"supplier_ids": ()})}
+    )
+    document = ReportComposer(DictEvidenceReader(items), clock=lambda: items[0].timestamp).compose(
+        request, items
+    )
+
+    assert observed_supplier_ids(document) == ("S-100",)
+    assert "1 supplier(s) represented" in document.executive_summary
+    assert "0 authorized supplier" not in document.executive_summary
+
+
+def test_first_period_warnings_are_consolidated_as_methodology_not_business_risk() -> None:
+    items = evidence_items()
+    request = report_request()
+    warnings = tuple(
+        f"Trend is undefined for the first period (period=2026-04, supplier_id=S-{index:03d})"
+        for index in range(1, 16)
+    )
+    request = request.model_copy(
+        update={
+            "analysis_result": request.analysis_result.model_copy(update={"warnings": warnings})
+        }
+    )
+    document = ReportComposer(DictEvidenceReader(items), clock=lambda: items[0].timestamp).compose(
+        request, items
+    )
+
+    assert len(document.risk_analysis) == 1
+    assert document.risk_analysis[0].level == "INFORMATIONAL"
+    assert "REVIEW_REQUIRED" not in document.risk_analysis[0].statement
+    assert sum(item.code == "FIRST_PERIOD_TREND_BASELINE" for item in document.limitations) == 1
+
+
+def test_management_pdf_has_five_page_layer_and_structured_appendices() -> None:
+    document = _document(ReportFormat.PDF)
+    styles = _build_styles("Helvetica")
+    management = _management_pages(document, styles, 178 * 2.834645669)
+    appendices = _appendices(document, styles, 178 * 2.834645669)
+    management_headings = {
+        item.getPlainText() for item in management if isinstance(item, Paragraph)
+    }
+    appendix_headings = {item.getPlainText() for item in appendices if isinstance(item, Paragraph)}
+
+    assert sum(isinstance(item, PageBreak) for item in management) == 4
+    assert {
+        "Executive Summary",
+        "Supplier Quality Overview",
+        "Applicable Quality Policies",
+        "Findings and Recommended Actions",
+        "Methodology and Limitations",
+    }.issubset(management_headings)
+    assert {
+        "Appendix A - Detailed Calculation Metrics",
+        "Appendix B - Evidence and Lineage",
+        "Appendix C - Execution Trace",
+    }.issubset(appendix_headings)
+    assert "Key Metrics" not in management_headings
+
+
+def test_pdf_renderer_handles_many_suppliers_long_ids_and_policy_names() -> None:
+    document = _document(ReportFormat.PDF)
+    metrics = []
+    metric_names = (
+        "defect_count",
+        "inspected_count",
+        "defect_rate",
+        "period_over_period_trend",
+    )
+    for metric_name in metric_names:
+        for supplier_index in range(1, 16):
+            for month_index, month in enumerate(("2026-04", "2026-05", "2026-06"), start=1):
+                if metric_name == "defect_count":
+                    value: int | float | None = 10 + supplier_index + month_index
+                    unit = "count"
+                    numerator: int | float | None = value
+                    denominator: int | float | None = None
+                elif metric_name == "inspected_count":
+                    value = 1_000 + supplier_index * 10
+                    unit = "count"
+                    numerator = value
+                    denominator = None
+                elif metric_name == "defect_rate":
+                    value = round(0.005 + supplier_index * 0.002 + month_index * 0.0001, 4)
+                    unit = "ratio"
+                    numerator = 10 + supplier_index + month_index
+                    denominator = 1_000 + supplier_index * 10
+                else:
+                    value = None if month_index == 1 else 0.0001
+                    unit = "ratio_delta"
+                    numerator = 0.01 + month_index * 0.0001
+                    denominator = None if month_index == 1 else 0.01
+                metrics.append(
+                    {
+                        "metric": metric_name,
+                        "dimensions": {
+                            "supplier_id": f"SUP-{supplier_index:03d}",
+                            "period": month,
+                        },
+                        "value": value,
+                        "unit": unit,
+                        "numerator": numerator,
+                        "denominator": denominator,
+                    }
+                )
+    analytics = AnalyticsResult.model_validate(
+        {
+            **document.analysis_results.model_dump(mode="json"),
+            "metrics": metrics,
+            "input_row_count": 45,
+            "warnings": [
+                "Trend is undefined for the first period (period=2026-04, supplier_id=SUP-001)"
+            ],
+        }
+    )
+    long_policy = document.applicable_policies[0].model_copy(
+        update={
+            "document_id": "Global Supplier Quality and Deviation Management Policy " * 3,
+            "evidence_id": "E-" + "a" * 80,
+        }
+    )
+    document = document.model_copy(
+        update={
+            "key_metrics": analytics.metrics,
+            "analysis_results": analytics,
+            "applicable_policies": (long_policy,),
+            "quality_policy_findings": (long_policy,),
+        }
+    )
+
+    rendered = PdfReportRenderer().render(document)
+    restored = ReportDocument.model_validate(extract_pdf_report_model(rendered.content))
+    assert restored.key_metrics == analytics.metrics
+    assert len(restored.key_metrics) == 180
+    assert rendered.content.startswith(b"%PDF-")
 
 
 def test_validator_rejects_numeric_drift_and_missing_query_lineage() -> None:

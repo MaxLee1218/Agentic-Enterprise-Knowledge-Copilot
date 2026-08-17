@@ -176,6 +176,17 @@ class ReportTool:
             media_type=rendered.media_type,
         )
         if guarded_bytes.disposition is OutputDisposition.BLOCKED:
+            LOGGER.warning(
+                "Rendered report blocked by output safety policy",
+                extra={
+                    "event": "report_output_blocked",
+                    "task_id": request.task_id,
+                    "tool_call_id": context.call.tool_call_id,
+                    "finding_codes": tuple(
+                        finding.matched_rule for finding in guarded_bytes.findings
+                    ),
+                },
+            )
             raise SensitiveOutputBlockedError()
 
         artifact_id = self._ids.new_id("A")

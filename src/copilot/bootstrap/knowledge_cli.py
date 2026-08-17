@@ -130,6 +130,51 @@ def ask_main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
+def warmup_main(argv: Sequence[str] | None = None) -> int:
+    """Load the live RAG query path while emitting only bounded readiness metadata."""
+    parser = argparse.ArgumentParser(description="Warm Enterprise RAG POST /ask dependencies.")
+    _common_arguments(parser)
+    parser.add_argument(
+        "--question",
+        default="supplier quality policy defect thresholds",
+        help="Non-blank warmup question sent to the approved local RAG service.",
+    )
+    args = parser.parse_args(argv)
+    try:
+        settings = get_settings()
+        with build_http_knowledge_client(
+            settings,
+            base_url=args.base_url,
+            timeout_seconds=args.timeout,
+        ) as client:
+            result = client.ask(args.question, trace_id=args.trace_id)
+    except (ConfigurationError, ValueError) as exc:
+        return _print_configuration_error(exc, args.json)
+    except RAGError as exc:
+        if args.debug:
+            raise
+        return _print_rag_error(exc, args.json)
+
+    payload = {
+        "warmed": True,
+        "source_count": len(result.sources),
+        "context_count": len(result.contexts),
+        "latency_ms": result.latency_ms,
+        "rag_trace_id": result.rag_trace_id,
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    else:
+        for key, value in payload.items():
+            print(f"{key}: {value}")
+    return 0
+
+
+def warmup_entrypoint() -> int:
+    """Console-script adapter for deployment readiness composition."""
+    return warmup_main()
+
+
 def _common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--base-url", help="Override Settings.RAG_BASE_URL.")
     parser.add_argument("--timeout", type=float, help="Override Settings.RAG_TIMEOUT_SECONDS.")
@@ -248,4 +293,4 @@ def _print_rag_error(error: RAGError, as_json: bool) -> int:
     return EXIT_INTERNAL
 
 
-__all__ = ["ask_main", "health_main"]
+__all__ = ["ask_main", "health_main", "warmup_entrypoint", "warmup_main"]

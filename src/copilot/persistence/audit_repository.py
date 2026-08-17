@@ -111,6 +111,8 @@ class WorkflowAuditRepository:
         safe_metadata = redact_for_logging(record.metadata.root)
         record = replace(
             record,
+            error_code=_redacted_text(record.error_code),
+            failure_reason=_redacted_text(record.failure_reason),
             metadata=JsonObject(
                 safe_metadata if isinstance(safe_metadata, dict) else {"value": "[REDACTED]"}
             ),
@@ -250,6 +252,8 @@ def _workflow_json(record: WorkflowAuditRecord) -> str:
             "status": record.status,
             "duration_ms": record.duration_ms,
             "error_type": record.error_type,
+            "error_code": record.error_code,
+            "failure_reason": record.failure_reason,
             "evidence_ids": list(record.evidence_ids),
             "artifact_id": record.artifact_id,
             "metadata": record.metadata.root,
@@ -279,6 +283,8 @@ def _workflow_record(payload: str) -> WorkflowAuditRecord:
         status=raw["status"],
         duration_ms=raw["duration_ms"],
         error_type=raw["error_type"],
+        error_code=raw.get("error_code"),
+        failure_reason=raw.get("failure_reason"),
         evidence_ids=tuple(raw["evidence_ids"]),
         artifact_id=raw["artifact_id"],
         metadata=JsonObject(raw["metadata"]),

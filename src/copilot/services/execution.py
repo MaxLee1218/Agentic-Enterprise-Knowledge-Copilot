@@ -54,7 +54,7 @@ class ExecutionContext:
             authentication_source=trusted.authentication_source,
             is_demo_identity=trusted.is_demo_identity,
             authenticated=trusted.authenticated,
-            deadline_at=trusted.deadline_at,
+            deadline_at=call.deadline_at,
             approval_required=approval_required,
             approval_id=call.approval_id,
             cancellation=cancellation or CancellationToken(),

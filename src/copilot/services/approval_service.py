@@ -26,6 +26,7 @@ from copilot.policies.approval import (
     schema_fingerprint,
 )
 from copilot.policies.permissions import AuthorizationRequest, Permission, PermissionMatrix
+from copilot.security.redaction import redact_text
 from copilot.services.observability import EventName, NoopObservability, ObservabilityPort
 from copilot.services.task_intake import TrustedCallerContext
 from copilot.services.workflows.fixed_plan import SUPPLIER_QUALITY_PLAN_ID
@@ -286,42 +287,109 @@ class ApprovalService:
         """Return one tenant- and role-authorized approval view for an approval client."""
         approval = self._load(approval_id, tenant_id=caller.tenant_id)
         if approval.task_id != task_id:
-            raise ApprovalNotFoundError("Approval does not belong to the requested task")
+            not_found_error = ApprovalNotFoundError(
+                "Approval does not belong to the requested task"
+            )
+            self._append_audit(
+                approval,
+                not_found_error.code,
+                trace_id=trace_id,
+                caller=caller,
+                error=not_found_error,
+            )
+            raise not_found_error
         if approval.tenant_id != caller.tenant_id:
-            self._append_audit(approval, "APPROVAL_PERMISSION_DENIED", trace_id=trace_id)
-            raise ApprovalPermissionDeniedError("Approval tenant does not match caller")
+            tenant_error = ApprovalPermissionDeniedError("Approval tenant does not match caller")
+            self._append_audit(
+                approval,
+                tenant_error.code,
+                trace_id=trace_id,
+                caller=caller,
+                error=tenant_error,
+            )
+            raise tenant_error
         self._authorize_approval_permission(approval, caller, trace_id=trace_id)
         if approval.required_role not in caller.roles:
-            self._append_audit(approval, "APPROVAL_PERMISSION_DENIED", trace_id=trace_id)
-            raise ApprovalPermissionDeniedError("Caller lacks the required approval role")
+            role_error = ApprovalPermissionDeniedError("Caller lacks the required approval role")
+            self._append_audit(
+                approval,
+                role_error.code,
+                trace_id=trace_id,
+                caller=caller,
+                error=role_error,
+            )
+            raise role_error
         return approval
 
     def resolve(
         self,
         command: ApprovalResolutionCommand,
         caller: TrustedCallerContext,
+        *,
+        trace_id: str = "",
     ) -> ApprovalResolutionResult:
         """Resolve one pending decision and resume only through the normal graph path."""
-        pending = self._get_pending(command.approval_id, tenant_id=caller.tenant_id)
+        pending = self._load(command.approval_id, tenant_id=caller.tenant_id)
+        if pending.status is not ApprovalStatus.PENDING:
+            resolved_error = ApprovalAlreadyResolvedError("Approval has already been resolved")
+            self._append_audit(
+                pending,
+                resolved_error.code,
+                trace_id=trace_id,
+                caller=caller,
+                error=resolved_error,
+            )
+            raise resolved_error
         if pending.task_id != command.task_id:
-            raise ApprovalNotFoundError("Approval does not belong to the requested task")
-        trace_id = ""
+            task_error = ApprovalNotFoundError("Approval does not belong to the requested task")
+            self._append_audit(
+                pending,
+                task_error.code,
+                trace_id=trace_id,
+                caller=caller,
+                error=task_error,
+            )
+            raise task_error
         if pending.tenant_id != caller.tenant_id:
-            self._append_audit(pending, "APPROVAL_PERMISSION_DENIED", trace_id=trace_id)
-            raise ApprovalPermissionDeniedError("Approval tenant does not match caller")
+            tenant_error = ApprovalPermissionDeniedError("Approval tenant does not match caller")
+            self._append_audit(
+                pending,
+                tenant_error.code,
+                trace_id=trace_id,
+                caller=caller,
+                error=tenant_error,
+            )
+            raise tenant_error
         self._authorize_approval_permission(pending, caller, trace_id=trace_id)
         try:
             state = self._engine.approval_state(command.task_id, caller.tenant_id)
             trace_id = str(state["trace_id"])
             self._validate_authority(pending, caller, state)
-        except ApprovalPermissionDeniedError:
-            self._append_audit(pending, "APPROVAL_PERMISSION_DENIED", trace_id=trace_id)
+        except ApprovalPermissionDeniedError as exc:
+            self._append_audit(
+                pending,
+                exc.code,
+                trace_id=trace_id,
+                caller=caller,
+                error=exc,
+            )
             raise
         except (ApprovalStateConflictError, ValueError) as exc:
-            self._append_audit(pending, "APPROVAL_STATE_CONFLICT", trace_id=trace_id)
-            if isinstance(exc, ApprovalStateConflictError):
+            state_error = (
+                exc
+                if isinstance(exc, ApprovalStateConflictError)
+                else ApprovalStateConflictError("Approval checkpoint is unavailable")
+            )
+            self._append_audit(
+                pending,
+                state_error.code,
+                trace_id=trace_id,
+                caller=caller,
+                error=state_error,
+            )
+            if state_error is exc:
                 raise
-            raise ApprovalStateConflictError("Approval checkpoint is unavailable") from exc
+            raise state_error from exc
         now = self._clock()
         if pending.expires_at <= now:
             expired = pending.model_copy(
@@ -332,28 +400,53 @@ class ApprovalService:
                 }
             )
             self._resolve_once(pending, expired)
-            self._append_audit(expired, "APPROVAL_EXPIRED", trace_id=trace_id)
+            expired_error = ApprovalExpiredError("Approval has expired")
+            self._append_audit(
+                expired,
+                expired_error.code,
+                trace_id=trace_id,
+                caller=caller,
+                error=expired_error,
+            )
             self._engine.resume_approval(expired, caller.tenant_id)
-            raise ApprovalExpiredError("Approval has expired")
+            raise expired_error
         try:
             resolved = self._decision(pending, command, caller.user_id, now)
-        except ApprovalArgumentsInvalidError:
-            self._append_audit(pending, "APPROVAL_ARGUMENTS_INVALID", trace_id=trace_id)
+        except ApprovalArgumentsInvalidError as exc:
+            self._append_audit(
+                pending,
+                exc.code,
+                trace_id=trace_id,
+                caller=caller,
+                error=exc,
+            )
             raise
-        except ApprovalStateConflictError:
-            self._append_audit(pending, "APPROVAL_STATE_CONFLICT", trace_id=trace_id)
+        except ApprovalStateConflictError as exc:
+            self._append_audit(
+                pending,
+                exc.code,
+                trace_id=trace_id,
+                caller=caller,
+                error=exc,
+            )
             raise
         try:
             self._resolve_once(pending, resolved)
-        except ApprovalStateConflictError:
-            self._append_audit(pending, "APPROVAL_STATE_CONFLICT", trace_id=trace_id)
+        except ApprovalStateConflictError as exc:
+            self._append_audit(
+                pending,
+                exc.code,
+                trace_id=trace_id,
+                caller=caller,
+                error=exc,
+            )
             raise
         event = {
             ApprovalResolutionAction.APPROVE: "APPROVAL_APPROVED",
             ApprovalResolutionAction.EDIT: "APPROVAL_EDITED",
             ApprovalResolutionAction.REJECT: "APPROVAL_REJECTED",
         }[command.action]
-        self._append_audit(resolved, event, trace_id=trace_id)
+        self._append_audit(resolved, event, trace_id=trace_id, caller=caller)
         with self._observability.bind_context(
             task_id=command.task_id,
             trace_id=trace_id,
@@ -372,13 +465,30 @@ class ApprovalService:
                     EventName.APPROVAL_REJECTED,
                     fields={"approval_status": resolved.status.value},
                 )
-        self._append_audit(resolved, "APPROVAL_RESUME_STARTED", trace_id=trace_id)
+        self._append_audit(
+            resolved,
+            "APPROVAL_RESUME_STARTED",
+            trace_id=trace_id,
+            caller=caller,
+        )
         try:
             execution = self._engine.resume_approval(resolved, caller.tenant_id)
         except Exception:
-            self._append_audit(resolved, "APPROVAL_RESUME_FAILED", trace_id=trace_id)
+            resume_error = ApprovalServiceError("Approval workflow resume failed")
+            self._append_audit(
+                resolved,
+                "APPROVAL_RESUME_FAILED",
+                trace_id=trace_id,
+                caller=caller,
+                error=resume_error,
+            )
             raise
-        self._append_audit(resolved, "APPROVAL_RESUME_SUCCEEDED", trace_id=trace_id)
+        self._append_audit(
+            resolved,
+            "APPROVAL_RESUME_SUCCEEDED",
+            trace_id=trace_id,
+            caller=caller,
+        )
         latest = self._engine.approval_state(command.task_id, caller.tenant_id)
         return ApprovalResolutionResult(
             approval=resolved,
@@ -406,20 +516,21 @@ class ApprovalService:
             )
         )
         if not decision.allowed:
-            self._append_audit(approval, decision.reason_code, trace_id=trace_id)
-            raise ApprovalPermissionDeniedError("Caller lacks approval permission")
+            error = ApprovalPermissionDeniedError("Caller lacks approval permission")
+            self._append_audit(
+                approval,
+                decision.reason_code,
+                trace_id=trace_id,
+                caller=caller,
+                error=error,
+            )
+            raise error
 
     def _load(self, approval_id: str, *, tenant_id: str) -> ApprovalRequest:
         try:
             return self._repository.get(approval_id, tenant_id=tenant_id)
         except KeyError as exc:
             raise ApprovalNotFoundError("Approval was not found") from exc
-
-    def _get_pending(self, approval_id: str, *, tenant_id: str) -> ApprovalRequest:
-        approval = self._load(approval_id, tenant_id=tenant_id)
-        if approval.status is not ApprovalStatus.PENDING:
-            raise ApprovalAlreadyResolvedError("Approval has already been resolved")
-        return approval
 
     @staticmethod
     def _validate_authority(
@@ -564,7 +675,15 @@ class ApprovalService:
         event: str,
         *,
         trace_id: str,
+        caller: TrustedCallerContext | None = None,
+        error: ApprovalServiceError | None = None,
     ) -> None:
+        actor_id = caller.user_id if caller is not None else approval.approver or approval.requester
+        reason = (
+            redact_text(str(error))
+            if error is not None
+            else (approval.resolution_reason or approval.reason)
+        )
         self._audit_sink.append(
             WorkflowAuditRecord(
                 event_id=self._ids.new_id("AUD"),
@@ -575,7 +694,8 @@ class ApprovalService:
                 timestamp=self._clock(),
                 tenant_id=approval.tenant_id,
                 trace_id=trace_id,
-                actor_id=approval.approver or approval.requester,
+                actor_id=actor_id,
+                scopes=caller.scopes if caller is not None else (),
                 approval_id=approval.approval_id,
                 arguments_hash=arguments_fingerprint(
                     approval.resolved_arguments or approval.proposed_arguments
@@ -583,10 +703,13 @@ class ApprovalService:
                 step_id=approval.step_id,
                 tool_name=approval.tool_name,
                 status=approval.status.value,
+                error_type=_approval_error_type(error) if error is not None else None,
+                error_code=error.code if error is not None else None,
+                failure_reason=reason if error is not None else None,
                 metadata=JsonObject(
                     {
                         "approval_id": approval.approval_id,
-                        "actor_id": approval.approver or approval.requester,
+                        "actor_id": actor_id,
                         "tenant_id": approval.tenant_id,
                         "trace_id": trace_id,
                         "resolution_action": (
@@ -599,7 +722,9 @@ class ApprovalService:
                             if approval.resolution_action is not None
                             else None
                         ),
-                        "reason": approval.resolution_reason or approval.reason,
+                        "reason": reason,
+                        "error_code": error.code if error is not None else None,
+                        "failure_reason": reason if error is not None else None,
                         "original_arguments_hash": arguments_fingerprint(
                             approval.proposed_arguments
                         ),
@@ -614,6 +739,19 @@ class ApprovalService:
                 ),
             )
         )
+
+
+def _approval_error_type(error: ApprovalServiceError) -> str:
+    if isinstance(error, ApprovalPermissionDeniedError):
+        return "PERMISSION"
+    if isinstance(error, (ApprovalNotFoundError, ApprovalArgumentsInvalidError)):
+        return "VALIDATION"
+    if isinstance(
+        error,
+        (ApprovalAlreadyResolvedError, ApprovalStateConflictError, ApprovalExpiredError),
+    ):
+        return "BUSINESS"
+    return "TECHNICAL"
 
 
 __all__ = [

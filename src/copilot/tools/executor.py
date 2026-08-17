@@ -49,6 +49,13 @@ from copilot.tools.registry import ToolRegistry
 from copilot.tools.runner import ThreadPoolToolRunner
 from copilot.tools.schema import validate_payload
 
+_TOOL_TIMEOUT_DETAILS = {
+    "knowledge_search": ("KNOWLEDGE_TIMEOUT", "Enterprise knowledge retrieval timed out"),
+    "database_query": ("DATABASE_TIMEOUT", "Database query timed out"),
+    "analysis_engine": ("ANALYSIS_TIMEOUT", "Analysis execution timed out"),
+    "report_generator": ("REPORT_TIMEOUT", "Report generation timed out"),
+}
+
 
 class ToolExecutor:
     """Execute registered tools without knowing any concrete business capability."""
@@ -324,12 +331,12 @@ class ToolExecutor:
                 ),
                 timeout_seconds,
             )
-        except ToolTimeoutError as exc:
+        except ToolTimeoutError:
             return self._failure_result(
                 call=call,
                 started_at=started_at,
                 status=ToolResultStatus.TIMEOUT,
-                error=self._bind_error(exc.error, call),
+                error=self._timeout_error(call),
                 attempt=attempt,
                 execution_context=execution_context,
             )
@@ -575,15 +582,25 @@ class ToolExecutor:
             call=call,
             started_at=started_at,
             status=ToolResultStatus.TIMEOUT,
-            error=self._new_error(
-                call,
-                error_code="TOOL_TIMEOUT",
-                error_type=ErrorType.TIMEOUT,
-                message="Tool execution timed out",
-                recoverable=True,
-            ),
+            error=self._timeout_error(call),
             attempt=attempt,
             execution_context=execution_context,
+        )
+
+    def _timeout_error(
+        self,
+        call: ToolCall,
+    ) -> TaskError:
+        error_code, message = _TOOL_TIMEOUT_DETAILS.get(
+            call.tool_name,
+            ("TOOL_TIMEOUT", "Tool execution timed out"),
+        )
+        return self._new_error(
+            call,
+            error_code=error_code,
+            error_type=ErrorType.TIMEOUT,
+            message=message,
+            recoverable=True,
         )
 
     def _cancellation_result(

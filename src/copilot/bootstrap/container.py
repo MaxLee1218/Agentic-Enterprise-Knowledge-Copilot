@@ -249,7 +249,11 @@ def build_workflow_container(
     if settings.knowledge_provider == "http":
         knowledge_client = build_http_knowledge_client(
             settings,
-            timeout_seconds=min(settings.rag_timeout_seconds, 10.0),
+            timeout_seconds=min(
+                settings.rag_timeout_seconds,
+                float(KnowledgeTool.definition.timeout.attempt_seconds) - 1.0,
+            ),
+            max_attempts=1,
         )
         knowledge_tool: MockKnowledgeTool | KnowledgeTool = KnowledgeTool(knowledge_client)
     else:

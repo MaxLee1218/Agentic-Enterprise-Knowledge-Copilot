@@ -164,8 +164,9 @@ expected to report five documents, 81 chunks created/stored, and collection
 `supplier_quality_demo`.
 
 `GET /health` is process health only. An empty index can still return health 200 while `/ask`
-returns 503. Knowledge readiness is proven by a real `/ask` with non-empty formal sources and
-contexts, not by the health endpoint.
+returns 503. During Compose startup, the one-shot `rag-warmup` service calls the real `/ask` path
+before the API may start. It loads lazy embedding/reranking dependencies and fails startup when the
+query path is unavailable; its output contains only bounded counts, latency, and Trace metadata.
 
 ## Startup
 
@@ -196,7 +197,12 @@ Expected steady state:
 
 - `frontend`, `copilot-api`, `copilot-postgres`, `business-postgres`, and
   `enterprise-rag-engine`: running and healthy;
-- `copilot-migrate` and `business-db-seed`: exited with code 0.
+- `copilot-migrate`, `business-db-seed`, and `rag-warmup`: exited with code 0.
+
+The workflow owns governed retries. Its HTTP adapter performs one transport attempt of at most nine
+seconds so that a timeout is normalized to `KNOWLEDGE_TIMEOUT` before the frozen 10-second tool
+attempt expires. Workflow attempts remain independently audited and share the frozen 25-second
+overall tool deadline.
 
 Open [http://127.0.0.1:8080](http://127.0.0.1:8080). A direct Copilot host port is intentionally not
 published.

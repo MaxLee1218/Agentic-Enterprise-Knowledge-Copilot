@@ -170,6 +170,29 @@ services:
       retries: 12
     networks: [enterprise-backend]
 
+  rag-warmup:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    environment:
+      APP_ENV: development
+      DATABASE_URL: sqlite:////tmp/unused-rag-warmup.db
+      RAG_BASE_URL: http://enterprise-rag-engine:8000
+      RAG_TIMEOUT_SECONDS: ${RAG_WARMUP_TIMEOUT_SECONDS:-30}
+      RAG_MAX_ATTEMPTS: ${RAG_WARMUP_MAX_ATTEMPTS:-3}
+    command:
+      [
+        "enterprise-copilot-rag-warmup",
+        "--json",
+        "--trace-id",
+        "TRACE-LOCAL-RAG-WARMUP",
+      ]
+    depends_on:
+      enterprise-rag-engine:
+        condition: service_healthy
+    networks: [enterprise-backend]
+
   enterprise-rag-ingest:
     image: ${ENTERPRISE_RAG_IMAGE:-enterprise-rag-engine:local}
     profiles: [ingest]
@@ -222,6 +245,8 @@ services:
         condition: service_completed_successfully
       enterprise-rag-engine:
         condition: service_healthy
+      rag-warmup:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [

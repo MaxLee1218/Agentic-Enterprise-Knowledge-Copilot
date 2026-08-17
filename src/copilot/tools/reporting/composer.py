@@ -81,7 +81,13 @@ class ReportComposer:
         calculation_ids = tuple(
             item.evidence_id for item in evidence if item.source_type is EvidenceType.CALCULATION
         )
-        findings = self._findings(request, calculation_ids)
+        document_ids = tuple(
+            item.evidence_id for item in evidence if item.source_type is EvidenceType.DOCUMENT
+        )
+        database_ids = tuple(
+            item.evidence_id for item in evidence if item.source_type is EvidenceType.DATABASE
+        )
+        findings = self._findings(request, calculation_ids, database_ids, document_ids)
         risks = self._risks(request, calculation_ids)
         recommendations = self._recommendations(policies)
         limitations = self._limitations(request, policies)
@@ -202,16 +208,28 @@ class ReportComposer:
                 "No supplier quality records were returned for the authorized scope; "
                 "quality metrics could not be calculated."
             )
+        supplier_ids = _dimension_values(request, "supplier_id")
+        periods = _dimension_values(request, "period")
+        supplier_scope = (
+            f"{len(supplier_ids)} supplier(s) represented in Calculation Evidence"
+            if supplier_ids
+            else "the authorized supplier scope"
+        )
+        period_scope = f" across {len(periods)} observed monthly period(s)" if periods else ""
         return (
-            f"The deterministic quality analysis produced "
-            f"{len(request.analysis_result.metrics)} metric observations for "
-            f"{len(request.scope.supplier_ids)} authorized supplier(s)."
+            f"The controlled Q{request.scope.quarter} {request.scope.year} analysis covers "
+            f"{supplier_scope}{period_scope}. It reports monthly defect rates and "
+            "within-quarter period-over-period changes. Quarter-over-quarter comparison, "
+            "supplier ranking, and root-cause conclusions are not available under the "
+            "current analytics contract."
         )
 
     @staticmethod
     def _findings(
         request: ReportRequest,
         calculation_ids: tuple[str, ...],
+        database_ids: tuple[str, ...],
+        document_ids: tuple[str, ...],
     ) -> tuple[ReportFinding, ...]:
         if request.analysis_result.empty_result:
             return (
@@ -226,23 +244,46 @@ class ReportComposer:
                     evidence_ids=calculation_ids,
                 ),
             )
-        findings: list[ReportFinding] = []
-        for index, metric in enumerate(request.analysis_result.metrics, start=1):
-            if metric.metric.value != "defect_rate":
-                continue
-            dimensions = ", ".join(
-                f"{key}={value}" for key, value in sorted(metric.dimensions.items())
-            )
+        supplier_ids = _dimension_values(request, "supplier_id")
+        periods = _dimension_values(request, "period")
+        coverage = (
+            f"Calculation Evidence contains controlled quality metrics for "
+            f"{len(supplier_ids)} supplier(s)"
+            if supplier_ids
+            else "Calculation Evidence contains controlled quality metrics for the scope"
+        )
+        if periods:
+            coverage += f" across {', '.join(periods)}"
+        findings = [
+            ReportFinding(
+                finding_id="finding-analysis-coverage",
+                title="Supplier quality coverage",
+                statement=f"{coverage}.",
+                severity="INFO",
+                evidence_ids=database_ids + calculation_ids,
+            ),
+            ReportFinding(
+                finding_id="finding-monthly-trend-basis",
+                title="Within-quarter trend view",
+                statement=(
+                    "The available trend metric compares each observed month with the prior "
+                    "observed month; the first month has no comparison baseline."
+                ),
+                severity="INFO",
+                evidence_ids=calculation_ids,
+            ),
+        ]
+        if document_ids:
             findings.append(
                 ReportFinding(
-                    finding_id=f"finding-defect-rate-{index}",
-                    title="Reported defect rate",
+                    finding_id="finding-policy-context",
+                    title="Controlled policy context",
                     statement=(
-                        f"Analytics reported defect_rate={metric.value!s} {metric.unit}"
-                        + (f" for {dimensions}." if dimensions else ".")
+                        f"{len(document_ids)} controlled document Evidence item(s) provide "
+                        "the policy and deviation-process context for management review."
                     ),
-                    severity="INFO" if metric.value is not None else "WARNING",
-                    evidence_ids=calculation_ids,
+                    severity="INFO",
+                    evidence_ids=document_ids,
                 )
             )
         return tuple(findings)
@@ -252,23 +293,13 @@ class ReportComposer:
         request: ReportRequest,
         calculation_ids: tuple[str, ...],
     ) -> tuple[ReportRisk, ...]:
-        warnings = request.analysis_result.warnings
-        if warnings:
-            return tuple(
-                ReportRisk(
-                    risk_id=f"risk-analytics-warning-{index}",
-                    statement=warning,
-                    level="REVIEW_REQUIRED",
-                    evidence_ids=calculation_ids,
-                )
-                for index, warning in enumerate(warnings, start=1)
-            )
         return (
             ReportRisk(
-                risk_id="risk-no-analytics-warning",
+                risk_id="risk-classification-not-available",
                 statement=(
-                    "No analytics warning was reported. Policy threshold assessment remains "
-                    "subject to the cited controlled documents."
+                    "The current analytics contract does not classify business risk or apply "
+                    "policy thresholds. Analytics notes are consolidated in Methodology and "
+                    "Limitations and must not be interpreted as business-risk findings."
                 ),
                 level="INFORMATIONAL",
                 evidence_ids=calculation_ids,
@@ -312,7 +343,40 @@ class ReportComposer:
                     "not infer root causes."
                 ),
             ),
+            ReportLimitation(
+                code="QUARTER_COMPARISON_NOT_AVAILABLE",
+                statement=(
+                    "Q1 versus Q2 comparison is not available because the authorized database "
+                    "request and quality_metrics.v1 calculation cover Q2 only."
+                ),
+            ),
+            ReportLimitation(
+                code="FIRST_PERIOD_TREND_BASELINE",
+                statement=(
+                    "The first observed month has no previous-month comparison, so its "
+                    "period-over-period trend is not defined. This is an analytics note, not a "
+                    "business risk."
+                ),
+            ),
+            ReportLimitation(
+                code="POLICY_CLASSIFICATION_NOT_AVAILABLE",
+                statement=(
+                    "No deterministic rule in the current contract applies policy thresholds "
+                    "or assigns supplier risk levels."
+                ),
+            ),
         ]
+        if any("zero inspected_count" in warning for warning in request.analysis_result.warnings):
+            limitations.append(
+                ReportLimitation(
+                    code="ZERO_DENOMINATOR_ANALYTICS_NOTE",
+                    statement=(
+                        "One or more defect-rate or trend values are undefined because an "
+                        "observed period has zero inspected_count; affected raw metrics remain "
+                        "visible in Appendix A."
+                    ),
+                )
+            )
         if not policies:
             limitations.append(
                 ReportLimitation(
@@ -331,6 +395,19 @@ class ReportComposer:
                 )
             )
         return tuple(limitations)
+
+
+def _dimension_values(request: ReportRequest, name: str) -> tuple[str, ...]:
+    """Return stable observed dimension values without deriving a business metric."""
+    return tuple(
+        sorted(
+            {
+                value
+                for metric in request.analysis_result.metrics
+                if isinstance((value := metric.dimensions.get(name)), str) and value
+            }
+        )
+    )
 
 
 def calculation_metrics(item: EvidenceItem) -> tuple[JsonMapping, ...]:

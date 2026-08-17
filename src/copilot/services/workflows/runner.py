@@ -26,6 +26,7 @@ from copilot.contracts import (
     VerificationStatus,
 )
 from copilot.services.execution import ExecutionContext
+from copilot.services.workflows.deadlines import tool_attempt_deadline
 from copilot.services.workflows.dependency import DependencyChecker
 from copilot.services.workflows.errors import PlanValidationError, StepInputError, VerificationError
 from copilot.services.workflows.fixed_plan import SUPPLIER_QUALITY_PLAN_ID
@@ -247,6 +248,12 @@ class WorkflowRunner:
         attempts: list[ToolResult] = []
         attempt_number = 1
         while True:
+            deadline_at = tool_attempt_deadline(
+                task_deadline=context.contract.constraints.deadline_at,
+                attempt_started_at=step_started,
+                overall_seconds=definition.timeout.overall_seconds,
+                prior_results=tuple(attempts),
+            )
             call = ToolCall(
                 tool_call_id=self._ids.new_id("TC"),
                 task_id=context.task_id,
@@ -256,7 +263,7 @@ class WorkflowRunner:
                 input=arguments,
                 idempotency_key=idempotency_key,
                 approval_id=None,
-                deadline_at=context.contract.constraints.deadline_at,
+                deadline_at=deadline_at,
                 tenant_id=context.contract.constraints.tenant_id,
                 user_id=context.request.user_id,
             )
@@ -322,6 +329,12 @@ class WorkflowRunner:
                 duration_ms=tool_result.latency_ms,
                 error_type=(
                     tool_result.error.error_type.value if tool_result.error is not None else None
+                ),
+                error_code=(
+                    tool_result.error.error_code if tool_result.error is not None else None
+                ),
+                failure_reason=(
+                    tool_result.error.message if tool_result.error is not None else None
                 ),
             )
             if not self._retry_policy.should_retry(step, definition, tool_result, attempt_number):
@@ -529,6 +542,8 @@ class WorkflowRunner:
             status=result.status.value,
             duration_ms=record.duration_ms,
             error_type=result.error.error_type.value if result.error is not None else None,
+            error_code=result.error.error_code if result.error is not None else None,
+            failure_reason=result.error.message if result.error is not None else None,
             evidence_ids=result.evidence,
         )
 
@@ -690,6 +705,8 @@ class WorkflowRunner:
         status: str | None = None,
         duration_ms: int | None = None,
         error_type: str | None = None,
+        error_code: str | None = None,
+        failure_reason: str | None = None,
         evidence_ids: tuple[str, ...] = (),
         artifact_id: str | None = None,
         metadata: JsonObject | None = None,
@@ -711,6 +728,8 @@ class WorkflowRunner:
                 status=status,
                 duration_ms=duration_ms,
                 error_type=error_type,
+                error_code=error_code,
+                failure_reason=failure_reason,
                 evidence_ids=evidence_ids,
                 artifact_id=artifact_id,
                 metadata=metadata or JsonObject({}),

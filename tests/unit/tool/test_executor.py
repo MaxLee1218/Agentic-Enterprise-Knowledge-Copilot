@@ -292,7 +292,7 @@ def test_timeout_becomes_typed_result_and_late_output_is_not_recorded() -> None:
 
     assert result.status is ToolResultStatus.TIMEOUT
     assert result.error is not None
-    assert result.error.error_code == "TOOL_TIMEOUT"
+    assert result.error.error_code == "KNOWLEDGE_TIMEOUT"
     assert result.evidence_ids == ()
     assert ledger.list_for_call(result.tool_call_id, task_id="T-001", tenant_id="TENANT-A") == ()
     assert audit.list(tenant_id="TENANT-A")[0].status is ToolResultStatus.TIMEOUT
@@ -320,7 +320,7 @@ def test_configured_step_duration_limit_bounds_a_longer_tool_timeout() -> None:
 
     assert result.status is ToolResultStatus.TIMEOUT
     assert result.error is not None
-    assert result.error.error_code == "TOOL_TIMEOUT"
+    assert result.error.error_code == "KNOWLEDGE_TIMEOUT"
 
 
 def test_database_limit_returns_typed_result_metric_and_event(
