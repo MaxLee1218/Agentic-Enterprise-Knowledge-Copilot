@@ -227,13 +227,12 @@ class ToolRegistry:
         version_matches = definition.tool_version == tool_version
         if tool_version.startswith("legacy-schema-sha256:"):
             legacy_fingerprint = tool_version.removeprefix("legacy-schema-sha256:")
-            version_matches = (
-                legacy_fingerprint == schema_pair_fingerprint(definition)
-                and is_recognized_legacy_schema_binding(
-                    name,
-                    legacy_fingerprint,
-                    contract_profile,
-                )
+            version_matches = legacy_fingerprint == schema_pair_fingerprint(
+                definition
+            ) and is_recognized_legacy_schema_binding(
+                name,
+                legacy_fingerprint,
+                contract_profile,
             )
         if not version_matches or contract_profile not in registration.contract_profiles:
             raise ToolNotFoundError(f"{name}@{tool_version}#{contract_profile}")

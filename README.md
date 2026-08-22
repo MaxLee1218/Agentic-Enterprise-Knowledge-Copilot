@@ -107,6 +107,7 @@ To use the real read-only business Database Tool with the synthetic SQLite fixtu
 
 ```bash
 python scripts/seed_demo_database.py --reset
+python scripts/seed_demo_database.py --dataset accounts-payable-v1 --reset
 export DATABASE_PROVIDER=sqlalchemy
 export DATABASE_URL=sqlite:///data/database/enterprise_demo.db
 ```
@@ -192,9 +193,10 @@ docker compose up
 ```
 
 Compose starts persistence `postgres`, the separate synthetic `business-postgres`,
-`enterprise-rag-engine`, one-shot `migrate`, `seed-business-database`, and `rag-health` services,
-and `copilot-api`. The migration service runs Alembic and the official LangGraph PostgreSQL saver
-setup; the business seed service initializes only the existing Supplier Quality ORM tables;
+`enterprise-rag-engine`, one-shot persistence migration, ordered Supplier Quality/AP business
+seed jobs, `rag-health`, and `copilot-api`. The persistence migration service runs Alembic and the
+official LangGraph PostgreSQL saver setup; the separate business history migrates and seeds the
+synthetic Supplier Quality and AP tables;
 `rag-health` uses the Copilot's real HTTP Knowledge client without assuming utilities exist inside
 the independent RAG image. All one-shot dependencies must succeed before the API starts. The API
 reaches RAG as `http://enterprise-rag-engine:8000`, never through container-local `localhost`.

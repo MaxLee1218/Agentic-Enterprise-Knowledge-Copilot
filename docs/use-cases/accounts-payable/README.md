@@ -1,13 +1,14 @@
 # Accounts Payable Invoice Compliance & Exception Investigation v1
 
-**Design status:** `FROZEN — STAGE 1 CONTRACT FOUNDATION COMPLETE — UC2 NOT EXECUTABLE`  
+**Design status:** `FROZEN — STAGE 2 DATA FOUNDATION COMPLETE — UC2 NOT EXECUTABLE`
 **Task type:** `accounts_payable_analysis.v1`  
 **Design version:** `1.0`  
 **Date:** 2026-08-22
 
 This directory is the implementation authority for Use Case 2 once the proposed ADRs are
-approved. It does not alter the frozen Supplier Quality Analysis v1.1 baseline in `docs/design/`
-and does not claim that Accounts Payable (AP) behavior is implemented.
+approved. It does not alter the frozen Supplier Quality Analysis v1.1 baseline in `docs/design/`.
+Stages 1 and 2 implement only the AP contracts/routing and isolated synthetic data foundation;
+AP query, analytics and task execution remain disabled.
 
 ## Business outcome
 
@@ -51,6 +52,7 @@ invoice, PO, payment, supplier, bank account, or external system.
 | [Design baseline](design-baseline.md) | Frozen identifiers, rules, limits, authority and change control |
 | [Stage 0 design review](design-review.md) | Architecture, security, data-owner lens and gate results |
 | [Stage 1 compatibility matrix](stage-1-compatibility-matrix.md) | Implemented domain contracts, profiles, upcasting and execution-denial boundary |
+| [Stage 2 schema and seed report](stage-2-schema-and-seed.md) | Implemented business migrations, AP fact schema, deterministic fixture profile and verification |
 
 ## Terminology authority
 
@@ -80,7 +82,8 @@ authority. The accurate product status remains:
 ACCOUNTS PAYABLE USE CASE: DESIGN FROZEN
 STAGE 0: COMPLETE
 STAGE 1: COMPLETE — CONTRACTS AND MANIFEST ROUTING ONLY
-STAGE 2: NOT STARTED
+STAGE 2: COMPLETE — ISOLATED BUSINESS SCHEMA AND DETERMINISTIC SEED ONLY
+STAGE 3: NOT STARTED
 UC2 TOOL EXECUTION: DISABLED
 PRODUCTION READINESS: NOT CLAIMED
 ```

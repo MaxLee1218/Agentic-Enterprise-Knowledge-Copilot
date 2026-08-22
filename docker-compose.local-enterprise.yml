@@ -124,6 +124,29 @@ services:
         condition: service_healthy
     networks: [enterprise-backend]
 
+  ap-business-db-seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg://${BUSINESS_POSTGRES_ADMIN_USER:-quality_seed}:${BUSINESS_POSTGRES_ADMIN_PASSWORD:-quality_seed_local_enterprise_password}@business-postgres:5432/${BUSINESS_POSTGRES_DB:-supplier_quality}
+    command:
+      [
+        "python",
+        "scripts/seed_demo_database.py",
+        "--dataset",
+        "accounts-payable-v1",
+        "--reset",
+        "--profile-output",
+        "/tmp/accounts_payable_dataset_profile.json",
+      ]
+    depends_on:
+      business-db-seed:
+        condition: service_completed_successfully
+    networks: [enterprise-backend]
+
   rag-generation-stub:
     build:
       context: tests/fixtures/deployment
@@ -241,7 +264,7 @@ services:
         condition: service_healthy
       copilot-migrate:
         condition: service_completed_successfully
-      business-db-seed:
+      ap-business-db-seed:
         condition: service_completed_successfully
       enterprise-rag-engine:
         condition: service_healthy

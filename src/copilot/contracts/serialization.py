@@ -19,9 +19,7 @@ from copilot.contracts import (
 )
 
 LEGACY_SCHEMA_VERSION_PREFIX = "legacy-schema-sha256:"
-LEGACY_SUPPLIER_QUALITY_GOAL = (
-    "Analyze supplier quality and generate an evidence-backed report"
-)
+LEGACY_SUPPLIER_QUALITY_GOAL = "Analyze supplier quality and generate an evidence-backed report"
 
 _LEGACY_CONTRACT_KEYS = frozenset(
     {
@@ -51,9 +49,7 @@ _LEGACY_QUALITY_CONSTRAINT_REQUIRED_KEYS = frozenset(
         "deadline_at",
     }
 )
-_LEGACY_APPROVAL_KEYS = frozenset(
-    {"required", "policy_id", "approver_role", "controlled_scope"}
-)
+_LEGACY_APPROVAL_KEYS = frozenset({"required", "policy_id", "approver_role", "controlled_scope"})
 _LEGACY_PLAN_KEYS = frozenset({"task_id", "steps", "planning_version", "created_at"})
 _LEGACY_STEP_KEYS = frozenset(
     {
@@ -161,12 +157,9 @@ def upcast_task_plan_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
         raise ContractUpcastError("TaskPlan steps must be a sequence")
     step_mappings = [_mapping(step, boundary="TaskStep") for step in steps]
     legacy = [
-        "tool_version" not in step and "contract_profile" not in step
-        for step in step_mappings
+        "tool_version" not in step and "contract_profile" not in step for step in step_mappings
     ]
-    current = [
-        "tool_version" in step and "contract_profile" in step for step in step_mappings
-    ]
+    current = ["tool_version" in step and "contract_profile" in step for step in step_mappings]
     if all(current):
         return raw
     if not all(legacy):
@@ -222,9 +215,7 @@ def is_recognized_legacy_schema_binding(
     """Return whether a legacy alias is explicitly bound to this Quality profile."""
     binding = _LEGACY_QUALITY_SCHEMA_BINDINGS.get(schema_fingerprint)
     return bool(
-        binding is not None
-        and binding[0].value == tool_name
-        and binding[1] == contract_profile
+        binding is not None and binding[0].value == tool_name and binding[1] == contract_profile
     )
 
 
@@ -233,20 +224,12 @@ def upgrade_checkpoint_value(value: Any) -> Any:
     if isinstance(value, TaskContract):
         if "contract_schema_version" in value.model_fields_set:
             return value
-        raw = {
-            key: item
-            for key, item in value.__dict__.items()
-            if key in value.model_fields_set
-        }
+        raw = {key: item for key, item in value.__dict__.items() if key in value.model_fields_set}
         return TaskContract.model_validate(upcast_task_contract_payload(raw))
     if isinstance(value, TaskStep):
         if {"tool_version", "contract_profile"}.issubset(value.model_fields_set):
             return value
-        raw = {
-            key: item
-            for key, item in value.__dict__.items()
-            if key in value.model_fields_set
-        }
+        raw = {key: item for key, item in value.__dict__.items() if key in value.model_fields_set}
         return TaskStep.model_validate(upcast_legacy_task_step_payload(raw))
     if isinstance(value, TaskPlan):
         upgraded_steps = tuple(_upgrade_checkpoint_step(step) for step in value.steps)

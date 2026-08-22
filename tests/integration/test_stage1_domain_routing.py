@@ -27,8 +27,7 @@ def test_prebuilt_ap_contract_fails_at_disabled_manifest_without_tool_calls(
         update={
             "task_id": contract.task_id,
             "steps": tuple(
-                step.model_copy(update={"task_id": contract.task_id})
-                for step in quality_plan.steps
+                step.model_copy(update={"task_id": contract.task_id}) for step in quality_plan.steps
             ),
         }
     )
@@ -44,12 +43,12 @@ def test_prebuilt_ap_contract_fails_at_disabled_manifest_without_tool_calls(
         state = container.engine.get_state(contract.task_id, contract.constraints.tenant_id)
 
         assert execution.final_state.state is TaskStatus.FAILED
-        assert any(
-            error.error_code == "DOMAIN_EXECUTION_NOT_ENABLED"
-            for error in state["errors"]
-        )
+        assert any(error.error_code == "DOMAIN_EXECUTION_NOT_ENABLED" for error in state["errors"])
         assert container.tool_audit.list(tenant_id=contract.constraints.tenant_id) == ()
-        assert container.repository.tool_results_for(
-            contract.task_id,
-            tenant_id=contract.constraints.tenant_id,
-        ) == ()
+        assert (
+            container.repository.tool_results_for(
+                contract.task_id,
+                tenant_id=contract.constraints.tenant_id,
+            )
+            == ()
+        )

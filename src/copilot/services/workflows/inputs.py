@@ -29,9 +29,7 @@ from copilot.services.workflows.errors import StepInputError
 class StepInputBuilder:
     """Build one tool input solely from contract scope and immutable prior results."""
 
-    def __init__(
-        self, domain_manifests: DomainCapabilityManifestRegistry | None = None
-    ) -> None:
+    def __init__(self, domain_manifests: DomainCapabilityManifestRegistry | None = None) -> None:
         self._domain_manifests = domain_manifests or builtin_domain_manifest_registry()
 
     def build(
@@ -48,9 +46,7 @@ class StepInputBuilder:
         except DomainManifestError as exc:
             raise StepInputError(f"{exc.code}: {exc}") from exc
         if manifest.input_profile != "supplier_quality_inputs.v1":
-            raise StepInputError(
-                f"DOMAIN_INPUT_PROFILE_NOT_IMPLEMENTED: {manifest.input_profile}"
-            )
+            raise StepInputError(f"DOMAIN_INPUT_PROFILE_NOT_IMPLEMENTED: {manifest.input_profile}")
         if not isinstance(contract.constraints, SupplierQualityConstraintsV1):
             raise StepInputError("Supplier Quality input profile received incompatible constraints")
         if step.step_type is StepType.KNOWLEDGE_SEARCH:

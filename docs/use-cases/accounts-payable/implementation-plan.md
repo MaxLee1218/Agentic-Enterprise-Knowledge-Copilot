@@ -48,6 +48,9 @@ implemented before its own acceptance criteria and all prior stages pass.
 
 ## Stage 2 — AP business schema and deterministic seed
 
+**Status:** complete on 2026-08-22. See
+[Stage 2 schema and seed report](stage-2-schema-and-seed.md).
+
 - **Goal:** create the isolated synthetic AP fact model.
 - **Scope/work:** implement legal entity, business unit, PO, invoice and payment models; additive
   business-schema migrations; composite tenant FKs; deterministic AP seed/profile.

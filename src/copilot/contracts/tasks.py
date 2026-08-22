@@ -160,19 +160,14 @@ class AccountsPayableConstraintsV1(ImmutableContractModel):
         "data_scope",
     )(lambda values: tuple(validate_identifier(value) for value in values))
     _validate_ap_tenant = field_validator("tenant_id")(validate_identifier)
-    _validate_ap_timestamps = field_validator("snapshot_at", "deadline_at")(
-        validate_utc_datetime
-    )
+    _validate_ap_timestamps = field_validator("snapshot_at", "deadline_at")(validate_utc_datetime)
 
     @field_validator("currency_scope")
     @classmethod
     def validate_currencies(cls, values: tuple[str, ...]) -> tuple[str, ...]:
         """Require unique uppercase ISO-shaped currency codes."""
         if any(
-            len(value) != 3
-            or not value.isascii()
-            or not value.isalpha()
-            or not value.isupper()
+            len(value) != 3 or not value.isascii() or not value.isalpha() or not value.isupper()
             for value in values
         ):
             raise ValueError("currency_scope must contain uppercase three-letter codes")

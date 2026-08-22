@@ -363,10 +363,10 @@ export interface components {
         };
         /**
          * ArtifactType
-         * @description Deliverable artifact types supported in v1.0.
+         * @description Versioned internal report Artifact types admitted by contracts.
          * @enum {string}
          */
-        ArtifactType: "QUALITY_ANALYSIS_REPORT_PDF" | "QUALITY_ANALYSIS_REPORT_JSON";
+        ArtifactType: "QUALITY_ANALYSIS_REPORT_PDF" | "QUALITY_ANALYSIS_REPORT_JSON" | "ACCOUNTS_PAYABLE_REPORT_PDF" | "ACCOUNTS_PAYABLE_REPORT_JSON";
         /**
          * EvidenceType
          * @description Evidence source types permitted by the frozen v1.0 scenario.
@@ -686,10 +686,10 @@ export interface components {
         };
         /**
          * TaskType
-         * @description Business task types supported by the frozen v1.0 baseline.
+         * @description Versioned business task classifications admitted by governed contracts.
          * @enum {string}
          */
-        TaskType: "supplier_quality_analysis.v1";
+        TaskType: "supplier_quality_analysis.v1" | "accounts_payable_analysis.v1";
     };
     responses: never;
     parameters: never;

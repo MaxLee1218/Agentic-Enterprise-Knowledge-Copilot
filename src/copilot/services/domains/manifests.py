@@ -135,9 +135,7 @@ class DomainCapabilityManifestRegistry:
             )
         return manifest
 
-    def require_execution_for_type(
-        self, task_type: TaskType | str
-    ) -> DomainCapabilityManifest:
+    def require_execution_for_type(self, task_type: TaskType | str) -> DomainCapabilityManifest:
         """Deny disabled domains before an understanding adapter is invoked."""
         manifest = self.resolve(task_type)
         if not manifest.execution_enabled:
@@ -150,8 +148,7 @@ class DomainCapabilityManifestRegistry:
 
 def _profiles(values: Mapping[CapabilityName, str]) -> tuple[CapabilityContractProfile, ...]:
     return tuple(
-        CapabilityContractProfile(capability, values[capability])
-        for capability in CapabilityName
+        CapabilityContractProfile(capability, values[capability]) for capability in CapabilityName
     )
 
 
@@ -192,9 +189,7 @@ ACCOUNTS_PAYABLE_MANIFEST = DomainCapabilityManifest(
 
 def builtin_domain_manifest_registry() -> DomainCapabilityManifestRegistry:
     """Create the built-in registry; AP remains deliberately non-executable in Stage 1."""
-    return DomainCapabilityManifestRegistry(
-        (SUPPLIER_QUALITY_MANIFEST, ACCOUNTS_PAYABLE_MANIFEST)
-    )
+    return DomainCapabilityManifestRegistry((SUPPLIER_QUALITY_MANIFEST, ACCOUNTS_PAYABLE_MANIFEST))
 
 
 __all__ = [

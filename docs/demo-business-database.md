@@ -1,17 +1,17 @@
-# Synthetic Supplier Quality Enterprise Business Database
+# Synthetic Enterprise Business Database
 
 ## Purpose and boundary
 
-This development/test dataset is synthetic enterprise demo data. It contains no production
-company, person, credential, or customer data. It exists to exercise the real Supplier Quality
-Agent path through SQLAlchemy, approved query templates, `DatabaseTool`, Evidence, Analytics,
-Report, and Verifier.
+The Supplier Quality and Accounts Payable development/test datasets are synthetic enterprise
+demo data. They contain no production company, person, credential, or customer data. Supplier
+Quality exercises the current governed Agent path; AP Stage 2 supplies only a non-executable data
+foundation.
 
 It is not Copilot persistence:
 
 - `PERSISTENCE_DATABASE_URL` stores Copilot-owned Task, State, Plan, Result, Evidence, Approval,
   Audit, Checkpoint, and Artifact metadata.
-- `DATABASE_URL` points to this supplier/inspection business source. Normal Agent execution opens
+- `DATABASE_URL` points to this isolated business source. Normal Agent execution opens
   it through the governed read-only adapter only.
 
 The explicit seed utility needs write privileges for initialization. Those privileges are not
@@ -21,8 +21,9 @@ seeded.
 
 ## Contract-derived schema
 
-The generator reuses the existing SQLAlchemy metadata in
-`src/copilot/tools/database/models.py`. It does not maintain independent `CREATE TABLE` DDL.
+Models live in `src/copilot/tools/database/models.py`. Explicit deployment DDL is owned by the
+separate `business_alembic.ini` / `business_migrations` history, not Copilot persistence and not
+production `Base.metadata.create_all()`.
 
 | Table | Dataset role | Active Agent use |
 |---|---|---|
@@ -30,6 +31,8 @@ The generator reuses the existing SQLAlchemy metadata in
 | `incoming_inspections` | dated inspected/accepted/rejected quantities | source of `inspected_count` and `defect_count` |
 | `supplier_deviations` | four legacy compatibility fixtures | not read by current templates or Analytics |
 | `corrective_actions` | four legacy compatibility fixtures | not read by current templates or Analytics |
+| `legal_entities` / `business_units` | tenant and authorization dimensions for AP | Stage 2 data foundation only |
+| `purchase_orders` / `invoices` / `payments` | deterministic AP header facts | AP execution remains disabled |
 
 The active business chain therefore depends only on `suppliers` and `incoming_inspections`.
 Reserved deviation/CAPA models were not expanded. The detailed type, key, nullability,
@@ -60,6 +63,7 @@ After installing the repository in editable mode, seed the configured business d
 
 ```bash
 python scripts/seed_demo_database.py --reset
+python scripts/seed_demo_database.py --dataset accounts-payable-v1 --reset
 ```
 
 Useful explicit options are:
@@ -72,16 +76,22 @@ python scripts/seed_demo_database.py --reset \
   --profile-output data/demo/supplier_quality_dataset_profile.json
 ```
 
-Without `--reset`, a populated database is rejected rather than appended to. With `--reset`, the
-four existing tables are retained and all demo rows are replaced in one data transaction. Rows
-are flushed, counted, checked for numeric/time integrity, validated against the frozen walkthrough
-and business-pattern oracle, and only then committed. An exception rolls the transaction back,
-so an existing complete dataset is not replaced by a partial initialization.
+Without `--reset`, the selected populated dataset is rejected rather than appended to. Quality
+should be initialized before AP. Quality reset replaces Quality rows; AP reset replaces only AP
+rows and never deletes Quality facts. Rows are flushed, counted, checked for integrity, validated
+against the relevant frozen oracle, and only then committed. An exception rolls the data
+transaction back, so a complete dataset is not replaced by a partial initialization.
 
 The command prints safe counts, period, and checksum and writes
 `data/demo/supplier_quality_dataset_profile.json`. The profile is computed from the database rows,
 not directly from profile configuration. It records records per supplier/month, annual inspected
 and defect quantities/rates, quarterly rates and quarter-over-quarter deltas, plus the test oracle.
+
+The AP command writes `data/demo/accounts_payable_dataset_profile.json`. Its frozen seed is `42`,
+schema/profile versions are `accounts_payable.v1` / `ap-demo-dataset.v1`, and its reviewed checksum
+is `e920b4b13403831b0c4e7150edea452736f5c278cb2ed272b98c25da66b02f91`. The profile records 3
+legal entities, 4 business units, 6 referenced suppliers, 24 POs, 27 invoices, 11 payments and
+the independently revalidated exception/exclusion oracles.
 
 ## Business pattern catalogue
 
@@ -149,9 +159,10 @@ export DATABASE_PROVIDER=sqlalchemy
 export DATABASE_URL=postgresql+psycopg://READONLY_USER:READONLY_PASSWORD@DB_HOST:5432/supplier_quality
 ```
 
-The development Compose topology provides a separate `business-postgres` service, one-shot
-`seed-business-database`, and `quality_readonly` role. It does not reuse the Copilot persistence
-database. Local ports default to 5432 for persistence PostgreSQL and 5433 for business
+The development Compose topology provides a separate `business-postgres` service, ordered
+`seed-business-database` and `seed-ap-business-database` jobs, and a `quality_readonly` role. It
+does not reuse the Copilot persistence database. Local ports default to 5432 for persistence
+PostgreSQL and 5433 for business
 PostgreSQL. The committed passwords are local demo values only.
 
 The opt-in PostgreSQL integration test requires an isolated resettable database:
@@ -167,7 +178,8 @@ Never point the seed URL or that test at a production business database.
 ## Limitations
 
 - All data is deterministic synthetic demo data, not evidence about a real supplier.
-- The active schema surface is only supplier master plus incoming inspection quantities.
+- Only Supplier Quality has registered runtime query templates; Stage 2 AP facts are not
+  executable until later controlled-query and analytics stages are complete.
 - The physical schema has no incident-reason field; incident explanations remain seed
   documentation, while database facts are numeric only.
 - The dataset supports current descriptive metrics, not root-cause proof or predictive quality.

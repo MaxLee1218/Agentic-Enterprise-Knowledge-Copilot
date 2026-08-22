@@ -58,9 +58,7 @@ def make_ap_contract() -> TaskContract:
             legal_entity_ids=("LE-001",),
             business_unit_ids=("BU-001",),
             currency_scope=("USD", "CNY"),
-            requested_materiality=(
-                MoneyThreshold(currency="USD", amount=Decimal("5000.0000")),
-            ),
+            requested_materiality=(MoneyThreshold(currency="USD", amount=Decimal("5000.0000")),),
             effective_materiality=(
                 MoneyThreshold(currency="USD", amount=Decimal("5000.0000")),
                 MoneyThreshold(currency="CNY", amount=Decimal("30000.0000")),

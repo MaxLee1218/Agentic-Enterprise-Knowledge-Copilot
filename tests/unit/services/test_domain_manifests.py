@@ -14,9 +14,7 @@ def test_manifest_selection_uses_exact_trusted_task_type() -> None:
 
     assert manifest.task_type is TaskType.SUPPLIER_QUALITY_ANALYSIS_V1
     assert manifest.permission_purpose == TaskType.SUPPLIER_QUALITY_ANALYSIS_V1.value
-    assert manifest.profile_for(CapabilityName.DATABASE_QUERY) == (
-        "supplier_quality_database.v1"
-    )
+    assert manifest.profile_for(CapabilityName.DATABASE_QUERY) == ("supplier_quality_database.v1")
 
 
 def test_ap_contract_validates_but_execution_is_not_enabled() -> None:

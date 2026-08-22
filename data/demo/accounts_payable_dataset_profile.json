@@ -1,0 +1,174 @@
+{
+  "dataset_checksum": "e920b4b13403831b0c4e7150edea452736f5c278cb2ed272b98c25da66b02f91",
+  "dataset_name": "accounts-payable-v1",
+  "end_date": "2026-08-10",
+  "expected_exception_counts": {
+    "EXACT_DUPLICATE_INVOICE": 1,
+    "LATE_PAYMENT": 1,
+    "MATERIAL_EARLY_PAYMENT": 2,
+    "MISSING_REQUIRED_PO": 1,
+    "OVERPAYMENT": 1,
+    "PO_AMOUNT_VARIANCE": 1
+  },
+  "expected_exception_records": {
+    "EXACT_DUPLICATE_INVOICE": [
+      "INV-DUP-001-B"
+    ],
+    "LATE_PAYMENT": [
+      "INV-LATE"
+    ],
+    "MATERIAL_EARLY_PAYMENT": [
+      "INV-EARLY-BOUNDARY",
+      "INV-EARLY-MATERIAL"
+    ],
+    "MISSING_REQUIRED_PO": [
+      "INV-NOPO-ABOVE"
+    ],
+    "OVERPAYMENT": [
+      "INV-OVER-ABOVE"
+    ],
+    "PO_AMOUNT_VARIANCE": [
+      "INV-VAR-ABOVE"
+    ]
+  },
+  "expected_exclusion_counts": {
+    "AP_CURRENCY_MISMATCH_EXCLUDED": 1,
+    "MULTIPLE_PAYMENT_EXCLUSION": 1,
+    "MULTI_INVOICE_MATCHING_UNSUPPORTED": 1,
+    "PO_AMOUNT_ZERO": 1,
+    "UNPAID_INVOICE": 17
+  },
+  "expected_exclusion_records": {
+    "AP_CURRENCY_MISMATCH_EXCLUDED": [
+      "INV-CURRENCY-MISMATCH"
+    ],
+    "MULTIPLE_PAYMENT_EXCLUSION": [
+      "INV-MULTI-PAY"
+    ],
+    "MULTI_INVOICE_MATCHING_UNSUPPORTED": [
+      "INV-MULTI-PO"
+    ],
+    "PO_AMOUNT_ZERO": [
+      "INV-PO-ZERO"
+    ],
+    "UNPAID_INVOICE": [
+      "INV-CURRENCY-MISMATCH",
+      "INV-DUP-001-A",
+      "INV-DUP-001-B",
+      "INV-MULTI-PO",
+      "INV-NOPO-ABOVE",
+      "INV-NOPO-APPROVED",
+      "INV-NOPO-BELOW",
+      "INV-PO-ZERO",
+      "INV-Q1-CONTROL",
+      "INV-Q3-CONTROL",
+      "INV-SAME-NUMBER-DIFFERENT",
+      "INV-TENANT-A",
+      "INV-TENANT-A-SECOND",
+      "INV-UNPAID",
+      "INV-VAR-ABOVE",
+      "INV-VAR-BOUNDARY",
+      "INV-VAR-WITHIN"
+    ]
+  },
+  "normalization_version": "invoice_number_normalization.v1",
+  "profile_version": "ap-demo-dataset.v1",
+  "random_seed": 42,
+  "referenced_supplier_count": 6,
+  "row_counts": {
+    "business_units": 4,
+    "invoices": 27,
+    "legal_entities": 3,
+    "payments": 11,
+    "purchase_orders": 24
+  },
+  "scenario_labels": {
+    "INV-CLEAN-001": [
+      "clean_invoice",
+      "on_time_payment"
+    ],
+    "INV-CURRENCY-MISMATCH": [
+      "currency_mismatch_exclusion"
+    ],
+    "INV-DUP-001-A": [
+      "exact_duplicate_group",
+      "canonical_member"
+    ],
+    "INV-DUP-001-B": [
+      "exact_duplicate_group",
+      "noncanonical_member"
+    ],
+    "INV-EARLY-BOUNDARY": [
+      "material_early_boundary"
+    ],
+    "INV-EARLY-MATERIAL": [
+      "material_early_payment"
+    ],
+    "INV-EARLY-WITHIN": [
+      "early_payment_below_boundary"
+    ],
+    "INV-LATE": [
+      "late_payment"
+    ],
+    "INV-MULTI-PAY": [
+      "multiple_payment_exclusion"
+    ],
+    "INV-MULTI-PO": [
+      "multi_invoice_po_exclusion"
+    ],
+    "INV-NOPO-ABOVE": [
+      "missing_po_above_threshold"
+    ],
+    "INV-NOPO-APPROVED": [
+      "approved_no_po_exception"
+    ],
+    "INV-NOPO-BELOW": [
+      "missing_po_below_threshold"
+    ],
+    "INV-ONTIME": [
+      "on_time_payment"
+    ],
+    "INV-OVER-ABOVE": [
+      "overpayment_above_tolerance"
+    ],
+    "INV-OVER-BOUNDARY": [
+      "overpayment_tolerance_boundary"
+    ],
+    "INV-OVER-EXACT": [
+      "payment_equals_invoice"
+    ],
+    "INV-PO-ZERO": [
+      "zero_po_amount_exclusion"
+    ],
+    "INV-Q1-CONTROL": [
+      "outside_q2_control"
+    ],
+    "INV-Q3-CONTROL": [
+      "outside_q2_control"
+    ],
+    "INV-SAME-NUMBER-DIFFERENT": [
+      "same_number_nonduplicate"
+    ],
+    "INV-TENANT-A": [
+      "secondary_tenant_control"
+    ],
+    "INV-TENANT-A-SECOND": [
+      "sixth_supplier_control"
+    ],
+    "INV-UNPAID": [
+      "unpaid_invoice_exclusion"
+    ],
+    "INV-VAR-ABOVE": [
+      "po_variance_above_tolerance"
+    ],
+    "INV-VAR-BOUNDARY": [
+      "po_variance_boundary"
+    ],
+    "INV-VAR-WITHIN": [
+      "po_variance_within_tolerance"
+    ]
+  },
+  "schema_version": "accounts_payable.v1",
+  "start_date": "2026-02-10",
+  "tenant_count": 2
+}

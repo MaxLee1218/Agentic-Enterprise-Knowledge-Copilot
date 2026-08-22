@@ -17,10 +17,12 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from copilot.tools.database.connection import DatabaseConnection
+from copilot.tools.database.migrations import upgrade_business_schema
 from copilot.tools.database.models import (
     Base,
     CorrectiveAction,
     IncomingInspection,
+    PurchaseOrder,
     Supplier,
     SupplierDeviation,
 )
@@ -494,7 +496,7 @@ def seed_demo_database(
     random_seed: int = DEFAULT_RANDOM_SEED,
     reset: bool = True,
 ) -> SeedReport:
-    """Create the existing schema and atomically replace its synthetic demo rows."""
+    """Migrate the business schema and atomically replace Supplier Quality demo rows."""
     connection = DatabaseConnection(
         database_url,
         read_only=False,
@@ -503,17 +505,34 @@ def seed_demo_database(
     try:
         if connection.database_path is not None:
             connection.database_path.parent.mkdir(parents=True, exist_ok=True)
-        Base.metadata.create_all(connection.engine)
+        migration_url = connection.engine.url.render_as_string(hide_password=False)
+    finally:
+        connection.dispose()
+
+    upgrade_business_schema(migration_url)
+    connection = DatabaseConnection(
+        database_url,
+        read_only=False,
+        base_directory=base_directory,
+    )
+    try:
         profiles = _supplier_profiles()
         inspections = _generate_inspections(profiles, random_seed=random_seed)
         with connection.session() as session:
+            preserve_supplier_master = _count(session, PurchaseOrder) > 0
             if reset:
-                _delete_existing_rows(session)
+                _delete_existing_rows(
+                    session,
+                    preserve_supplier_master=preserve_supplier_master,
+                )
             elif _count(session, Supplier) > 0:
                 raise SeedValidationError(
                     "Demo business tables already contain rows; rerun with reset enabled"
                 )
-            session.add_all(_suppliers(profiles))
+            if preserve_supplier_master:
+                _synchronize_supplier_master(session, profiles)
+            else:
+                session.add_all(_suppliers(profiles))
             session.add_all(_deviations())
             session.add_all(inspections)
             session.add_all(_corrective_actions())
@@ -717,9 +736,39 @@ def _distributed_workdays(
     return tuple(workdays[position] for position in sorted(positions))
 
 
-def _delete_existing_rows(session: Session) -> None:
-    for model in (CorrectiveAction, IncomingInspection, SupplierDeviation, Supplier):
+def _delete_existing_rows(
+    session: Session,
+    *,
+    preserve_supplier_master: bool,
+) -> None:
+    for model in (CorrectiveAction, IncomingInspection, SupplierDeviation):
         session.execute(delete(model))
+    if not preserve_supplier_master:
+        session.execute(delete(Supplier))
+
+
+def _synchronize_supplier_master(
+    session: Session,
+    profiles: Sequence[SupplierProfile],
+) -> None:
+    expected_by_id = {profile.supplier_id: profile for profile in profiles}
+    existing_by_id = {supplier.id: supplier for supplier in session.scalars(select(Supplier))}
+    if set(existing_by_id) != set(expected_by_id):
+        raise SeedValidationError(
+            "Referenced Supplier Quality master does not match the frozen supplier set"
+        )
+    for identifier, supplier in existing_by_id.items():
+        profile = expected_by_id[identifier]
+        if supplier.tenant_id != profile.tenant_id:
+            raise SeedValidationError(
+                "Referenced Supplier Quality master has a conflicting tenant binding"
+            )
+        supplier.supplier_code = profile.supplier_code
+        supplier.name = profile.name
+        supplier.country = profile.country
+        supplier.category = profile.category
+        supplier.risk_level = profile.risk_level
+        supplier.created_at = SEED_TIMESTAMP
 
 
 def _deviations() -> list[SupplierDeviation]:

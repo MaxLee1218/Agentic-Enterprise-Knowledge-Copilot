@@ -329,10 +329,12 @@
         "type": "object"
       },
       "ArtifactType": {
-        "description": "Deliverable artifact types supported in v1.0.",
+        "description": "Versioned internal report Artifact types admitted by contracts.",
         "enum": [
           "QUALITY_ANALYSIS_REPORT_PDF",
-          "QUALITY_ANALYSIS_REPORT_JSON"
+          "QUALITY_ANALYSIS_REPORT_JSON",
+          "ACCOUNTS_PAYABLE_REPORT_PDF",
+          "ACCOUNTS_PAYABLE_REPORT_JSON"
         ],
         "title": "ArtifactType",
         "type": "string"
@@ -1197,9 +1199,10 @@
         "type": "object"
       },
       "TaskType": {
-        "description": "Business task types supported by the frozen v1.0 baseline.",
+        "description": "Versioned business task classifications admitted by governed contracts.",
         "enum": [
-          "supplier_quality_analysis.v1"
+          "supplier_quality_analysis.v1",
+          "accounts_payable_analysis.v1"
         ],
         "title": "TaskType",
         "type": "string"

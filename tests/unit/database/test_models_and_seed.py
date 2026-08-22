@@ -25,6 +25,11 @@ def test_schema_creates_required_tables_and_relationship_foreign_keys(tmp_path: 
             "supplier_deviations",
             "incoming_inspections",
             "corrective_actions",
+            "legal_entities",
+            "business_units",
+            "purchase_orders",
+            "invoices",
+            "payments",
         }
         foreign_keys = inspector.get_foreign_keys("incoming_inspections")
         assert foreign_keys[0]["referred_table"] == "suppliers"
@@ -47,6 +52,29 @@ def test_connection_accepts_postgresql_without_exposing_credentials() -> None:
 def test_connection_rejects_unapproved_database_backend() -> None:
     with pytest.raises(DatabaseConfigurationError, match="SQLite and PostgreSQL"):
         DatabaseConnection("mysql+pymysql://readonly:secret@127.0.0.1/quality")
+
+
+def test_seed_passes_unredacted_database_url_only_to_migration_api(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from copilot.tools.database import seed as seed_module
+
+    captured_url = ""
+
+    def capture_url(database_url: str, revision: str = "head") -> None:
+        del revision
+        nonlocal captured_url
+        captured_url = database_url
+        raise RuntimeError("migration captured")
+
+    monkeypatch.setattr(seed_module, "upgrade_business_schema", capture_url)
+    with pytest.raises(RuntimeError, match="migration captured"):
+        seed_demo_database(
+            "postgresql+psycopg://seed_user:local_test_password@127.0.0.1:5432/business"
+        )
+
+    assert "local_test_password" in captured_url
+    assert "***" not in captured_url
 
 
 def test_seed_is_deterministic_repeatable_and_contains_boundary_cases(tmp_path: Path) -> None:

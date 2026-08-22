@@ -214,9 +214,7 @@ def valid_plan() -> TaskPlan:
             step_type=step_type,
             tool_name=tool_name,
             tool_version=definition.tool_version,
-            contract_profile=SUPPLIER_QUALITY_CONTRACT_PROFILES[
-                CapabilityName(tool_name)
-            ],
+            contract_profile=SUPPLIER_QUALITY_CONTRACT_PROFILES[CapabilityName(tool_name)],
             input_schema=definition.input_schema,
             output_schema=definition.output_schema,
             dependency=dependencies,

@@ -93,6 +93,28 @@ services:
         condition: service_healthy
     networks: [copilot]
 
+  seed-ap-business-database:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql+psycopg://quality_seed:${BUSINESS_POSTGRES_PASSWORD:-quality_seed_local_password}@business-postgres:5432/supplier_quality
+    command:
+      [
+        "python",
+        "scripts/seed_demo_database.py",
+        "--dataset",
+        "accounts-payable-v1",
+        "--reset",
+        "--profile-output",
+        "/tmp/accounts_payable_dataset_profile.json",
+      ]
+    depends_on:
+      seed-business-database:
+        condition: service_completed_successfully
+    networks: [copilot]
+
   rag-health:
     build:
       context: .
@@ -130,7 +152,7 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-      seed-business-database:
+      seed-ap-business-database:
         condition: service_completed_successfully
       rag-health:
         condition: service_completed_successfully

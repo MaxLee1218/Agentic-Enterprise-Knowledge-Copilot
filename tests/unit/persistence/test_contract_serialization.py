@@ -53,8 +53,7 @@ def test_legacy_plan_upcasts_to_exact_schema_fingerprint_profiles(
     restored = deserialize_task_plan_json(json.dumps(_legacy_plan_payload()))
 
     assert all(
-        step.tool_version.startswith(LEGACY_SCHEMA_VERSION_PREFIX)
-        for step in restored.steps
+        step.tool_version.startswith(LEGACY_SCHEMA_VERSION_PREFIX) for step in restored.steps
     )
     with build_test_container(
         tmp_path / "artifacts",
@@ -81,9 +80,7 @@ def test_unknown_legacy_contract_shape_is_not_guessed() -> None:
 
 def test_unknown_legacy_step_schema_is_not_bound_to_latest_profile() -> None:
     payload = _legacy_plan_payload()
-    payload["steps"][0]["input_schema"]["properties"]["unapproved"] = {
-        "type": "string"
-    }
+    payload["steps"][0]["input_schema"]["properties"]["unapproved"] = {"type": "string"}
 
     with pytest.raises(ContractUpcastError, match="fingerprint is not recognized"):
         deserialize_task_plan_json(json.dumps(payload))
@@ -120,9 +117,7 @@ def test_checkpoint_serializer_upcasts_legacy_contract_and_plan() -> None:
     restored = serializer.loads_typed(encoded)
 
     assert isinstance(restored, dict)
-    assert restored["contract"].contract_schema_version is (
-        ContractSchemaVersion.TASK_CONTRACT_V1
-    )
+    assert restored["contract"].contract_schema_version is (ContractSchemaVersion.TASK_CONTRACT_V1)
     assert restored["contract"].task_id == contract_payload["task_id"]
     assert isinstance(restored["plan"], TaskPlan)
     assert all(

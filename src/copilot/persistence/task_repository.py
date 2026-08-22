@@ -574,9 +574,7 @@ class WorkflowRepository:
                 if row is None:
                     raise KeyError(task_id)
                 return (
-                    deserialize_task_contract_json(row.contract_json)
-                    if row.contract_json
-                    else None
+                    deserialize_task_contract_json(row.contract_json) if row.contract_json else None
                 )
 
     def plan_for(self, task_id: str, *, tenant_id: str) -> TaskPlan | None:
