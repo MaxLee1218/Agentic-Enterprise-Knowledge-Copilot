@@ -8,7 +8,14 @@ from dataclasses import dataclass
 from enum import StrEnum
 from threading import RLock
 
-from copilot.contracts import CapabilityName, JsonObject, RiskLevel, ToolDefinition
+from copilot.contracts import (
+    SUPPLIER_QUALITY_CONTRACT_PROFILES,
+    CapabilityName,
+    JsonObject,
+    RiskLevel,
+    ToolDefinition,
+)
+from copilot.contracts.serialization import is_recognized_legacy_schema_binding
 from copilot.tools.base import Tool, ToolExecutionContext, ToolExecutionOutput
 from copilot.tools.exceptions import (
     ToolAlreadyExistsError,
@@ -65,6 +72,7 @@ class ToolRegistrationRequest:
     schema_version: str = "tool-definition.v1"
     registration_source: RegistrationSource = RegistrationSource.BUILTIN
     cancellation_mode: ToolCancellationMode = ToolCancellationMode.NON_CANCELLABLE
+    contract_profiles: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +89,7 @@ class RegisteredTool:
     registration_source: RegistrationSource
     cancellation_mode: ToolCancellationMode
     generation: int
+    contract_profiles: tuple[str, ...] = ()
 
 
 def validate_tool_name(name: str) -> str:
@@ -171,6 +180,7 @@ class ToolRegistry:
         schema_version: str = "tool-definition.v1",
         registration_source: RegistrationSource = RegistrationSource.BUILTIN,
         cancellation_mode: ToolCancellationMode = ToolCancellationMode.NON_CANCELLABLE,
+        contract_profiles: Collection[str] | None = None,
     ) -> RegisteredTool:
         """Validate and bind a plugin exactly once by its stable name."""
         request = ToolRegistrationRequest(
@@ -182,6 +192,11 @@ class ToolRegistry:
             schema_version=schema_version,
             registration_source=registration_source,
             cancellation_mode=cancellation_mode,
+            contract_profiles=(
+                tuple(contract_profiles)
+                if contract_profiles is not None
+                else _default_contract_profiles(tool.definition.tool_name, namespace)
+            ),
         )
         prepared = self._prepare(request, generation=self.generation + 1)
         with self._lock:
@@ -204,6 +219,25 @@ class ToolRegistry:
     def get(self, name: str) -> Tool:
         """Return the plugin registered under a stable name."""
         return self.registration(name).tool
+
+    def get_profile(self, name: str, tool_version: str, contract_profile: str) -> Tool:
+        """Resolve one exact version/profile binding or fail closed."""
+        registration = self.registration(name)
+        definition = registration.tool.definition
+        version_matches = definition.tool_version == tool_version
+        if tool_version.startswith("legacy-schema-sha256:"):
+            legacy_fingerprint = tool_version.removeprefix("legacy-schema-sha256:")
+            version_matches = (
+                legacy_fingerprint == schema_pair_fingerprint(definition)
+                and is_recognized_legacy_schema_binding(
+                    name,
+                    legacy_fingerprint,
+                    contract_profile,
+                )
+            )
+        if not version_matches or contract_profile not in registration.contract_profiles:
+            raise ToolNotFoundError(f"{name}@{tool_version}#{contract_profile}")
+        return registration.tool
 
     def registration(self, name: str) -> RegisteredTool:
         """Return one immutable registration snapshot."""
@@ -294,6 +328,10 @@ class ToolRegistry:
             raise ToolDefinitionValidationError("Tool origin and provenance are required")
         if not request.schema_version:
             raise ToolDefinitionValidationError("Tool schema version is required")
+        if len(set(request.contract_profiles)) != len(request.contract_profiles):
+            raise ToolDefinitionValidationError("Tool contract profiles must be unique")
+        if any(not profile.strip() for profile in request.contract_profiles):
+            raise ToolDefinitionValidationError("Tool contract profiles must not be blank")
         validate_schema_definition(definition.input_schema.root, "input")
         validate_schema_definition(definition.output_schema.root, "output")
         exposed: Tool = (
@@ -310,6 +348,7 @@ class ToolRegistry:
             registration_source=request.registration_source,
             cancellation_mode=request.cancellation_mode,
             generation=generation,
+            contract_profiles=request.contract_profiles,
         )
 
 
@@ -335,7 +374,32 @@ def _with_generation(entry: RegisteredTool, generation: int) -> RegisteredTool:
         registration_source=entry.registration_source,
         cancellation_mode=entry.cancellation_mode,
         generation=generation,
+        contract_profiles=entry.contract_profiles,
     )
+
+
+def schema_pair_fingerprint(definition: ToolDefinition) -> str:
+    """Return the stable SHA-256 identity of one tool name and schema pair."""
+    import hashlib
+    import json
+
+    payload = {
+        "tool_name": definition.tool_name,
+        "input_schema": definition.input_schema.root,
+        "output_schema": definition.output_schema.root,
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _default_contract_profiles(tool_name: str, namespace: str) -> tuple[str, ...]:
+    if namespace != "local":
+        return ()
+    try:
+        capability = CapabilityName(tool_name)
+    except ValueError:
+        return ()
+    return (SUPPLIER_QUALITY_CONTRACT_PROFILES[capability],)
 
 
 __all__ = [
@@ -347,6 +411,7 @@ __all__ = [
     "ToolRegistrationRequest",
     "ToolRegistry",
     "canonical_tool_name",
+    "schema_pair_fingerprint",
     "validate_namespace",
     "validate_tool_name",
 ]

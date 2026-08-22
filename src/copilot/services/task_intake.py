@@ -9,9 +9,9 @@ from datetime import datetime
 from enum import StrEnum
 from typing import TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
-from copilot.contracts import ArtifactType, JsonObject
+from copilot.contracts import ArtifactType, JsonObject, TaskType
 from copilot.security import SensitiveDataRegistry
 
 MetadataValue: TypeAlias = JsonValue
@@ -33,11 +33,21 @@ class TaskOutputFormat(StrEnum):
 
     @property
     def artifact_type(self) -> ArtifactType:
-        """Return the corresponding frozen Artifact type."""
+        """Return the Supplier Quality Artifact retained for backward compatibility."""
+        return self.artifact_type_for(TaskType.SUPPLIER_QUALITY_ANALYSIS_V1)
+
+    def artifact_type_for(self, task_type: TaskType) -> ArtifactType:
+        """Map a transport format through the trusted versioned task type."""
         return {
-            TaskOutputFormat.PDF: ArtifactType.QUALITY_ANALYSIS_REPORT_PDF,
-            TaskOutputFormat.JSON: ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
-        }[self]
+            TaskType.SUPPLIER_QUALITY_ANALYSIS_V1: {
+                TaskOutputFormat.PDF: ArtifactType.QUALITY_ANALYSIS_REPORT_PDF,
+                TaskOutputFormat.JSON: ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
+            },
+            TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1: {
+                TaskOutputFormat.PDF: ArtifactType.ACCOUNTS_PAYABLE_REPORT_PDF,
+                TaskOutputFormat.JSON: ArtifactType.ACCOUNTS_PAYABLE_REPORT_JSON,
+            },
+        }[task_type][self]
 
 
 class NaturalLanguageTaskCommand(BaseModel):
@@ -65,6 +75,10 @@ class TrustedCallerContext(BaseModel):
     tenant_id: str = Field(min_length=1)
     data_scope: tuple[str, ...] = Field(min_length=1)
     supplier_ids: tuple[str, ...] = ()
+    legal_entity_ids: tuple[str, ...] = ()
+    business_unit_ids: tuple[str, ...] = ()
+    currency_scope: tuple[str, ...] = ()
+    allowed_task_types: tuple[TaskType, ...] = (TaskType.SUPPLIER_QUALITY_ANALYSIS_V1,)
     roles: tuple[str, ...] = ()
     scopes: tuple[str, ...] = ()
     authentication_source: str = Field(default="demo", min_length=1)
@@ -74,6 +88,19 @@ class TrustedCallerContext(BaseModel):
     attributes: dict[str, MetadataValue] = Field(default_factory=dict)
     policy_requires_approval: bool = False
     policy_forces_read_only: bool = True
+
+    @model_validator(mode="after")
+    def validate_domain_authority(self) -> TrustedCallerContext:
+        """Require purpose to select one explicitly authorized versioned TaskType."""
+        if len(set(self.allowed_task_types)) != len(self.allowed_task_types):
+            raise ValueError("allowed_task_types must be unique")
+        try:
+            selected = TaskType(self.purpose)
+        except ValueError as exc:
+            raise ValueError("purpose must be a supported versioned task type") from exc
+        if selected not in self.allowed_task_types:
+            raise ValueError("purpose is not present in allowed_task_types")
+        return self
 
 
 class TrustedTaskContext(BaseModel):
@@ -88,12 +115,16 @@ class TrustedTaskContext(BaseModel):
     tenant_id: str = Field(min_length=1)
     data_scope: tuple[str, ...]
     authorized_supplier_ids: tuple[str, ...] = ()
+    authorized_legal_entity_ids: tuple[str, ...] = ()
+    authorized_business_unit_ids: tuple[str, ...] = ()
+    authorized_currency_scope: tuple[str, ...] = ()
     roles: tuple[str, ...] = ()
     scopes: tuple[str, ...] = ()
     authentication_source: str = Field(default="demo", min_length=1)
     authenticated: bool = True
     is_demo_identity: bool = True
     purpose: str = Field(default="supplier_quality_analysis.v1", min_length=1)
+    task_type: TaskType = TaskType.SUPPLIER_QUALITY_ANALYSIS_V1
     output_format: ArtifactType | None = None
     max_steps: int = Field(ge=1)
     read_only: bool
@@ -102,6 +133,13 @@ class TrustedTaskContext(BaseModel):
     request_source: RequestSource
     task_text_hash: str = Field(min_length=64, max_length=64)
     task_text_length: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def validate_domain_binding(self) -> TrustedTaskContext:
+        """Prevent purpose/task-type substitution after trusted intake."""
+        if self.purpose != self.task_type.value:
+            raise ValueError("purpose must match the trusted task_type")
+        return self
 
 
 @dataclass(frozen=True, slots=True)

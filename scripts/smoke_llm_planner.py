@@ -9,7 +9,7 @@ from copilot.agent.graph import WorkflowInterrupted
 from copilot.agent.state import AgentGraphState
 from copilot.bootstrap.container import build_workflow_container
 from copilot.config import ConfigurationError, Settings
-from copilot.contracts import ArtifactType
+from copilot.contracts import ArtifactType, TaskConstraints
 from copilot.llm.deepseek import DeepSeekProvider
 from copilot.services.task_intake import (
     NaturalLanguageTaskCommand,
@@ -40,11 +40,14 @@ def _arguments() -> argparse.Namespace:
 
 def _summary(state: AgentGraphState, *, run: int) -> dict[str, object]:
     contract = state["contract"]
+    if not isinstance(contract.constraints, TaskConstraints):
+        raise ValueError("The Supplier Quality smoke test received another domain contract")
+    constraints = contract.constraints
     plan = state["plan"]
     tools = tuple(step.tool_name for step in plan.steps)
     checks = {
-        "year_2026": contract.constraints.year == 2026,
-        "quarter_q2": contract.constraints.quarter == 2,
+        "year_2026": constraints.year == 2026,
+        "quarter_q2": constraints.quarter == 2,
         "output_pdf": (
             contract.expected_output.artifact_type is ArtifactType.QUALITY_ANALYSIS_REPORT_PDF
         ),
@@ -56,8 +59,8 @@ def _summary(state: AgentGraphState, *, run: int) -> dict[str, object]:
         "passed": all(checks.values()),
         "checks": checks,
         "understanding": {
-            "year": contract.constraints.year,
-            "quarter": f"Q{contract.constraints.quarter}",
+            "year": constraints.year,
+            "quarter": f"Q{constraints.quarter}",
             "output": (
                 "PDF"
                 if contract.expected_output.artifact_type

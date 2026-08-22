@@ -69,8 +69,9 @@ def planner_messages(
     """Build a candidate plan prompt constrained to exact Registry definitions."""
     system = """
 Create one candidate TaskPlan for the supplied immutable TaskContract.
-Use only tools in the trusted manifest. Copy each selected tool's exact input_schema and
-output_schema into its TaskStep. Do not create tools, arguments, SQL, Python, approvals, policy
+Use only tools in the trusted manifest. Copy each selected tool's exact tool_version,
+contract_profile, input_schema and output_schema into its TaskStep. Do not create tools,
+arguments, SQL, Python, approvals, policy
 exceptions, permissions, or additional scope. TaskStep has no arguments field: runtime inputs are
 built deterministically later. Use unique task-bound step_id values, an acyclic dependency graph,
 and no more than max_steps. Analytics must depend on database_query. The final and only report

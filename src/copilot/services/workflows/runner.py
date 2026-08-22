@@ -241,7 +241,9 @@ class WorkflowRunner:
             )
         except StepInputError as exc:
             return self._save_input_failure(context, step, step_started, str(exc))
-        definition = self._registry.get(step.tool_name).definition
+        definition = self._registry.get_profile(
+            step.tool_name, step.tool_version, step.contract_profile
+        ).definition
         idempotency_key = _idempotency_key(
             context.task_id, step, definition.tool_version, arguments
         )

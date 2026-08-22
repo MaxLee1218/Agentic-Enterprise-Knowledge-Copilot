@@ -4,9 +4,28 @@ from enum import StrEnum
 
 
 class TaskType(StrEnum):
-    """Business task types supported by the frozen v1.0 baseline."""
+    """Versioned business task classifications admitted by governed contracts."""
 
     SUPPLIER_QUALITY_ANALYSIS_V1 = "supplier_quality_analysis.v1"
+    ACCOUNTS_PAYABLE_ANALYSIS_V1 = "accounts_payable_analysis.v1"
+
+
+class ContractSchemaVersion(StrEnum):
+    """Persisted TaskContract schema versions with explicit domain bindings."""
+
+    TASK_CONTRACT_V1 = "task-contract.v1"
+    TASK_CONTRACT_V2 = "task-contract.v2"
+
+
+class APExceptionType(StrEnum):
+    """Deterministic Accounts Payable exception taxonomy frozen for UC2 v1."""
+
+    EXACT_DUPLICATE_INVOICE = "EXACT_DUPLICATE_INVOICE"
+    PO_AMOUNT_VARIANCE = "PO_AMOUNT_VARIANCE"
+    MISSING_REQUIRED_PO = "MISSING_REQUIRED_PO"
+    LATE_PAYMENT = "LATE_PAYMENT"
+    MATERIAL_EARLY_PAYMENT = "MATERIAL_EARLY_PAYMENT"
+    OVERPAYMENT = "OVERPAYMENT"
 
 
 class TaskStatus(StrEnum):
@@ -101,10 +120,12 @@ class ApprovalResolutionAction(StrEnum):
 
 
 class ArtifactType(StrEnum):
-    """Deliverable artifact types supported in v1.0."""
+    """Versioned internal report Artifact types admitted by contracts."""
 
     QUALITY_ANALYSIS_REPORT_PDF = "QUALITY_ANALYSIS_REPORT_PDF"
     QUALITY_ANALYSIS_REPORT_JSON = "QUALITY_ANALYSIS_REPORT_JSON"
+    ACCOUNTS_PAYABLE_REPORT_PDF = "ACCOUNTS_PAYABLE_REPORT_PDF"
+    ACCOUNTS_PAYABLE_REPORT_JSON = "ACCOUNTS_PAYABLE_REPORT_JSON"
 
 
 class CapabilityName(StrEnum):

@@ -38,6 +38,8 @@ class TaskStep(ImmutableContractModel):
     task_id: str = Field(description="Task to which the step belongs")
     step_type: StepType = Field(description="Approved executable step category")
     tool_name: str = Field(description="Registered tool selected for this step", min_length=1)
+    tool_version: str = Field(description="Exact registered tool version", min_length=1)
+    contract_profile: str = Field(description="Exact domain contract profile", min_length=1)
     input_schema: JsonObject = Field(description="Strict JSON Schema for the step input")
     output_schema: JsonObject = Field(description="Strict JSON Schema for the step output")
     dependency: tuple[str, ...] = Field(
@@ -45,7 +47,9 @@ class TaskStep(ImmutableContractModel):
     )
     retry_policy: RetryPolicy = Field(description="Bounded retry policy for this step")
 
-    _validate_ids = field_validator("step_id", "task_id", "tool_name")(validate_identifier)
+    _validate_ids = field_validator(
+        "step_id", "task_id", "tool_name", "tool_version", "contract_profile"
+    )(validate_identifier)
 
     @model_validator(mode="after")
     def reject_self_dependency(self) -> "TaskStep":

@@ -5,7 +5,12 @@ from threading import Event
 
 import pytest
 
-from copilot.contracts import RiskLevel
+from copilot.contracts import (
+    SUPPLIER_QUALITY_CONTRACT_PROFILES,
+    CapabilityName,
+    JsonObject,
+    RiskLevel,
+)
 from copilot.tools.exceptions import (
     ToolAlreadyExistsError,
     ToolDefinitionValidationError,
@@ -18,6 +23,7 @@ from copilot.tools.registry import (
     ToolProvenance,
     ToolRegistrationRequest,
     ToolRegistry,
+    schema_pair_fingerprint,
     validate_tool_name,
 )
 from tests.mocks.mock_tools import MockDatabaseTool, MockKnowledgeTool
@@ -54,6 +60,44 @@ def test_unknown_tool_lookup_and_unregister_are_rejected() -> None:
         registry.get("knowledge_search")
     with pytest.raises(ToolNotFoundError):
         registry.unregister("knowledge_search")
+
+
+def test_profile_lookup_requires_exact_version_and_domain_profile() -> None:
+    registry = ToolRegistry()
+    tool = MockKnowledgeTool()
+    registry.register(tool)
+    profile = SUPPLIER_QUALITY_CONTRACT_PROFILES[CapabilityName.KNOWLEDGE_SEARCH]
+
+    assert registry.get_profile("knowledge_search", tool.definition.tool_version, profile) is tool
+    with pytest.raises(ToolNotFoundError):
+        registry.get_profile("knowledge_search", "latest", profile)
+    with pytest.raises(ToolNotFoundError):
+        registry.get_profile(
+            "knowledge_search",
+            tool.definition.tool_version,
+            "accounts_payable_policy.v1",
+        )
+
+
+def test_profile_lookup_rejects_unrecognized_legacy_alias() -> None:
+    registry = ToolRegistry()
+    tool = MockKnowledgeTool()
+    tool.definition = tool.definition.model_copy(
+        update={
+            "input_schema": JsonObject(
+                {**tool.definition.input_schema.root, "description": "unrecognized legacy shape"}
+            )
+        }
+    )
+    registry.register(tool)
+    profile = SUPPLIER_QUALITY_CONTRACT_PROFILES[CapabilityName.KNOWLEDGE_SEARCH]
+
+    with pytest.raises(ToolNotFoundError):
+        registry.get_profile(
+            "knowledge_search",
+            f"legacy-schema-sha256:{schema_pair_fingerprint(tool.definition)}",
+            profile,
+        )
 
 
 @pytest.mark.parametrize(

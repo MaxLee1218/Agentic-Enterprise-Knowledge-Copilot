@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from copilot.contracts import ToolDefinition
 from copilot.llm.schemas import PlannerToolManifest, PlannerToolManifestEntry
+from copilot.services.domains import DomainCapabilityManifest, builtin_domain_manifest_registry
 from copilot.tools.registry import ToolRegistry
 
 ToolVisibility = Callable[[ToolDefinition], bool]
@@ -25,10 +26,20 @@ class PlannerToolManifestBuilder:
         self._visibility = visibility or (lambda _definition: True)
         self._max_description_length = max_description_length
 
-    def build(self) -> PlannerToolManifest:
+    def build(self, domain_manifest: DomainCapabilityManifest | None = None) -> PlannerToolManifest:
         """Return enabled visible definitions in the Registry's stable name order."""
+        selected = domain_manifest or builtin_domain_manifest_registry().resolve(
+            "supplier_quality_analysis.v1"
+        )
         entries = []
-        for definition in self._registry.list():
+        for capability in sorted(selected.capabilities, key=lambda item: item.value):
+            profile = selected.profile_for(capability)
+            registration = self._registry.registration(capability.value)
+            definition = self._registry.get_profile(
+                capability.value,
+                registration.tool.definition.tool_version,
+                profile,
+            ).definition
             if not self._visibility(definition):
                 continue
             side_effects = definition.idempotency.side_effects.strip().lower()
@@ -41,6 +52,8 @@ class PlannerToolManifestBuilder:
             entries.append(
                 PlannerToolManifestEntry(
                     name=definition.tool_name,
+                    tool_version=definition.tool_version,
+                    contract_profile=profile,
                     description=definition.description[: self._max_description_length],
                     input_schema=definition.input_schema,
                     output_schema=definition.output_schema,

@@ -90,6 +90,8 @@ class PlannerToolManifestEntry(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     name: str
+    tool_version: str
+    contract_profile: str
     description: str
     input_schema: JsonObject
     output_schema: JsonObject
@@ -104,7 +106,7 @@ class PlannerToolManifest(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: str = "planner-tool-manifest-v1"
+    schema_version: str = "planner-tool-manifest-v2"
     tools: tuple[PlannerToolManifestEntry, ...]
 
 

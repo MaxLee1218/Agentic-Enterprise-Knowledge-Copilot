@@ -3,6 +3,11 @@
 from dataclasses import dataclass
 
 from copilot.contracts import CapabilityName, StepType, TaskContract, TaskPlan
+from copilot.services.domains import (
+    DomainCapabilityManifestRegistry,
+    DomainManifestError,
+    builtin_domain_manifest_registry,
+)
 from copilot.services.workflows.errors import PlanValidationError
 from copilot.tools.exceptions import ToolRuntimeError
 from copilot.tools.registry import ToolRegistry
@@ -52,10 +57,12 @@ class PlanValidator:
         registry: ToolRegistry,
         max_task_steps: int,
         max_planning_version: int = 3,
+        domain_manifests: DomainCapabilityManifestRegistry | None = None,
     ) -> None:
         self._registry = registry
         self._max_task_steps = max_task_steps
         self._max_planning_version = max_planning_version
+        self._domain_manifests = domain_manifests or builtin_domain_manifest_registry()
 
     def validate(self, plan: TaskPlan, contract: TaskContract) -> None:
         """Raise the legacy boundary error when structured evaluation finds an issue."""
@@ -66,6 +73,19 @@ class PlanValidator:
     def evaluate(self, plan: TaskPlan, contract: TaskContract) -> PlanValidationResult:
         """Return all safe deterministic findings without invoking any tool."""
         errors: list[PlanValidationIssue] = []
+        try:
+            domain_manifest = self._domain_manifests.require_execution(contract)
+        except DomainManifestError as exc:
+            errors.append(
+                PlanValidationIssue(
+                    exc.code,
+                    str(exc),
+                    "Use an enabled domain manifest matching the validated TaskContract",
+                    field="task_type",
+                    repairable=False,
+                )
+            )
+            return PlanValidationResult(errors=tuple(errors))
         if plan.task_id != contract.task_id:
             errors.append(
                 PlanValidationIssue(
@@ -118,13 +138,23 @@ class PlanValidator:
             )
         for step in plan.steps:
             try:
-                tool = self._registry.get(step.tool_name)
-            except ToolRuntimeError as exc:
+                expected_profile = domain_manifest.profile_for(step.tool_name)
+                if step.contract_profile != expected_profile:
+                    raise DomainManifestError(
+                        "TOOL_PROFILE_MISMATCH",
+                        f"Step {step.step_id} uses a profile outside its domain manifest",
+                    )
+                tool = self._registry.get_profile(
+                    step.tool_name,
+                    step.tool_version,
+                    step.contract_profile,
+                )
+            except (DomainManifestError, ToolRuntimeError) as exc:
                 errors.append(
                     PlanValidationIssue(
-                        "TOOL_NOT_REGISTERED",
+                        getattr(exc, "code", "TOOL_PROFILE_NOT_REGISTERED"),
                         str(exc),
-                        "Replace the tool with one present in the supplied manifest",
+                        "Use the exact tool version and profile present in the supplied manifest",
                         step_id=step.step_id,
                         field="tool_name",
                     )
@@ -154,7 +184,8 @@ class PlanValidator:
                         field="input_schema",
                     )
                 )
-        errors.extend(self._supplier_quality_rules(plan, contract))
+        if domain_manifest.plan_profile == "supplier_quality_plan.v1":
+            errors.extend(self._supplier_quality_rules(plan, contract))
         return PlanValidationResult(errors=tuple(errors))
 
     @staticmethod

@@ -4,10 +4,12 @@ from copilot.contracts.approvals import ApprovalRequest
 from copilot.contracts.artifacts import Artifact
 from copilot.contracts.base import ContractModel, ImmutableContractModel, JsonObject
 from copilot.contracts.enums import (
+    APExceptionType,
     ApprovalResolutionAction,
     ApprovalStatus,
     ArtifactType,
     CapabilityName,
+    ContractSchemaVersion,
     ErrorType,
     EvidenceType,
     ReportLanguage,
@@ -71,9 +73,17 @@ from copilot.contracts.observability import (
     TraceSummary,
 )
 from copilot.contracts.plans import RetryPolicy, StepResult, TaskPlan, TaskStep
+from copilot.contracts.profiles import (
+    ACCOUNTS_PAYABLE_CONTRACT_PROFILES,
+    SUPPLIER_QUALITY_CONTRACT_PROFILES,
+)
 from copilot.contracts.tasks import (
+    AccountsPayableConstraintsV1,
     ApprovalRequirement,
+    DateRange,
     ExpectedOutput,
+    MoneyThreshold,
+    SupplierQualityConstraintsV1,
     TaskConstraints,
     TaskContract,
     TaskRequest,
@@ -103,6 +113,9 @@ from copilot.contracts.verification import (
 )
 
 __all__ = [
+    "ACCOUNTS_PAYABLE_CONTRACT_PROFILES",
+    "APExceptionType",
+    "AccountsPayableConstraintsV1",
     "ApprovalRequest",
     "ApprovalRequirement",
     "ApprovalResolutionAction",
@@ -110,7 +123,9 @@ __all__ = [
     "Artifact",
     "ArtifactType",
     "CapabilityName",
+    "ContractSchemaVersion",
     "ContractModel",
+    "DateRange",
     "DomainError",
     "ErrorType",
     "EvidenceContent",
@@ -124,6 +139,7 @@ __all__ = [
     "JsonObject",
     "HistogramSnapshot",
     "MetricSnapshot",
+    "MoneyThreshold",
     "MCPAccessToken",
     "MCPCapability",
     "MCPCapabilityNamespace",
@@ -164,6 +180,8 @@ __all__ = [
     "StepResult",
     "StepResultStatus",
     "StepType",
+    "SUPPLIER_QUALITY_CONTRACT_PROFILES",
+    "SupplierQualityConstraintsV1",
     "SpanKind",
     "SpanStatus",
     "TaskConstraints",

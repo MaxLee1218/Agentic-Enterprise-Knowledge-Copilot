@@ -3,9 +3,11 @@
 from datetime import UTC, date, datetime
 
 from copilot.contracts import (
+    SUPPLIER_QUALITY_CONTRACT_PROFILES,
     ApprovalRequirement,
     ArtifactType,
     CapabilityName,
+    ContractSchemaVersion,
     ExpectedOutput,
     JsonObject,
     ReportLanguage,
@@ -41,9 +43,11 @@ def make_constraints() -> TaskConstraints:
 def make_contract() -> TaskContract:
     """Build a valid versioned task contract."""
     return TaskContract(
+        contract_schema_version=ContractSchemaVersion.TASK_CONTRACT_V1,
         task_id=TASK_ID,
         contract_version=1,
         task_type=TaskType.SUPPLIER_QUALITY_ANALYSIS_V1,
+        goal="Analyze supplier quality and generate an evidence-backed report",
         required_capabilities=tuple(CapabilityName),
         expected_output=ExpectedOutput(
             artifact_type=ArtifactType.QUALITY_ANALYSIS_REPORT_PDF,
@@ -74,6 +78,8 @@ def make_step(
         task_id=TASK_ID,
         step_type=step_type,
         tool_name=tool_name,
+        tool_version="1.0.0-test",
+        contract_profile=SUPPLIER_QUALITY_CONTRACT_PROFILES[CapabilityName(tool_name)],
         input_schema=schema,
         output_schema=schema,
         dependency=dependency,

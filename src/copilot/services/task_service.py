@@ -22,6 +22,7 @@ from copilot.contracts import (
     TaskResult,
     TaskState,
     TaskStatus,
+    TaskType,
     ToolResult,
 )
 from copilot.policies.permissions import AuthorizationRequest, Permission, PermissionMatrix
@@ -320,6 +321,7 @@ class NaturalLanguageTaskService:
             created_at=now,
             metadata=JsonObject(request_metadata),
         )
+        task_type = TaskType(caller.purpose)
         context = TrustedTaskContext(
             task_id=task_id,
             trace_id=trace_id,
@@ -328,14 +330,20 @@ class NaturalLanguageTaskService:
             tenant_id=caller.tenant_id,
             data_scope=caller.data_scope,
             authorized_supplier_ids=caller.supplier_ids,
+            authorized_legal_entity_ids=caller.legal_entity_ids,
+            authorized_business_unit_ids=caller.business_unit_ids,
+            authorized_currency_scope=caller.currency_scope,
             roles=caller.roles,
             scopes=caller.scopes,
             authentication_source=caller.authentication_source,
             authenticated=caller.authenticated,
             is_demo_identity=caller.is_demo_identity,
             purpose=caller.purpose,
+            task_type=task_type,
             output_format=(
-                command.output_format.artifact_type if command.output_format is not None else None
+                command.output_format.artifact_type_for(task_type)
+                if command.output_format is not None
+                else None
             ),
             max_steps=effective.max_steps,
             read_only=effective.read_only,

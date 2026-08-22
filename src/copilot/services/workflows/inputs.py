@@ -12,16 +12,27 @@ from copilot.contracts import (
     JsonObject,
     StepResult,
     StepType,
+    SupplierQualityConstraintsV1,
     TaskContract,
     TaskRequest,
     TaskStep,
 )
 from copilot.contracts.base import JsonMapping
+from copilot.services.domains import (
+    DomainCapabilityManifestRegistry,
+    DomainManifestError,
+    builtin_domain_manifest_registry,
+)
 from copilot.services.workflows.errors import StepInputError
 
 
 class StepInputBuilder:
     """Build one tool input solely from contract scope and immutable prior results."""
+
+    def __init__(
+        self, domain_manifests: DomainCapabilityManifestRegistry | None = None
+    ) -> None:
+        self._domain_manifests = domain_manifests or builtin_domain_manifest_registry()
 
     def build(
         self,
@@ -32,6 +43,16 @@ class StepInputBuilder:
         evidence: Mapping[str, EvidenceItem],
     ) -> JsonObject:
         """Return the exact frozen input shape for the step type."""
+        try:
+            manifest = self._domain_manifests.require_execution(contract)
+        except DomainManifestError as exc:
+            raise StepInputError(f"{exc.code}: {exc}") from exc
+        if manifest.input_profile != "supplier_quality_inputs.v1":
+            raise StepInputError(
+                f"DOMAIN_INPUT_PROFILE_NOT_IMPLEMENTED: {manifest.input_profile}"
+            )
+        if not isinstance(contract.constraints, SupplierQualityConstraintsV1):
+            raise StepInputError("Supplier Quality input profile received incompatible constraints")
         if step.step_type is StepType.KNOWLEDGE_SEARCH:
             return self._knowledge(request, contract)
         if step.step_type is StepType.DATABASE_QUERY:
@@ -44,7 +65,7 @@ class StepInputBuilder:
 
     @staticmethod
     def _knowledge(request: TaskRequest, contract: TaskContract) -> JsonObject:
-        scope = contract.constraints
+        scope = _quality_scope(contract)
         return JsonObject(
             {
                 "query": f"Supplier quality policy and deviation process: {request.raw_input}",
@@ -62,7 +83,7 @@ class StepInputBuilder:
 
     @staticmethod
     def _database(request: TaskRequest, contract: TaskContract) -> JsonObject:
-        scope = contract.constraints
+        scope = _quality_scope(contract)
         return JsonObject(
             {
                 "query_template_id": "supplier_quality_summary_v1",
@@ -109,7 +130,7 @@ class StepInputBuilder:
                 "dataset": rows,
                 "dataset_evidence_id": database_item.evidence_id,
                 "dataset_checksum": database_item.content.checksum,
-                "metrics": list(contract.constraints.metrics),
+                "metrics": list(_quality_scope(contract).metrics),
                 "group_by": ["supplier_id", "period"],
                 "engine_version": "quality_metrics.v1",
             }
@@ -149,7 +170,7 @@ class StepInputBuilder:
         report_format = (
             "PDF" if artifact_type is ArtifactType.QUALITY_ANALYSIS_REPORT_PDF else "JSON"
         )
-        scope = contract.constraints
+        scope = _quality_scope(contract)
         return JsonObject(
             {
                 "task_id": contract.task_id,
@@ -178,3 +199,10 @@ def summarize_payload(payload: JsonObject | None) -> JsonObject:
         if key in payload.root:
             summary[key] = payload.root[key]
     return JsonObject(cast(JsonMapping, summary))
+
+
+def _quality_scope(contract: TaskContract) -> SupplierQualityConstraintsV1:
+    scope = contract.constraints
+    if not isinstance(scope, SupplierQualityConstraintsV1):
+        raise StepInputError("Supplier Quality input profile received incompatible constraints")
+    return scope

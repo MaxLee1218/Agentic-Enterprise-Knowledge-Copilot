@@ -12,6 +12,7 @@ from copilot.contracts import (
     ApprovalRequirement,
     ArtifactType,
     CapabilityName,
+    ContractSchemaVersion,
     ExpectedOutput,
     JsonObject,
     ReportLanguage,
@@ -95,9 +96,11 @@ class SupplierQualityWorkflowService:
         except KeyError as exc:
             raise ValueError("report_format must be PDF or JSON") from exc
         contract = TaskContract(
+            contract_schema_version=ContractSchemaVersion.TASK_CONTRACT_V1,
             task_id=task_id,
             contract_version=1,
             task_type=TaskType.SUPPLIER_QUALITY_ANALYSIS_V1,
+            goal="Analyze supplier quality and generate an evidence-backed report",
             required_capabilities=tuple(CapabilityName),
             expected_output=ExpectedOutput(
                 artifact_type=artifact_type,

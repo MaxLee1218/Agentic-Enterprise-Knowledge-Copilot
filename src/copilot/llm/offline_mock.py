@@ -199,6 +199,8 @@ class OfflineMockLLM:
                 task_id=task_id,
                 step_type=step_types[name],
                 tool_name=name,
+                tool_version=str(tools[name]["tool_version"]),
+                contract_profile=str(tools[name]["contract_profile"]),
                 input_schema=JsonObject(cast(dict[str, JsonValue], tools[name]["input_schema"])),
                 output_schema=JsonObject(cast(dict[str, JsonValue], tools[name]["output_schema"])),
                 dependency=dependencies[name],

@@ -6,9 +6,11 @@ import pytest
 from pydantic import ValidationError
 
 from copilot.api.schemas.tasks import NaturalLanguageTaskSubmission
+from copilot.contracts import ArtifactType, TaskType
 from copilot.services.task_intake import (
     IntakeLimits,
     TaskIntakeValidationError,
+    TaskOutputFormat,
     TrustedCallerContext,
     merge_execution_constraints,
     sanitize_metadata,
@@ -106,3 +108,33 @@ def test_sensitive_or_authority_metadata_is_rejected(key: str) -> None:
 
 def test_datetime_fixture_is_timezone_aware() -> None:
     assert datetime(2026, 7, 31, tzinfo=UTC).utcoffset() is not None
+
+
+def test_trusted_purpose_must_select_an_explicitly_allowed_task_type() -> None:
+    with pytest.raises(ValidationError, match="not present in allowed_task_types"):
+        TrustedCallerContext(
+            user_id="U-AP",
+            tenant_id="TENANT-A",
+            data_scope=("accounts_payable.v1",),
+            purpose=TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1.value,
+        )
+
+    caller = TrustedCallerContext(
+        user_id="U-AP",
+        tenant_id="TENANT-A",
+        data_scope=("accounts_payable.v1",),
+        purpose=TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1.value,
+        allowed_task_types=(TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1,),
+    )
+    assert caller.purpose == caller.allowed_task_types[0].value
+
+
+def test_output_format_maps_through_trusted_task_type() -> None:
+    assert (
+        TaskOutputFormat.JSON.artifact_type_for(TaskType.SUPPLIER_QUALITY_ANALYSIS_V1)
+        is ArtifactType.QUALITY_ANALYSIS_REPORT_JSON
+    )
+    assert (
+        TaskOutputFormat.JSON.artifact_type_for(TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1)
+        is ArtifactType.ACCOUNTS_PAYABLE_REPORT_JSON
+    )

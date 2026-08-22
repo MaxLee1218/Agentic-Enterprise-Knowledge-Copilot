@@ -19,7 +19,6 @@ from copilot.contracts import (
     TaskState,
     TaskStatus,
     TaskStep,
-    TaskType,
     ToolCall,
     ToolResult,
     ToolResultStatus,
@@ -28,6 +27,11 @@ from copilot.contracts import (
 from copilot.policies.approval import PolicyOutcome, SupplierQualityApprovalPolicy
 from copilot.policies.permissions import AuthorizationRequest, Permission, PermissionMatrix
 from copilot.services.approval_service import ApprovalGateService, ApprovalRepositoryPort
+from copilot.services.domains import (
+    DomainCapabilityManifestRegistry,
+    DomainManifestError,
+    builtin_domain_manifest_registry,
+)
 from copilot.services.execution import ExecutionContext
 from copilot.services.llm import LLMErrorCode, LLMProviderError
 from copilot.services.observability import NoopObservability, ObservabilityPort
@@ -102,6 +106,7 @@ class GraphNodeRuntime:
         planning_service: PlanningService | None = None,
         permission_matrix: PermissionMatrix | None = None,
         observability: ObservabilityPort | None = None,
+        domain_manifests: DomainCapabilityManifestRegistry | None = None,
     ) -> None:
         self._tool_executor = tool_executor
         self._registry = registry
@@ -127,6 +132,7 @@ class GraphNodeRuntime:
         self._approval_policy = approval_policy
         self._permission_matrix = permission_matrix or PermissionMatrix()
         self._observability = observability or NoopObservability()
+        self._domain_manifests = domain_manifests or builtin_domain_manifest_registry()
 
     def validate_request(self, state: AgentGraphState) -> dict[str, object]:
         """Reject inconsistent, terminal, cancelled, expired, or over-budget input."""
@@ -184,6 +190,27 @@ class GraphNodeRuntime:
                     trace_id=state["trace_id"],
                     max_steps=state["intake_context"].max_steps,
                 )
+            except DomainManifestError as exc:
+                error = self._error(
+                    state,
+                    exc.code,
+                    ErrorType.VALIDATION,
+                    str(exc),
+                    recoverable=False,
+                )
+                domain_state = self._transition(
+                    state, domain_state, "UNDERSTANDING_FAILED", error.message
+                )
+                self._emit(state, "TASK_UNDERSTANDING_FAILED", status=exc.code)
+                return self._node_result(
+                    state,
+                    "understand_task",
+                    started,
+                    "domain_denied",
+                    error.message,
+                    domain_state=domain_state,
+                    errors=[error],
+                )
             except LLMProviderError as exc:
                 error = self._llm_error(state, exc, "understand_task")
                 domain_state = self._transition(
@@ -227,10 +254,6 @@ class GraphNodeRuntime:
                     errors=[error],
                 )
             contract = outcome.contract
-            self._repository.save_contract(
-                contract,
-                tenant_id=state["intake_context"].tenant_id,
-            )
         elif contract is None:
             error = self._error(
                 state,
@@ -252,6 +275,41 @@ class GraphNodeRuntime:
                 errors=[error],
             )
         assert contract is not None
+        try:
+            manifest = self._domain_manifests.require_execution(contract)
+            if (
+                state["intake_context"].task_type is not contract.task_type
+                or state["intake_context"].purpose != manifest.permission_purpose
+            ):
+                raise DomainManifestError(
+                    "DOMAIN_CONTEXT_MISMATCH",
+                    "Trusted task type or purpose does not match the validated contract",
+                )
+        except DomainManifestError as exc:
+            error = self._error(
+                state,
+                exc.code,
+                ErrorType.VALIDATION,
+                str(exc),
+                recoverable=False,
+            )
+            domain_state = self._transition(
+                state, domain_state, "UNDERSTANDING_FAILED", error.message
+            )
+            return self._node_result(
+                state,
+                "understand_task",
+                started,
+                "domain_denied",
+                error.message,
+                domain_state=domain_state,
+                errors=[error],
+            )
+        if self._planning_service is not None:
+            self._repository.save_contract(
+                contract,
+                tenant_id=state["intake_context"].tenant_id,
+            )
         constraints = contract.constraints
         if not constraints.tenant_id or not constraints.data_scope:
             error = self._error(
@@ -285,33 +343,49 @@ class GraphNodeRuntime:
         )
 
     def classify_task(self, state: AgentGraphState) -> dict[str, object]:
-        """Accept only the frozen Supplier Quality Analysis task type."""
+        """Accept only an enabled manifest matching the trusted task context."""
         started = self._clock()
         guarded = self._guard_node(state, "classify_task", started)
         if guarded is not None:
             return guarded
-        if state["contract"].task_type is TaskType.SUPPLIER_QUALITY_ANALYSIS_V1:
-            return self._node_result(
-                state, "classify_task", started, "supported", "Supported frozen task type"
+        try:
+            manifest = self._domain_manifests.require_execution(state["contract"])
+            if (
+                state["intake_context"].task_type is not manifest.task_type
+                or state["intake_context"].purpose != manifest.permission_purpose
+            ):
+                raise DomainManifestError(
+                    "DOMAIN_CONTEXT_MISMATCH",
+                    "Trusted task type or purpose does not match the selected domain manifest",
+                )
+        except DomainManifestError as exc:
+            error = self._error(
+                state,
+                exc.code,
+                ErrorType.BUSINESS,
+                str(exc),
             )
-        error = self._error(
-            state,
-            "UNSUPPORTED_TASK_TYPE",
-            ErrorType.BUSINESS,
-            "The requested task type is not supported",
-        )
-        domain_state = self._transition(
-            state, state["domain_state"], "UNDERSTANDING_FAILED", error.message
-        )
-        return self._node_result(
-            state,
-            "classify_task",
-            started,
-            "unsupported",
-            error.message,
-            domain_state=domain_state,
-            errors=[error],
-        )
+            domain_state = self._transition(
+                state, state["domain_state"], "UNDERSTANDING_FAILED", error.message
+            )
+            return self._node_result(
+                state,
+                "classify_task",
+                started,
+                "unsupported",
+                error.message,
+                domain_state=domain_state,
+                errors=[error],
+            )
+        if manifest.execution_enabled:
+            return self._node_result(
+                state,
+                "classify_task",
+                started,
+                "supported",
+                "Supported governed task type",
+            )
+        raise AssertionError("require_execution returned a disabled domain manifest")
 
     def create_plan(self, state: AgentGraphState) -> dict[str, object]:
         """Generate a candidate plan or expose the injected deterministic fallback."""
@@ -805,7 +879,9 @@ class GraphNodeRuntime:
                 current_step_id=step.step_id,
                 errors=[error],
             )
-        definition = self._registry.get(step.tool_name).definition
+        definition = self._registry.get_profile(
+            step.tool_name, step.tool_version, step.contract_profile
+        ).definition
         tool_permission = self._permission_matrix.evaluate(
             AuthorizationRequest(
                 action=Permission.EXECUTE_TOOL,
@@ -1071,6 +1147,36 @@ class GraphNodeRuntime:
                 domain_state=domain_state,
                 errors=[error],
             )
+        try:
+            manifest = self._domain_manifests.require_execution(state["contract"])
+            if manifest.verifier_profile != "supplier_quality_verifier.v1":
+                raise DomainManifestError(
+                    "DOMAIN_VERIFIER_PROFILE_NOT_IMPLEMENTED",
+                    f"Verifier profile is not implemented: {manifest.verifier_profile}",
+                )
+        except DomainManifestError as exc:
+            error = self._error(
+                state,
+                exc.code,
+                ErrorType.VALIDATION,
+                str(exc),
+                recoverable=False,
+            )
+            domain_state = self._transition(
+                state,
+                state["domain_state"],
+                "NON_REPAIRABLE_VERIFICATION_FAILURE",
+                error.message,
+            )
+            return self._node_result(
+                state,
+                "verify_result",
+                started,
+                "verification_failed",
+                error.message,
+                domain_state=domain_state,
+                errors=[error],
+            )
         context = self._context(state)
         result = self._verifier.verify(context)
         self._repository.save_verification_result(
@@ -1309,7 +1415,9 @@ class GraphNodeRuntime:
                 domain_state=domain_state,
                 errors=[error],
             )
-        definition = self._registry.get(step.tool_name).definition
+        definition = self._registry.get_profile(
+            step.tool_name, step.tool_version, step.contract_profile
+        ).definition
         attempt = state["retry_counts"].get(step.step_id, 0) + 1
         prior_results = tuple(
             result for result in state["tool_results"] if result.step_id == step.step_id

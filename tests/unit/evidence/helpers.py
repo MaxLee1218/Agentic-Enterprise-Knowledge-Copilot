@@ -7,12 +7,14 @@ from decimal import Decimal
 from typing import cast
 
 from copilot.contracts import (
+    SUPPLIER_QUALITY_CONTRACT_PROFILES,
     ApprovalRequirement,
     ArtifactType,
     CandidateResult,
     CapabilityName,
     CitationClaim,
     ClaimType,
+    ContractSchemaVersion,
     DeliverableRecord,
     EvidenceContent,
     EvidenceItem,
@@ -167,9 +169,11 @@ def tool_definitions() -> tuple[ToolDefinition, ...]:
 def valid_contract() -> TaskContract:
     """Build a minimal contract with deterministic section identifiers."""
     return TaskContract(
+        contract_schema_version=ContractSchemaVersion.TASK_CONTRACT_V1,
         task_id=TASK_ID,
         contract_version=1,
         task_type=TaskType.SUPPLIER_QUALITY_ANALYSIS_V1,
+        goal="Analyze supplier quality and generate an evidence-backed report",
         required_capabilities=tuple(CapabilityName),
         expected_output=ExpectedOutput(
             artifact_type=ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
@@ -209,6 +213,10 @@ def valid_plan() -> TaskPlan:
             task_id=TASK_ID,
             step_type=step_type,
             tool_name=tool_name,
+            tool_version=definition.tool_version,
+            contract_profile=SUPPLIER_QUALITY_CONTRACT_PROFILES[
+                CapabilityName(tool_name)
+            ],
             input_schema=definition.input_schema,
             output_schema=definition.output_schema,
             dependency=dependencies,

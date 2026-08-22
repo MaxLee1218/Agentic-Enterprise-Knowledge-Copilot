@@ -62,6 +62,12 @@ Current boundaries are intentional:
 - no automatic MCP trust or export: only approved server namespaces and explicit export rules are
   implemented; MCP does not broaden the frozen four-tool business scope.
 
+The second vertical slice, **Accounts Payable Invoice Compliance & Exception Investigation v1**,
+is architecture- and contract-designed but not implemented. Its accepted design is indexed at
+[`docs/use-cases/accounts-payable/README.md`](docs/use-cases/accounts-payable/README.md). It does
+not broaden the currently implemented Supplier Quality runtime until its staged implementation
+and regression gates are complete.
+
 ## Requirements and installation
 
 - Python 3.11 or later

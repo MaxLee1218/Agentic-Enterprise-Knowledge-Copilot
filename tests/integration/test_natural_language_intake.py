@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from copilot.contracts import TaskStatus
+from copilot.contracts import TaskConstraints, TaskStatus
 from copilot.llm.mock import MockLLM
 from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.services.llm import LLMUnavailableError
@@ -51,6 +51,7 @@ def test_natural_text_is_preserved_and_understood_before_planning(tmp_path: Path
             ).raw_input
             == raw
         )
+        assert isinstance(state["contract"].constraints, TaskConstraints)
         assert state["contract"].constraints.year == 2026
         assert state["contract"].constraints.quarter == 2
         assert state["plan"].planning_version == 1

@@ -10,13 +10,18 @@ from typing import Annotated, TypedDict, TypeVar, cast
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from copilot.contracts import (
+    AccountsPayableConstraintsV1,
+    APExceptionType,
     ApprovalRequirement,
     Artifact,
     ArtifactType,
     CapabilityName,
+    ContractSchemaVersion,
+    DateRange,
     ErrorType,
     ExpectedOutput,
     JsonObject,
+    MoneyThreshold,
     ReportLanguage,
     RetryPolicy,
     StepResult,
@@ -41,19 +46,29 @@ from copilot.contracts import (
     VerificationSeverity,
     VerificationStatus,
 )
+from copilot.contracts.serialization import (
+    upcast_legacy_task_step_payload,
+    upcast_task_contract_payload,
+    upgrade_checkpoint_value,
+)
 from copilot.services.task_intake import RequestSource, TrustedTaskContext
 from copilot.services.workflows.models import StepExecutionRecord, ToolAttemptSummary
 
 T = TypeVar("T")
 
 _CHECKPOINT_ALLOWED_TYPES = (
+    APExceptionType,
+    AccountsPayableConstraintsV1,
     ApprovalRequirement,
     Artifact,
     ArtifactType,
     CapabilityName,
+    ContractSchemaVersion,
+    DateRange,
     ErrorType,
     ExpectedOutput,
     JsonObject,
+    MoneyThreshold,
     ReportLanguage,
     RequestSource,
     RetryPolicy,
@@ -88,9 +103,30 @@ _CHECKPOINT_ALLOWED_NAMES = tuple(
 )
 
 
+class VersionedCheckpointSerializer(JsonPlusSerializer):
+    """Strict LangGraph serializer with exact legacy contract/step upcasting."""
+
+    def _revive_lc2(self, value: dict[str, object]) -> object:
+        identifier = value.get("id")
+        kwargs = value.get("kwargs")
+        if isinstance(identifier, list) and isinstance(kwargs, dict):
+            target = ".".join(str(item) for item in identifier)
+            if target == "copilot.contracts.tasks.TaskContract":
+                return TaskContract.model_validate(upcast_task_contract_payload(kwargs))
+            if target == "copilot.contracts.plans.TaskStep":
+                if {"tool_version", "contract_profile"}.issubset(kwargs):
+                    return TaskStep.model_validate(kwargs)
+                return TaskStep.model_validate(upcast_legacy_task_step_payload(kwargs))
+        return super()._revive_lc2(value)
+
+    def loads_typed(self, data: tuple[str, bytes]) -> object:
+        """Upgrade legacy values after both JSON and msgpack safe decoding."""
+        return upgrade_checkpoint_value(super().loads_typed(data))
+
+
 def checkpoint_serializer() -> JsonPlusSerializer:
     """Return a strict serializer allowlisted to the frozen checkpoint contract types."""
-    return JsonPlusSerializer(
+    return VersionedCheckpointSerializer(
         allowed_json_modules=_CHECKPOINT_ALLOWED_NAMES,
         allowed_msgpack_modules=_CHECKPOINT_ALLOWED_NAMES,
     )
@@ -224,6 +260,11 @@ def initial_graph_state(
     if intake_context is None:
         if contract is None:
             raise ValueError("intake_context is required when no prepared contract is supplied")
+        ap_scope = (
+            contract.constraints
+            if isinstance(contract.constraints, AccountsPayableConstraintsV1)
+            else None
+        )
         intake_context = TrustedTaskContext(
             task_id=contract.task_id,
             trace_id=contract.task_id,
@@ -232,21 +273,38 @@ def initial_graph_state(
             tenant_id=contract.constraints.tenant_id,
             data_scope=contract.constraints.data_scope,
             authorized_supplier_ids=contract.constraints.supplier_ids,
-            roles=("quality_analyst",),
-            scopes=("task:execute", "data:quality.v1"),
+            authorized_legal_entity_ids=(ap_scope.legal_entity_ids if ap_scope else ()),
+            authorized_business_unit_ids=(ap_scope.business_unit_ids if ap_scope else ()),
+            authorized_currency_scope=(ap_scope.currency_scope if ap_scope else ()),
+            roles=(
+                ("quality_analyst",)
+                if contract.task_type is TaskType.SUPPLIER_QUALITY_ANALYSIS_V1
+                else ()
+            ),
+            scopes=(
+                ("task:execute", "data:quality.v1")
+                if contract.task_type is TaskType.SUPPLIER_QUALITY_ANALYSIS_V1
+                else ("task:execute",)
+            ),
             authentication_source="legacy_internal_adapter",
             authenticated=True,
             is_demo_identity=True,
-            purpose="supplier_quality_analysis.v1",
+            purpose=contract.task_type.value,
+            task_type=contract.task_type,
             output_format=contract.expected_output.artifact_type,
             max_steps=max(1, len(plan.steps)) if plan is not None else 1,
-            read_only=True,
+            read_only=ap_scope.read_only if ap_scope else True,
             require_approval=contract.approval_requirement.required,
             deadline_at=contract.constraints.deadline_at,
             request_source=RequestSource.INTERNAL,
             task_text_hash=hashlib.sha256(request.raw_input.encode("utf-8")).hexdigest(),
             task_text_length=len(request.raw_input),
         )
+    if contract is not None and (
+        intake_context.task_type is not contract.task_type
+        or intake_context.purpose != contract.task_type.value
+    ):
+        raise ValueError("trusted task type and purpose must match the TaskContract")
     return AgentGraphState(
         task_id=intake_context.task_id,
         trace_id=intake_context.trace_id,

@@ -33,6 +33,7 @@ from copilot.agent.routing import (
 from copilot.agent.runtime import GraphNodeRuntime
 from copilot.agent.state import AgentGraphState, initial_graph_state
 from copilot.contracts import (
+    AccountsPayableConstraintsV1,
     ApprovalRequest,
     ApprovalResolutionAction,
     ApprovalStatus,
@@ -42,6 +43,7 @@ from copilot.contracts import (
     TaskPlan,
     TaskRequest,
     TaskStatus,
+    TaskType,
 )
 from copilot.services.observability import (
     EventName,
@@ -175,6 +177,11 @@ class LangGraphWorkflowEngine:
         """Initialize domain facts, acquire the task lease, and execute the graph."""
         started_at = self._clock()
         initial = self._state_machine.initial(contract.task_id)
+        ap_scope = (
+            contract.constraints
+            if isinstance(contract.constraints, AccountsPayableConstraintsV1)
+            else None
+        )
         intake_context = TrustedTaskContext(
             task_id=contract.task_id,
             trace_id=contract.task_id,
@@ -183,15 +190,27 @@ class LangGraphWorkflowEngine:
             tenant_id=contract.constraints.tenant_id,
             data_scope=contract.constraints.data_scope,
             authorized_supplier_ids=contract.constraints.supplier_ids,
-            roles=("quality_analyst",),
-            scopes=("task:execute", "data:quality.v1"),
+            authorized_legal_entity_ids=(ap_scope.legal_entity_ids if ap_scope else ()),
+            authorized_business_unit_ids=(ap_scope.business_unit_ids if ap_scope else ()),
+            authorized_currency_scope=(ap_scope.currency_scope if ap_scope else ()),
+            roles=(
+                ("quality_analyst",)
+                if contract.task_type is TaskType.SUPPLIER_QUALITY_ANALYSIS_V1
+                else ()
+            ),
+            scopes=(
+                ("task:execute", "data:quality.v1")
+                if contract.task_type is TaskType.SUPPLIER_QUALITY_ANALYSIS_V1
+                else ("task:execute",)
+            ),
             authentication_source="legacy_internal_adapter",
             authenticated=True,
             is_demo_identity=True,
-            purpose="supplier_quality_analysis.v1",
+            purpose=contract.task_type.value,
+            task_type=contract.task_type,
             output_format=contract.expected_output.artifact_type,
             max_steps=self._max_task_steps,
-            read_only=True,
+            read_only=ap_scope.read_only if ap_scope else True,
             require_approval=contract.approval_requirement.required,
             deadline_at=contract.constraints.deadline_at,
             request_source=RequestSource.INTERNAL,

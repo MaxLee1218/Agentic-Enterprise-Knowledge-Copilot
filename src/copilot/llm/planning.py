@@ -9,6 +9,7 @@ from copilot.contracts import (
     ApprovalRequirement,
     ArtifactType,
     CapabilityName,
+    ContractSchemaVersion,
     ExpectedOutput,
     StepResult,
     StepResultStatus,
@@ -31,6 +32,10 @@ from copilot.llm.prompts import (
     task_understanding_messages,
 )
 from copilot.llm.schemas import TaskUnderstandingOutput
+from copilot.services.domains import (
+    DomainCapabilityManifestRegistry,
+    builtin_domain_manifest_registry,
+)
 from copilot.services.llm import (
     LLMCallContext,
     LLMGenerationOptions,
@@ -48,8 +53,6 @@ from copilot.services.workflows.validation import (
     PlanValidator,
 )
 
-_UNDERSTANDING_SCHEMA_VERSION = "task-understanding-schema-v1"
-_PLAN_SCHEMA_VERSION = "task-plan-v1"
 _ALLOWED_REPLAN_REASONS = {
     "PLAN_NO_LONGER_EXECUTABLE",
     "REPAIRABLE_VERIFICATION_FAILURE",
@@ -70,6 +73,7 @@ class LLMPlanningService:
         validator: PlanValidator,
         options: LLMGenerationOptions | None = None,
         max_plan_repair_attempts: int = 2,
+        domain_manifests: DomainCapabilityManifestRegistry | None = None,
     ) -> None:
         if max_plan_repair_attempts < 0:
             raise ValueError("max_plan_repair_attempts must not be negative")
@@ -78,6 +82,7 @@ class LLMPlanningService:
         self._validator = validator
         self._options = options or LLMGenerationOptions()
         self._max_repairs = max_plan_repair_attempts
+        self._domain_manifests = domain_manifests or builtin_domain_manifest_registry()
 
     def understand(
         self,
@@ -88,13 +93,16 @@ class LLMPlanningService:
         max_steps: int,
     ) -> TaskUnderstandingOutcome:
         """Produce a frozen contract while preserving trusted tenant and policy fields."""
+        domain_manifest = self._domain_manifests.require_execution_for_type(
+            trusted_context.task_type
+        )
         context = LLMCallContext(
             task_id=trusted_context.task_id,
             trace_id=trace_id,
             node_name="understand_task",
             attempt=1,
             prompt_version=TASK_UNDERSTANDING_PROMPT_VERSION,
-            schema_version=_UNDERSTANDING_SCHEMA_VERSION,
+            schema_version=domain_manifest.understanding_profile,
         )
         result = self._provider.generate_structured(
             messages=task_understanding_messages(
@@ -128,6 +136,10 @@ class LLMPlanningService:
             attempts=result.attempts,
         )
         candidate = result.parsed_output
+        if candidate.task_type is not trusted_context.task_type:
+            raise LLMSchemaValidationError(
+                "LLM task type conflicts with the trusted domain selection"
+            )
         missing = list(candidate.missing_information)
         if candidate.time_range.year is None or candidate.time_range.quarter is None:
             missing.append("An explicit year and quarter are required")
@@ -181,9 +193,11 @@ class LLMPlanningService:
             deadline_at=trusted_context.deadline_at,
         )
         contract = TaskContract(
+            contract_schema_version=ContractSchemaVersion.TASK_CONTRACT_V1,
             task_id=trusted_context.task_id,
             contract_version=1,
             task_type=TaskType.SUPPLIER_QUALITY_ANALYSIS_V1,
+            goal=candidate.goal,
             required_capabilities=tuple(CapabilityName),
             expected_output=ExpectedOutput(
                 artifact_type=(
@@ -252,7 +266,8 @@ class LLMPlanningService:
         max_steps: int,
     ) -> PlanGenerationOutcome:
         """Generate exactly one candidate so LangGraph can checkpoint it."""
-        manifest = self._manifest_builder.build()
+        domain_manifest = self._domain_manifests.require_execution(contract)
+        manifest = self._manifest_builder.build(domain_manifest)
         result = self._provider.generate_structured(
             messages=planner_messages(
                 contract=contract,
@@ -266,7 +281,7 @@ class LLMPlanningService:
                 node_name="create_plan",
                 attempt=1,
                 prompt_version=PLANNER_PROMPT_VERSION,
-                schema_version=_PLAN_SCHEMA_VERSION,
+                schema_version=domain_manifest.plan_profile,
             ),
             options=self._options,
         )
@@ -293,7 +308,8 @@ class LLMPlanningService:
         attempt: int,
     ) -> PlanGenerationOutcome:
         """Perform one model repair and immediately run the complete validator."""
-        manifest = self._manifest_builder.build()
+        domain_manifest = self._domain_manifests.require_execution(contract)
+        manifest = self._manifest_builder.build(domain_manifest)
         repaired = self._provider.generate_structured(
             messages=plan_repair_messages(
                 contract=contract,
@@ -309,7 +325,7 @@ class LLMPlanningService:
                 node_name="repair_plan",
                 attempt=attempt,
                 prompt_version=PLAN_REPAIR_PROMPT_VERSION,
-                schema_version=_PLAN_SCHEMA_VERSION,
+                schema_version=domain_manifest.plan_profile,
             ),
             options=self._options,
         )
@@ -341,7 +357,8 @@ class LLMPlanningService:
             raise ValueError("replan reason is not recoverable or allowlisted")
         if remaining_steps < 1:
             raise ValueError("no remaining step budget is available")
-        manifest = self._manifest_builder.build()
+        domain_manifest = self._domain_manifests.require_execution(contract)
+        manifest = self._manifest_builder.build(domain_manifest)
         next_version = current_plan.planning_version + 1
         summary: dict[str, object] = {
             "reason": reason,
@@ -366,7 +383,7 @@ class LLMPlanningService:
                 node_name="replan",
                 attempt=1,
                 prompt_version=REPLAN_PROMPT_VERSION,
-                schema_version=_PLAN_SCHEMA_VERSION,
+                schema_version=domain_manifest.plan_profile,
             ),
             options=self._options,
         )

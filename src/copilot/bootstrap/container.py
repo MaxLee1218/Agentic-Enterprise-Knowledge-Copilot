@@ -51,6 +51,7 @@ from copilot.policies.permissions import PermissionMatrix
 from copilot.security import OutputGuard, PromptInjectionDetector, SensitiveDataRegistry
 from copilot.services.approval_service import ApprovalGateService, ApprovalService
 from copilot.services.artifact_service import ArtifactService
+from copilot.services.domains import builtin_domain_manifest_registry
 from copilot.services.health import ReadinessService
 from copilot.services.llm import LLMGenerationOptions, LLMProvider
 from copilot.services.task_intake import IntakeLimits
@@ -305,6 +306,7 @@ def build_workflow_container(
     registry.register(database_tool, cancellation_mode=ToolCancellationMode.NON_CANCELLABLE)
     registry.register(analytics_tool, cancellation_mode=ToolCancellationMode.COOPERATIVE)
     registry.register(report_tool, cancellation_mode=ToolCancellationMode.NON_CANCELLABLE)
+    domain_manifests = builtin_domain_manifest_registry()
     approval_gate = ApprovalGateService(
         repository=approval_repository,
         audit_sink=workflow_audit,
@@ -348,6 +350,7 @@ def build_workflow_container(
         registry=registry,
         max_task_steps=settings.max_task_steps,
         max_planning_version=settings.max_replan_count + 1,
+        domain_manifests=domain_manifests,
     )
     owned_llm_provider: DeepSeekProvider | None = None
     effective_llm_provider = llm_provider
@@ -374,6 +377,7 @@ def build_workflow_container(
                 max_output_tokens=settings.llm_max_output_tokens,
             ),
             max_plan_repair_attempts=settings.max_plan_repair_attempts,
+            domain_manifests=domain_manifests,
         )
         if effective_llm_provider is not None
         else None
@@ -384,7 +388,7 @@ def build_workflow_container(
         registry=registry,
         plan_validator=plan_validator,
         dependency_checker=DependencyChecker(),
-        input_builder=StepInputBuilder(),
+        input_builder=StepInputBuilder(domain_manifests),
         retry_policy=WorkflowRetryPolicy(
             max_retries=settings.workflow_max_retries,
             retry_delay_seconds=settings.workflow_retry_delay_seconds,
@@ -414,6 +418,7 @@ def build_workflow_container(
         planning_service=planning_service,
         permission_matrix=permission_matrix,
         observability=observability,
+        domain_manifests=domain_manifests,
     )
     checkpoint_connection: Any | None = None
     checkpointer: BaseCheckpointSaver[str]

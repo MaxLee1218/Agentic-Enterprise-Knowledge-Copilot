@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copilot.contracts import (
+    SUPPLIER_QUALITY_CONTRACT_PROFILES,
     CapabilityName,
     RetryPolicy,
     StepType,
@@ -107,6 +108,8 @@ class SupplierQualityAnalysisPlanFactory:
             task_id=task_id,
             step_type=step_type,
             tool_name=definition.tool_name,
+            tool_version=definition.tool_version,
+            contract_profile=SUPPLIER_QUALITY_CONTRACT_PROFILES[tool_name],
             input_schema=definition.input_schema,
             output_schema=definition.output_schema,
             dependency=dependencies,

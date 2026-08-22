@@ -24,6 +24,10 @@ from copilot.contracts import (
     ToolResult,
     VerificationResult,
 )
+from copilot.contracts.serialization import (
+    deserialize_task_contract_json,
+    deserialize_task_plan_json,
+)
 from copilot.persistence.database import PersistenceDatabase, coerce_database
 from copilot.persistence.models import (
     WorkflowLeaseRow,
@@ -188,7 +192,7 @@ class WorkflowRepository:
                 if attempt is not None:
                     raise ValueError("contract cannot change after tool execution")
                 if row.contract_json is not None:
-                    existing = TaskContract.model_validate_json(row.contract_json)
+                    existing = deserialize_task_contract_json(row.contract_json)
                     if contract.contract_version < existing.contract_version:
                         raise ValueError("contract version cannot decrease")
                 row.contract_json = contract.model_dump_json()
@@ -227,7 +231,7 @@ class WorkflowRepository:
                 )
                 if row is None:
                     raise ValueError("workflow task was not initialized")
-                existing = TaskPlan.model_validate_json(row.plan_json) if row.plan_json else None
+                existing = deserialize_task_plan_json(row.plan_json) if row.plan_json else None
                 if existing == plan:
                     return
                 executed = session.scalar(
@@ -570,7 +574,7 @@ class WorkflowRepository:
                 if row is None:
                     raise KeyError(task_id)
                 return (
-                    TaskContract.model_validate_json(row.contract_json)
+                    deserialize_task_contract_json(row.contract_json)
                     if row.contract_json
                     else None
                 )
@@ -584,7 +588,7 @@ class WorkflowRepository:
                 row = self._task_row(session, task_id, tenant_id)
                 if row is None:
                     raise KeyError(task_id)
-                return TaskPlan.model_validate_json(row.plan_json) if row.plan_json else None
+                return deserialize_task_plan_json(row.plan_json) if row.plan_json else None
 
     def task_result_for(self, task_id: str, *, tenant_id: str) -> TaskResult | None:
         with self._lock:
@@ -697,7 +701,7 @@ class WorkflowRepository:
         assert isinstance(session, Session)
         row = self._task_row(session, task_id, tenant_id)
         if row is not None and row.plan_json is not None:
-            plan = TaskPlan.model_validate_json(row.plan_json)
+            plan = deserialize_task_plan_json(row.plan_json)
             if any(step.step_id == step_id for step in plan.steps):
                 return
         raise ValueError("step does not belong to a persisted plan")

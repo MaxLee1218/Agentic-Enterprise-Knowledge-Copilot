@@ -14,7 +14,7 @@ class Artifact(ImmutableContractModel):
 
     artifact_id: str = Field(description="Globally unique artifact identifier")
     task_id: str = Field(description="Task that owns the artifact")
-    type: ArtifactType = Field(description="Supported quality analysis report type")
+    type: ArtifactType = Field(description="Supported domain report Artifact type")
     location: str = Field(description="Immutable governed repository location", min_length=1)
     media_type: str = Field(description="Artifact MIME media type", min_length=1)
     checksum: str = Field(description="Integrity checksum of artifact bytes", min_length=1)
