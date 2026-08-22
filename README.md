@@ -159,6 +159,10 @@ browser-to-Evidence-to-Artifact path plus approval, rejection, cancellation, and
 For the browser-to-Artifact single-machine topology with separate RAG, Business PostgreSQL, and
 Copilot PostgreSQL services, see [Local Enterprise E2E](docs/local-enterprise-e2e.md).
 
+On macOS, after completing the one-time environment and RAG setup, double-click
+`一键启动或关闭.command` in Finder to toggle the complete topology. Startup waits for the
+frontend and opens it in the default browser; shutdown preserves all named volumes.
+
 Build the formal image in the owning sibling repository:
 
 ```bash

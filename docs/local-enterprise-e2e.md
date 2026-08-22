@@ -170,6 +170,25 @@ query path is unavailable; its output contains only bounded counts, latency, and
 
 ## Startup
 
+### macOS one-click start and shutdown
+
+In Finder, double-click `一键启动或关闭.command` in the repository root. When the
+environment is stopped, the shortcut validates and builds the Local Enterprise Compose topology,
+waits for the frontend health endpoint, and opens it in the default browser. Double-click the same
+shortcut again to run Compose `down` and remove all project containers and networks while
+preserving the named database, Artifact, and RAG volumes.
+
+On first use only, if `.env.local-enterprise` does not exist, the shortcut creates it from the
+committed example and opens it for editing. Set `LLM_API_KEY`, save the file, and double-click the
+shortcut again. The formal RAG image and initial RAG ingestion described above remain prerequisites;
+the shortcut does not reset or silently re-ingest the governed RAG index.
+
+The shortcut starts Docker Desktop when it is installed but not running. `FRONTEND_PORT` is read
+from `.env.local-enterprise`, and startup waits up to 10 minutes by default. Set
+`COPILOT_START_TIMEOUT_SECONDS` in the launching environment to override that wait.
+
+The equivalent manual commands follow.
+
 Validate interpolation before starting services:
 
 ```bash
