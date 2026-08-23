@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, insert, inspect, text
 from sqlalchemy.exc import DBAPIError
 
-from copilot.contracts import EvidenceType
+from copilot.contracts import EvidenceType, JsonObject, ToolCall
 from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.services.task_intake import (
     NaturalLanguageTaskCommand,
@@ -17,6 +18,7 @@ from copilot.services.task_intake import (
     TaskOutputFormat,
     TrustedCallerContext,
 )
+from copilot.tools.base import ToolExecutionContext
 from copilot.tools.database import DatabaseConnection, DatabaseTool
 from copilot.tools.database.ap_seed import seed_accounts_payable_demo_database
 from copilot.tools.database.migrations import (
@@ -98,6 +100,43 @@ def test_postgres_seed_and_database_tool_round_trip() -> None:
     assert result.evidence[0].source_reference.reference.root["read_only"] is True
 
 
+def test_postgres_ap_templates_match_sqlite_results(tmp_path: Path) -> None:
+    """Prove the five trusted AP reads have driver-neutral rows and fingerprints."""
+    assert POSTGRES_SEED_URL is not None
+    sqlite_url = f"sqlite:///{tmp_path / 'ap-parity.db'}"
+    seed_accounts_payable_demo_database(sqlite_url, reset=True)
+    seed_accounts_payable_demo_database(POSTGRES_SEED_URL, reset=True)
+    sqlite_tool = DatabaseTool.accounts_payable(DatabaseConnection(sqlite_url, read_only=True))
+    postgres_tool = DatabaseTool.accounts_payable(
+        DatabaseConnection(POSTGRES_READONLY_URL or POSTGRES_SEED_URL, read_only=True)
+    )
+    templates = (
+        "ap_invoice_population_v1",
+        "ap_duplicate_invoice_candidates_v1",
+        "ap_invoice_po_variance_v1",
+        "ap_payment_terms_v1",
+        "ap_payment_amount_v1",
+    )
+    try:
+        for index, template_id in enumerate(templates, start=1):
+            arguments = _ap_arguments(template_id)
+            sqlite_result = sqlite_tool.execute(
+                arguments,
+                _ap_context(sqlite_tool, arguments, suffix=f"SQLITE-{index}"),
+            )
+            postgres_result = postgres_tool.execute(
+                arguments,
+                _ap_context(postgres_tool, arguments, suffix=f"POSTGRES-{index}"),
+            )
+            assert sqlite_result.output == postgres_result.output
+            assert sqlite_result.evidence[0].content.checksum == (
+                postgres_result.evidence[0].content.checksum
+            )
+    finally:
+        sqlite_tool.close()
+        postgres_tool.close()
+
+
 @pytest.mark.skipif(
     not POSTGRES_READONLY_URL,
     reason="TEST_BUSINESS_POSTGRES_READONLY_URL is not configured",
@@ -170,3 +209,49 @@ def test_postgres_natural_language_agent_workflow_reaches_verified_report(
         EvidenceType.DATABASE,
         EvidenceType.CALCULATION,
     }
+
+
+def _ap_arguments(template_id: str) -> JsonObject:
+    return JsonObject(
+        {
+            "query_template_id": template_id,
+            "parameters": {
+                "tenant_id": "TENANT-DEMO",
+                "start_date": "2026-04-01",
+                "end_date": "2026-06-30",
+                "supplier_ids": [],
+                "legal_entity_ids": ["LE-CN-01", "LE-US-01"],
+                "business_unit_ids": [],
+                "currency_scope": [],
+            },
+            "schema_version": "accounts_payable.v1",
+            "snapshot_at": "2026-10-01T00:00:00+00:00",
+            "row_limit": 50000,
+        }
+    )
+
+
+def _ap_context(
+    tool: DatabaseTool,
+    arguments: JsonObject,
+    *,
+    suffix: str,
+) -> ToolExecutionContext:
+    return ToolExecutionContext(
+        call=ToolCall(
+            tool_call_id=f"TC-AP-{suffix}",
+            task_id="T-AP-POSTGRES-PARITY",
+            step_id=f"S-AP-{suffix}",
+            tool_name="database_query",
+            tool_version=tool.definition.tool_version,
+            input=arguments,
+            idempotency_key=f"IDEMPOTENCY-AP-{suffix}",
+            approval_id=None,
+            deadline_at=datetime.now(UTC) + timedelta(seconds=20),
+            tenant_id="TENANT-DEMO",
+            user_id="U-FINANCE-PARITY",
+        ),
+        roles=("finance_analyst",),
+        scopes=("finance:ap.detail",),
+        purpose="accounts_payable_analysis.v1",
+    )

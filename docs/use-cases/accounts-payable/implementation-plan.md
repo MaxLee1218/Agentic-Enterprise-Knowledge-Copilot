@@ -90,6 +90,13 @@ implemented before its own acceptance criteria and all prior stages pass.
 
 ## Stage 4 — AP database query templates
 
+**Status:** `COMPLETE — 2026-08-23`
+
+**Acceptance artifact:** [Stage 4 AP database query templates report](stage-4-ap-database-query-templates.md)
+
+**Execution boundary:** the AP database adapter is explicitly composable for governed tests and
+later workflow integration; the AP domain manifest remains disabled and analytics are absent.
+
 - **Goal:** expose only the five frozen AP read models.
 - **Scope/work:** add schema/access profile and SQLAlchemy Select templates; scope predicates,
   sentinel row handling, normalization/output Evidence metadata.

@@ -1,4 +1,4 @@
-"""Deny-by-default registry for the Supplier Quality ``quality.v1`` schema."""
+"""Deny-by-default registries for frozen governed database schemas."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from copilot.tools.database.models import (
 )
 
 SCHEMA_VERSION = "quality.v1"
+ACCOUNTS_PAYABLE_SCHEMA_VERSION = "accounts_payable.v1"
 DEFAULT_SENSITIVE_COLUMNS = frozenset(
     {
         "supplier_deviations.description",
@@ -35,6 +36,64 @@ def _registered_columns() -> dict[str, frozenset[str]]:
     return {table.name: frozenset(column.name for column in table.columns) for table in tables}
 
 
+def _accounts_payable_columns() -> dict[str, frozenset[str]]:
+    """Return only fields required by the five frozen AP read models."""
+    return {
+        "suppliers": frozenset({"id", "tenant_id", "supplier_code"}),
+        "legal_entities": frozenset({"id", "tenant_id", "legal_entity_code"}),
+        "business_units": frozenset({"id", "tenant_id", "legal_entity_id", "business_unit_code"}),
+        "purchase_orders": frozenset(
+            {
+                "id",
+                "tenant_id",
+                "supplier_id",
+                "legal_entity_id",
+                "business_unit_id",
+                "approved_amount",
+                "currency",
+                "matching_basis",
+                "status",
+            }
+        ),
+        "invoices": frozenset(
+            {
+                "id",
+                "tenant_id",
+                "supplier_id",
+                "legal_entity_id",
+                "business_unit_id",
+                "normalized_invoice_number",
+                "invoice_type",
+                "invoice_date",
+                "posting_date",
+                "currency",
+                "net_amount",
+                "tax_amount",
+                "gross_amount",
+                "purchase_order_id",
+                "payment_terms_days",
+                "due_date",
+                "no_po_exception_ref",
+                "no_po_exception_approved",
+                "status",
+            }
+        ),
+        "payments": frozenset(
+            {
+                "id",
+                "tenant_id",
+                "invoice_id",
+                "legal_entity_id",
+                "business_unit_id",
+                "payment_date",
+                "payment_amount",
+                "currency",
+                "status",
+            }
+        ),
+    }
+
+
 class SchemaRegistry:
     """Expose only approved tables, fields, functions, and query templates."""
 
@@ -44,6 +103,8 @@ class SchemaRegistry:
         schema_version: str = SCHEMA_VERSION,
         tables: Mapping[str, frozenset[str]] | None = None,
         sensitive_columns: frozenset[str] | None = None,
+        query_templates: frozenset[str] | None = None,
+        functions: frozenset[str] | None = None,
     ) -> None:
         self._schema_version = schema_version
         registered = dict(tables or _registered_columns())
@@ -51,10 +112,48 @@ class SchemaRegistry:
         self._sensitive_columns = (
             DEFAULT_SENSITIVE_COLUMNS if sensitive_columns is None else sensitive_columns
         )
-        self._query_templates = frozenset(
-            {"supplier_quality_summary_v1", "supplier_quality_trend_v1"}
+        self._query_templates = (
+            query_templates
+            if query_templates is not None
+            else frozenset({"supplier_quality_summary_v1", "supplier_quality_trend_v1"})
         )
-        self._functions = frozenset({"month_period", "sum"})
+        self._functions = functions if functions is not None else frozenset({"month_period", "sum"})
+
+    @classmethod
+    def accounts_payable(cls) -> SchemaRegistry:
+        """Create the isolated ``accounts_payable.v1`` allowlist."""
+        return cls(
+            schema_version=ACCOUNTS_PAYABLE_SCHEMA_VERSION,
+            tables=_accounts_payable_columns(),
+            sensitive_columns=frozenset(
+                {
+                    "invoices.currency",
+                    "invoices.due_date",
+                    "invoices.gross_amount",
+                    "invoices.invoice_date",
+                    "invoices.net_amount",
+                    "invoices.normalized_invoice_number",
+                    "invoices.no_po_exception_ref",
+                    "invoices.posting_date",
+                    "invoices.tax_amount",
+                    "payments.currency",
+                    "payments.payment_amount",
+                    "payments.payment_date",
+                    "purchase_orders.approved_amount",
+                    "purchase_orders.currency",
+                }
+            ),
+            query_templates=frozenset(
+                {
+                    "ap_invoice_population_v1",
+                    "ap_duplicate_invoice_candidates_v1",
+                    "ap_invoice_po_variance_v1",
+                    "ap_payment_terms_v1",
+                    "ap_payment_amount_v1",
+                }
+            ),
+            functions=frozenset({"count", "max", "sum"}),
+        )
 
     @property
     def schema_version(self) -> str:
@@ -117,4 +216,9 @@ class SchemaRegistry:
         return access_profile_for_query_template(template_id)
 
 
-__all__ = ["DEFAULT_SENSITIVE_COLUMNS", "SCHEMA_VERSION", "SchemaRegistry"]
+__all__ = [
+    "ACCOUNTS_PAYABLE_SCHEMA_VERSION",
+    "DEFAULT_SENSITIVE_COLUMNS",
+    "SCHEMA_VERSION",
+    "SchemaRegistry",
+]

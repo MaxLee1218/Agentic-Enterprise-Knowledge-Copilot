@@ -1,4 +1,4 @@
-"""Governed Database Tool implementing the frozen Supplier Quality v1.0 contract."""
+"""Governed Database Tool implementing frozen domain-specific read profiles."""
 
 from __future__ import annotations
 
@@ -34,7 +34,11 @@ from copilot.tools.database.errors import (
 )
 from copilot.tools.database.query_templates import QueryTemplateRegistry
 from copilot.tools.database.result_normalizer import normalize_database_rows, rows_as_json
-from copilot.tools.database.schema_registry import SCHEMA_VERSION, SchemaRegistry
+from copilot.tools.database.schema_registry import (
+    ACCOUNTS_PAYABLE_SCHEMA_VERSION,
+    SCHEMA_VERSION,
+    SchemaRegistry,
+)
 from copilot.tools.database.sql_validator import SQLValidator
 from copilot.tools.exceptions import (
     ToolBusinessError,
@@ -45,6 +49,7 @@ from copilot.tools.exceptions import (
 )
 
 LOGGER = logging.getLogger(__name__)
+ACCOUNTS_PAYABLE_DATABASE_CONTRACT_PROFILE = "accounts_payable_database.v1"
 
 DATABASE_INPUT_SCHEMA: JsonMapping = {
     "type": "object",
@@ -117,6 +122,83 @@ DATABASE_OUTPUT_SCHEMA: JsonMapping = {
     },
 }
 
+AP_DATABASE_INPUT_SCHEMA: JsonMapping = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "query_template_id",
+        "parameters",
+        "schema_version",
+        "snapshot_at",
+        "row_limit",
+    ],
+    "properties": {
+        "query_template_id": {
+            "type": "string",
+            "enum": [
+                "ap_invoice_population_v1",
+                "ap_duplicate_invoice_candidates_v1",
+                "ap_invoice_po_variance_v1",
+                "ap_payment_terms_v1",
+                "ap_payment_amount_v1",
+            ],
+        },
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "tenant_id",
+                "start_date",
+                "end_date",
+                "supplier_ids",
+                "legal_entity_ids",
+                "business_unit_ids",
+                "currency_scope",
+            ],
+            "properties": {
+                "tenant_id": {"type": "string", "minLength": 1},
+                "start_date": {"type": "string", "format": "date"},
+                "end_date": {"type": "string", "format": "date"},
+                "supplier_ids": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "uniqueItems": True,
+                    "items": {"type": "string", "minLength": 1},
+                },
+                "legal_entity_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 10,
+                    "uniqueItems": True,
+                    "items": {"type": "string", "minLength": 1},
+                },
+                "business_unit_ids": {
+                    "type": "array",
+                    "maxItems": 50,
+                    "uniqueItems": True,
+                    "items": {"type": "string", "minLength": 1},
+                },
+                "currency_scope": {
+                    "type": "array",
+                    "uniqueItems": True,
+                    "items": {"type": "string", "pattern": "^[A-Z]{3}$"},
+                },
+            },
+        },
+        "schema_version": {"type": "string", "const": ACCOUNTS_PAYABLE_SCHEMA_VERSION},
+        "snapshot_at": {"type": "string", "format": "date-time"},
+        "row_limit": {"type": "integer", "minimum": 1, "maximum": 50000},
+    },
+}
+
+AP_DATABASE_OUTPUT_SCHEMA: JsonMapping = {
+    **DATABASE_OUTPUT_SCHEMA,
+    "properties": {
+        **cast(JsonMapping, DATABASE_OUTPUT_SCHEMA["properties"]),
+        "rows": {"type": "array", "maxItems": 50000, "items": {"type": "object"}},
+    },
+}
+
 
 class DatabaseTool:
     """Execute only approved parameterized SELECT templates through SQLAlchemy."""
@@ -166,11 +248,29 @@ class DatabaseTool:
     ) -> None:
         self._connection = connection
         self._schema_registry = schema_registry or SchemaRegistry()
+        if self._schema_registry.schema_version == ACCOUNTS_PAYABLE_SCHEMA_VERSION:
+            self.definition = _accounts_payable_definition()
         self._templates = QueryTemplateRegistry(self._schema_registry)
         self._validator = SQLValidator(self._schema_registry)
         self._data_access_policy = data_access_policy or DataAccessPolicy()
         self._statement_timeout_seconds = statement_timeout_seconds
         self.call_count = 0
+
+    @classmethod
+    def accounts_payable(
+        cls,
+        connection: DatabaseConnection,
+        *,
+        statement_timeout_seconds: float = 8,
+        data_access_policy: DataAccessPolicy | None = None,
+    ) -> DatabaseTool:
+        """Compose the Stage 4 AP adapter without enabling AP workflow execution."""
+        return cls(
+            connection,
+            statement_timeout_seconds=statement_timeout_seconds,
+            schema_registry=SchemaRegistry.accounts_payable(),
+            data_access_policy=data_access_policy,
+        )
 
     def check_ready(self) -> bool:
         """Return whether the approved business schema is currently reachable."""
@@ -188,6 +288,18 @@ class DatabaseTool:
         start_date = _required_date_value(parameters, "start_date")
         end_date = _required_date_value(parameters, "end_date")
         supplier_ids = _required_text_list(parameters, "supplier_ids")
+        is_accounts_payable = (
+            self._schema_registry.schema_version == ACCOUNTS_PAYABLE_SCHEMA_VERSION
+        )
+        legal_entity_ids = (
+            _required_text_list(parameters, "legal_entity_ids") if is_accounts_payable else ()
+        )
+        business_unit_ids = (
+            _required_text_list(parameters, "business_unit_ids") if is_accounts_payable else ()
+        )
+        currency_scope = (
+            _required_text_list(parameters, "currency_scope") if is_accounts_payable else ()
+        )
 
         if schema_version != self._schema_registry.schema_version:
             raise ToolBusinessError(
@@ -204,23 +316,48 @@ class DatabaseTool:
                 error_code="DATABASE_QUERY_DENIED",
                 message="Database date scope is invalid",
             )
+        _validate_scope_contract(
+            is_accounts_payable=is_accounts_payable,
+            start_date=start_date,
+            end_date=end_date,
+            snapshot_at=snapshot_at,
+            supplier_ids=supplier_ids,
+            legal_entity_ids=legal_entity_ids,
+            business_unit_ids=business_unit_ids,
+            currency_scope=currency_scope,
+            row_limit=row_limit,
+        )
 
         started = perf_counter()
         try:
             template = self._templates.build(
                 template_id,
                 filter_supplier_ids=bool(supplier_ids),
+                filter_legal_entity_ids=bool(legal_entity_ids),
+                filter_business_unit_ids=bool(business_unit_ids),
+                filter_currency_scope=bool(currency_scope),
             )
             validated = self._validator.validate(template.statement)
-            raw_roles = context.metadata.root.get("roles", [])
+            expected_access = self._schema_registry.access_profile_for_template(template_id)
+            if expected_access != (validated.table_names, validated.column_names):
+                raise DatabaseQueryValidationError(
+                    "Query template physical access differs from its frozen profile"
+                )
+            raw_roles = list(context.roles) or context.metadata.root.get("roles", [])
             roles = (
                 tuple(item for item in raw_roles if isinstance(item, str))
                 if isinstance(raw_roles, list)
                 else ()
             )
-            raw_purpose = context.metadata.root.get("purpose")
+            raw_purpose = context.purpose or context.metadata.root.get("purpose")
             purpose = (
                 raw_purpose if isinstance(raw_purpose, str) else "supplier_quality_analysis.v1"
+            )
+            raw_scopes = list(context.scopes) or context.metadata.root.get("scopes", [])
+            scopes = (
+                tuple(item for item in raw_scopes if isinstance(item, str))
+                if isinstance(raw_scopes, list)
+                else ()
             )
             decision = self._data_access_policy.evaluate(
                 DataAccessRequest(
@@ -229,6 +366,7 @@ class DatabaseTool:
                     field_names=validated.column_names,
                     purpose=purpose,
                     is_demo_identity=context.metadata.root.get("is_demo_identity") is not False,
+                    scopes=scopes,
                 )
             )
             if not decision.allowed:
@@ -245,6 +383,12 @@ class DatabaseTool:
             }
             if supplier_ids:
                 execution_parameters["supplier_ids"] = supplier_ids
+            if legal_entity_ids:
+                execution_parameters["legal_entity_ids"] = legal_entity_ids
+            if business_unit_ids:
+                execution_parameters["business_unit_ids"] = business_unit_ids
+            if currency_scope:
+                execution_parameters["currency_scope"] = currency_scope
             database_rows = self._connection.execute_select(
                 validated.statement,
                 execution_parameters,
@@ -258,7 +402,10 @@ class DatabaseTool:
         except DatabaseSchemaNotFoundError as exc:
             raise ToolBusinessError(
                 error_code="DATABASE_SCHEMA_NOT_FOUND",
-                message="Registered quality.v1 database schema is unavailable",
+                message=(
+                    f"Registered {self._schema_registry.schema_version} database schema "
+                    "is unavailable"
+                ),
             ) from exc
         except DatabaseStatementTimeoutError as exc:
             raise ToolTimeoutError(
@@ -272,7 +419,11 @@ class DatabaseTool:
                 recoverable=True,
             ) from exc
 
-        normalized = normalize_database_rows(database_rows.rows, row_limit=row_limit)
+        normalized = normalize_database_rows(
+            database_rows.rows,
+            row_limit=row_limit,
+            preserve_decimal=is_accounts_payable,
+        )
         execution_ms = round((perf_counter() - started) * 1000)
         query_fingerprint = _query_fingerprint(
             template_id=template_id,
@@ -282,6 +433,9 @@ class DatabaseTool:
             start_date=start_date,
             end_date=end_date,
             supplier_ids=supplier_ids,
+            legal_entity_ids=legal_entity_ids,
+            business_unit_ids=business_unit_ids,
+            currency_scope=currency_scope,
             row_limit=row_limit,
         )
         rows = rows_as_json(normalized.rows)
@@ -311,6 +465,9 @@ class DatabaseTool:
             start_date=start_date,
             end_date=end_date,
             supplier_ids=supplier_ids,
+            legal_entity_ids=legal_entity_ids,
+            business_unit_ids=business_unit_ids,
+            currency_scope=currency_scope,
             normalized_rows=rows,
             row_count=normalized.row_count,
             truncated=normalized.truncated,
@@ -350,51 +507,91 @@ def _database_evidence(
     start_date: date,
     end_date: date,
     supplier_ids: tuple[str, ...],
+    legal_entity_ids: tuple[str, ...],
+    business_unit_ids: tuple[str, ...],
+    currency_scope: tuple[str, ...],
     normalized_rows: list[JsonMapping],
     row_count: int,
     truncated: bool,
 ) -> EvidenceDraft:
     dataset_checksum = _checksum(normalized_rows)
-    supplier_scope_hash = _checksum(list(supplier_ids))
+    supplier_scope_hash = _checksum(
+        sorted(supplier_ids)
+        if schema_version == ACCOUNTS_PAYABLE_SCHEMA_VERSION
+        else list(supplier_ids)
+    )
+    if schema_version == ACCOUNTS_PAYABLE_SCHEMA_VERSION:
+        source_reference: JsonMapping = {
+            "database_name": database_name,
+            "query_template_id": template_id,
+            "template_version": template_id,
+            "query_fingerprint": query_fingerprint,
+            "schema_version": schema_version,
+            "schema_snapshot": {
+                "version": schema_version,
+                "snapshot_at": snapshot_at.isoformat(),
+            },
+            "snapshot_at": snapshot_at.isoformat(),
+            "table_names": cast(JsonValue, sorted(table_names)),
+            "column_names": cast(JsonValue, sorted(column_names)),
+            "statement_type": "SELECT",
+            "read_only": True,
+            "parameter_summary": {
+                "tenant_scope_hash": _checksum(tenant_id),
+                "time_scope_hash": _checksum(
+                    {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()}
+                ),
+                "supplier_count": len(supplier_ids),
+                "supplier_scope_hash": supplier_scope_hash,
+                "legal_entity_count": len(legal_entity_ids),
+                "legal_entity_scope_hash": _checksum(sorted(legal_entity_ids)),
+                "business_unit_count": len(business_unit_ids),
+                "business_unit_scope_hash": _checksum(sorted(business_unit_ids)),
+                "currency_count": len(currency_scope),
+                "currency_scope_hash": _checksum(sorted(currency_scope)),
+            },
+            "row_count": row_count,
+            "dataset_checksum": dataset_checksum,
+        }
+        content_data: JsonMapping = {
+            "row_count": row_count,
+            "empty_result": row_count == 0,
+            "truncated": truncated,
+        }
+    else:
+        source_reference = {
+            "database_name": database_name,
+            "query_template_id": template_id,
+            "query_fingerprint": query_fingerprint,
+            "schema_version": schema_version,
+            "snapshot_at": snapshot_at.isoformat(),
+            "table_names": list(table_names),
+            "column_names": list(column_names),
+            "statement_type": "SELECT",
+            "read_only": True,
+            "parameter_summary": {
+                "tenant_scope_hash": _checksum(tenant_id),
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "supplier_count": len(supplier_ids),
+                "supplier_scope_hash": supplier_scope_hash,
+            },
+            "row_count": row_count,
+        }
+        content_data = {
+            "row_count": row_count,
+            "empty_result": row_count == 0,
+            "truncated": truncated,
+            "inspected_count": sum(
+                cast(int, row.get("inspected_count", 0)) for row in normalized_rows
+            ),
+            "defect_count": sum(cast(int, row.get("defect_count", 0)) for row in normalized_rows),
+        }
     return EvidenceDraft(
         source_type=EvidenceType.DATABASE,
-        source_reference=EvidenceSourceReference(
-            reference=JsonObject(
-                {
-                    "database_name": database_name,
-                    "query_template_id": template_id,
-                    "query_fingerprint": query_fingerprint,
-                    "schema_version": schema_version,
-                    "snapshot_at": snapshot_at.isoformat(),
-                    "table_names": list(table_names),
-                    "column_names": list(column_names),
-                    "statement_type": "SELECT",
-                    "read_only": True,
-                    "parameter_summary": {
-                        "tenant_scope_hash": _checksum(tenant_id),
-                        "start_date": start_date.isoformat(),
-                        "end_date": end_date.isoformat(),
-                        "supplier_count": len(supplier_ids),
-                        "supplier_scope_hash": supplier_scope_hash,
-                    },
-                    "row_count": row_count,
-                }
-            )
-        ),
+        source_reference=EvidenceSourceReference(reference=JsonObject(source_reference)),
         content=EvidenceContent(
-            data=JsonObject(
-                {
-                    "row_count": row_count,
-                    "empty_result": row_count == 0,
-                    "truncated": truncated,
-                    "inspected_count": sum(
-                        cast(int, row.get("inspected_count", 0)) for row in normalized_rows
-                    ),
-                    "defect_count": sum(
-                        cast(int, row.get("defect_count", 0)) for row in normalized_rows
-                    ),
-                }
-            ),
+            data=JsonObject(content_data),
             classification="CONFIDENTIAL",
             checksum=dataset_checksum,
         ),
@@ -410,8 +607,30 @@ def _query_fingerprint(
     start_date: date,
     end_date: date,
     supplier_ids: tuple[str, ...],
+    legal_entity_ids: tuple[str, ...],
+    business_unit_ids: tuple[str, ...],
+    currency_scope: tuple[str, ...],
     row_limit: int,
 ) -> str:
+    if schema_version == ACCOUNTS_PAYABLE_SCHEMA_VERSION:
+        parameters: JsonMapping = {
+            "tenant_id": tenant_id,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "supplier_ids": cast(JsonValue, sorted(supplier_ids)),
+            "legal_entity_ids": cast(JsonValue, sorted(legal_entity_ids)),
+            "business_unit_ids": cast(JsonValue, sorted(business_unit_ids)),
+            "currency_scope": cast(JsonValue, sorted(currency_scope)),
+        }
+        return _checksum(
+            {
+                "query_template_id": template_id,
+                "schema_version": schema_version,
+                "snapshot_at": snapshot_at.isoformat(),
+                "parameters": parameters,
+                "row_limit": row_limit,
+            }
+        )
     return _checksum(
         {
             "query_template_id": template_id,
@@ -426,6 +645,81 @@ def _query_fingerprint(
             "row_limit": row_limit,
         }
     )
+
+
+def _accounts_payable_definition() -> ToolDefinition:
+    return ToolDefinition(
+        tool_name="database_query",
+        tool_version="2.0.0-sqlalchemy",
+        description=(
+            "Execute one approved parameterized read-only Accounts Payable query; raw SQL, "
+            "writes, unregistered objects, and scope expansion are prohibited"
+        ),
+        input_schema=JsonObject(AP_DATABASE_INPUT_SCHEMA),
+        output_schema=JsonObject(AP_DATABASE_OUTPUT_SCHEMA),
+        risk_level=RiskLevel.MEDIUM,
+        timeout=ToolTimeout(attempt_seconds=10, overall_seconds=25),
+        approval_policy=ToolApprovalPolicy(
+            policy_id="accounts-payable-database-query-v1-policy",
+            trigger_conditions=(
+                "restricted_field",
+                "cross_business_unit_scope",
+                "population_over_routine_detail_threshold",
+            ),
+            approver_role="finance_approver",
+            editable_fields=("row_limit",),
+        ),
+        idempotency=ToolIdempotency(
+            idempotent=True,
+            key_components=(
+                "query_template_id",
+                "parameters",
+                "schema_version",
+                "snapshot_at",
+                "tool_version",
+            ),
+            reuse_window_seconds=300,
+            side_effects="Read-only Accounts Payable database access",
+        ),
+    )
+
+
+def _validate_scope_contract(
+    *,
+    is_accounts_payable: bool,
+    start_date: date,
+    end_date: date,
+    snapshot_at: datetime,
+    supplier_ids: tuple[str, ...],
+    legal_entity_ids: tuple[str, ...],
+    business_unit_ids: tuple[str, ...],
+    currency_scope: tuple[str, ...],
+    row_limit: int,
+) -> None:
+    maximum = 50000 if is_accounts_payable else 10000
+    if row_limit < 1 or row_limit > maximum:
+        raise ToolValidationError(f"Database row_limit must be between 1 and {maximum}")
+    collections = (
+        ("supplier_ids", supplier_ids, 100),
+        ("legal_entity_ids", legal_entity_ids, 10),
+        ("business_unit_ids", business_unit_ids, 50),
+    )
+    for name, values, limit in collections:
+        if len(values) > limit or len(set(values)) != len(values):
+            raise ToolValidationError(f"Database input field '{name}' is outside its bounds")
+    if not is_accounts_payable:
+        return
+    if (end_date - start_date).days + 1 > 366:
+        raise ToolValidationError("Accounts Payable date range must not exceed 366 days")
+    if snapshot_at.date() < end_date:
+        raise ToolValidationError("Accounts Payable snapshot_at must cover the complete date range")
+    if not legal_entity_ids:
+        raise ToolValidationError("Accounts Payable legal_entity_ids must not be empty")
+    if len(set(currency_scope)) != len(currency_scope) or any(
+        len(value) != 3 or not value.isascii() or not value.isalpha() or not value.isupper()
+        for value in currency_scope
+    ):
+        raise ToolValidationError("Accounts Payable currency_scope is invalid")
 
 
 def _checksum(value: object) -> str:
@@ -484,4 +778,11 @@ def _required_text_list(mapping: JsonMapping, key: str) -> tuple[str, ...]:
     return tuple(cast(list[str], value))
 
 
-__all__ = ["DATABASE_INPUT_SCHEMA", "DATABASE_OUTPUT_SCHEMA", "DatabaseTool"]
+__all__ = [
+    "ACCOUNTS_PAYABLE_DATABASE_CONTRACT_PROFILE",
+    "AP_DATABASE_INPUT_SCHEMA",
+    "AP_DATABASE_OUTPUT_SCHEMA",
+    "DATABASE_INPUT_SCHEMA",
+    "DATABASE_OUTPUT_SCHEMA",
+    "DatabaseTool",
+]

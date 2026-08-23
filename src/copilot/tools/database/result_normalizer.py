@@ -24,13 +24,17 @@ def normalize_database_rows(
     rows: Sequence[Mapping[str, Any]],
     *,
     row_limit: int,
+    preserve_decimal: bool = False,
 ) -> NormalizedDatabaseResult:
     """Normalize at most ``row_limit`` rows and detect a bounded extra row."""
     truncated = len(rows) > row_limit
     normalized = tuple(
         cast(
             JsonMapping,
-            {str(key): _normalize_value(value) for key, value in row.items()},
+            {
+                str(key): _normalize_value(value, preserve_decimal=preserve_decimal)
+                for key, value in row.items()
+            },
         )
         for row in rows[:row_limit]
     )
@@ -41,13 +45,17 @@ def normalize_database_rows(
     )
 
 
-def _normalize_value(value: Any) -> str | int | float | bool | None:
+def _normalize_value(
+    value: Any,
+    *,
+    preserve_decimal: bool,
+) -> str | int | float | bool | None:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, (date, datetime)):
         return value.isoformat()
     if isinstance(value, Decimal):
-        return float(value)
+        return format(value, "f") if preserve_decimal else float(value)
     raise TypeError(f"Unsupported database scalar type: {type(value).__name__}")
 
 
