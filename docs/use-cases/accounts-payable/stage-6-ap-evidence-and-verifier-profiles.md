@@ -70,7 +70,7 @@ its output checksum, and proves its input checksums against Database or parent C
 - counts and record day counts: exact integers;
 - money and signed money: exact four-place Decimal plus one explicit currency dimension;
 - ratios: exact canonical eight-place Decimal;
-- average days: exact four-place Decimal;
+- average days: exact two-place Decimal;
 - null: must match null; missing, non-finite or ambiguous values fail;
 - every claim: exactly one complete Calculation run and one allowlisted metric location.
 

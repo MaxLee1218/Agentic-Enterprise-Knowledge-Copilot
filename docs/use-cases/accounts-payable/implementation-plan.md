@@ -160,6 +160,13 @@ the AP manifest remains disabled and no Stage 7 report Artifact or Stage 8 workf
 
 ## Stage 7 — AP report model and JSON/PDF
 
+**Status:** `COMPLETE — 2026-08-23`
+
+**Acceptance artifact:** [Stage 7 AP report model and renderers report](stage-7-ap-report-model-and-renderers.md)
+
+**Execution boundary:** the AP report adapter is explicitly composable from governed Stage 3–6
+inputs; the AP manifest remains disabled and the shared workflow does not invoke it before Stage 8.
+
 - **Goal:** produce management-ready AP Artifacts from verified structured inputs.
 - **Scope/work:** AP model/composer/presentation, JSON/PDF renderer profile, aggregate/detail modes,
   atomic Artifact store and parser.

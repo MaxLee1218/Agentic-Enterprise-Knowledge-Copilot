@@ -29,6 +29,8 @@ from copilot.services.workflows.ports import ArtifactSizeLimitError
 _EXTENSION_BY_TYPE = {
     ArtifactType.QUALITY_ANALYSIS_REPORT_JSON: ".json",
     ArtifactType.QUALITY_ANALYSIS_REPORT_PDF: ".pdf",
+    ArtifactType.ACCOUNTS_PAYABLE_REPORT_JSON: ".json",
+    ArtifactType.ACCOUNTS_PAYABLE_REPORT_PDF: ".pdf",
 }
 
 

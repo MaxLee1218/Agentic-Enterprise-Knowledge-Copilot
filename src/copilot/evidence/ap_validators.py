@@ -1022,7 +1022,7 @@ _METRIC_POLICY: dict[str, tuple[str, int]] = {
     "material_early_payment_count": ("count", 0),
     "days_late": ("day_count", 0),
     "days_early": ("day_count", 0),
-    "average_days_late": ("days", 4),
+    "average_days_late": ("days", 2),
     "overpayment_count": ("count", 0),
     "overpayment_amount": ("money", 4),
     "overpayment_amount_by_currency": ("money", 4),

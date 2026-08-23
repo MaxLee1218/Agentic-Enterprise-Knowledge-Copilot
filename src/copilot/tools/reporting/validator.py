@@ -131,11 +131,19 @@ class ReportValidator:
 
 
 def report_mapping_from_bytes(content: bytes, artifact_type: ArtifactType) -> JsonMapping:
-    """Return the structured report model carried by either frozen Artifact format."""
-    if artifact_type is ArtifactType.QUALITY_ANALYSIS_REPORT_JSON:
+    """Return the structured report model carried by any governed report Artifact."""
+    if artifact_type in {
+        ArtifactType.QUALITY_ANALYSIS_REPORT_JSON,
+        ArtifactType.ACCOUNTS_PAYABLE_REPORT_JSON,
+    }:
         raw = json.loads(content.decode("utf-8"))
-    else:
+    elif artifact_type in {
+        ArtifactType.QUALITY_ANALYSIS_REPORT_PDF,
+        ArtifactType.ACCOUNTS_PAYABLE_REPORT_PDF,
+    }:
         raw = extract_pdf_report_model(content)
+    else:  # pragma: no cover - ArtifactType is closed, retained for fail-closed expansion.
+        raise ValueError("artifact type has no governed report parser")
     if not isinstance(raw, dict):
         raise ValueError("report model root must be an object")
     return cast(JsonMapping, raw)
