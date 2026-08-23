@@ -148,3 +148,15 @@ def test_compose_source_contains_no_host_specific_absolute_path_or_fixture_defau
     assert "/Users/" not in source
     assert "stage17-rag-contract:validation" not in source
     assert "${ENTERPRISE_RAG_IMAGE:-enterprise-rag-engine:local}" in source
+
+
+def test_copilot_image_contains_controlled_ap_policy_bundle_without_enabling_execution() -> None:
+    dockerfile = (PROJECT_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    manifest = (PROJECT_ROOT / "data/policies/accounts_payable/v1/corpus-manifest.json").read_text(
+        encoding="utf-8"
+    )
+
+    assert "COPY data/policies ./data/policies" in dockerfile
+    assert "AP_POLICY_BUNDLE_DIR=/app/data/policies/accounts_payable/v1" in dockerfile
+    assert "POLICY_SNAPSHOT_DIR=/app/data/policy-snapshots" in dockerfile
+    assert '"policy_profile": "accounts_payable_policy.v1"' in manifest

@@ -45,6 +45,11 @@ def test_settings_load_defaults_and_normalize_paths(
     assert settings.max_total_execution_seconds == 300
     assert settings.graph_recursion_limit == 100
     assert settings.checkpoint_database_path.is_absolute()
+    assert (
+        settings.ap_policy_bundle_dir
+        == (PROJECT_ROOT / "data/policies/accounts_payable/v1").resolve()
+    )
+    assert settings.policy_snapshot_dir == (PROJECT_ROOT / "data/policy-snapshots").resolve()
     assert settings.artifact_path == (PROJECT_ROOT / "build/test-artifacts").resolve()
     assert settings.artifact_path.is_absolute()
 

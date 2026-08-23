@@ -1,0 +1,117 @@
+{
+  "approved_at": "2026-01-01T00:00:00Z",
+  "approved_by": "demo-policy-rule-owner",
+  "effective_from": "2026-01-01",
+  "effective_to": "2026-12-31",
+  "manifest_checksum": "sha256:3095ebb099a2db12dffbc699cf1f65bb7d8e324d025eb701af4bf825d6adab33",
+  "policy_profile": "accounts_payable_policy.v1",
+  "rule_set_id": "accounts-payable-v1",
+  "rule_set_version": "ap_rules.2026.1",
+  "rules": [
+    {
+      "binding": {
+        "chunk_id": "procurement-po-required",
+        "document_checksum": "sha256:b19df438bb7778c1065a6c14f6f1a3f237059fa061562b70df401206548daccb",
+        "document_id": "procurement-and-purchase-order-policy",
+        "document_version": "2026.1",
+        "excerpt_checksum": "sha256:3592314e562df0e9ad681708f1ae3ed13c33eff71970e9704e0db65140616da3",
+        "page": 1
+      },
+      "effective_from": "2026-01-01",
+      "effective_to": "2026-12-31",
+      "invoice_types": ["STANDARD"],
+      "kind": "PO_REQUIRED_AMOUNT",
+      "legal_entity_ids": [],
+      "minimum_amounts": [
+        {"amount": "7000.0000", "currency": "CNY"},
+        {"amount": "1000.0000", "currency": "USD"}
+      ],
+      "rule_id": "AP-PO-REQUIRED-2026-1",
+      "rule_version": "1.0.0"
+    },
+    {
+      "allowed_variance_amounts": [
+        {"amount": "500.0000", "currency": "CNY"},
+        {"amount": "50.0000", "currency": "USD"}
+      ],
+      "allowed_variance_rate": "0.05000000",
+      "binding": {
+        "chunk_id": "procurement-po-variance",
+        "document_checksum": "sha256:b19df438bb7778c1065a6c14f6f1a3f237059fa061562b70df401206548daccb",
+        "document_id": "procurement-and-purchase-order-policy",
+        "document_version": "2026.1",
+        "excerpt_checksum": "sha256:ff7be305a7faffe1c88ccedd0ec97d5af0b84ca541cb8b2515080208acce7274",
+        "page": 2
+      },
+      "effective_from": "2026-01-01",
+      "effective_to": "2026-12-31",
+      "invoice_types": ["STANDARD"],
+      "kind": "PO_VARIANCE_TOLERANCE",
+      "legal_entity_ids": [],
+      "rule_id": "AP-PO-VARIANCE-2026-1",
+      "rule_version": "1.0.0"
+    },
+    {
+      "binding": {
+        "chunk_id": "invoice-materiality",
+        "document_checksum": "sha256:ef8dd8314d94926f29e20ffdc22faab7a355526dbc22ac5640d8b65b050da306",
+        "document_id": "invoice-approval-and-delegation-policy",
+        "document_version": "2026.1",
+        "excerpt_checksum": "sha256:257b5e93995c8b3addab535bb05ec08ac5421c0318c349a83ef3125aa0870810",
+        "page": 2
+      },
+      "effective_from": "2026-01-01",
+      "effective_to": "2026-12-31",
+      "invoice_types": ["STANDARD"],
+      "kind": "MATERIALITY_AMOUNT",
+      "legal_entity_ids": [],
+      "rule_id": "AP-MATERIALITY-2026-1",
+      "rule_version": "1.0.0",
+      "thresholds": [
+        {"amount": "5000.0000", "currency": "CNY"},
+        {"amount": "1000.0000", "currency": "USD"}
+      ]
+    },
+    {
+      "binding": {
+        "chunk_id": "payment-timing",
+        "document_checksum": "sha256:145f6d6d6c2b45756b672b3cad0845980fde39744af5e84318fcbd47ae83181b",
+        "document_id": "payment-terms-policy",
+        "document_version": "2026.1",
+        "excerpt_checksum": "sha256:990213c4a9bee15aebfb6c9fcb782d432e87dfa2a7af7fa8d67cf51e8e78add5",
+        "page": 1
+      },
+      "days": 10,
+      "effective_from": "2026-01-01",
+      "effective_to": "2026-12-31",
+      "invoice_types": ["STANDARD"],
+      "kind": "MATERIAL_EARLY_DAYS",
+      "legal_entity_ids": [],
+      "rule_id": "AP-MATERIAL-EARLY-2026-1",
+      "rule_version": "1.0.0"
+    },
+    {
+      "binding": {
+        "chunk_id": "payment-overpayment",
+        "document_checksum": "sha256:145f6d6d6c2b45756b672b3cad0845980fde39744af5e84318fcbd47ae83181b",
+        "document_id": "payment-terms-policy",
+        "document_version": "2026.1",
+        "excerpt_checksum": "sha256:0d464230bb1cf26ea66242681480405274e1b6b3fac4702393ac34513bc1cf98",
+        "page": 2
+      },
+      "effective_from": "2026-01-01",
+      "effective_to": "2026-12-31",
+      "invoice_types": ["STANDARD"],
+      "kind": "OVERPAYMENT_TOLERANCE",
+      "legal_entity_ids": [],
+      "rule_id": "AP-OVERPAYMENT-2026-1",
+      "rule_version": "1.0.0",
+      "tolerances": [
+        {"amount": "50.0000", "currency": "CNY"},
+        {"amount": "5.0000", "currency": "USD"}
+      ]
+    }
+  ],
+  "schema_version": "ap-policy-rule-manifest.v1",
+  "tenant_id": "TENANT-DEMO"
+}

@@ -124,6 +124,18 @@ statement timeout, and is included in `/health/ready` dependency checks. Develop
 uses a separate seeded `business-postgres` service and SELECT-only runtime role; it does not reuse
 the Copilot persistence PostgreSQL database.
 
+The controlled Accounts Payable Stage 3 policy fixture can be validated without publishing, or
+published as a tenant-bound immutable local RAG payload snapshot:
+
+```bash
+python scripts/publish_ap_policy.py --validate-only --tenant-id TENANT-DEMO
+python scripts/publish_ap_policy.py --tenant-id TENANT-DEMO --index-revision local-1
+```
+
+Publication verifies exact document, chunk, effective-date and rule-manifest checksums before
+atomically advancing the tenant's snapshot pointer. This policy foundation does not enable the AP
+query, analytics, reporting, or task-execution profiles.
+
 ## Frontend
 
 The implemented React + TypeScript console provides tenant/owner-scoped task history, governed

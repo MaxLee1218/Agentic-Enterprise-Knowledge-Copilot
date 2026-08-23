@@ -13,6 +13,12 @@ from copilot.tools.knowledge.errors import (
     RAGTimeoutError,
     RAGUnavailableError,
 )
+from copilot.tools.knowledge.policy_bundle import (
+    APPolicyBundleError,
+    LoadedAPPolicyBundle,
+    load_ap_policy_bundle,
+    publish_ap_policy_bundle,
+)
 from copilot.tools.knowledge.schemas import (
     KnowledgeContext,
     KnowledgeHealthResult,
@@ -23,12 +29,14 @@ from copilot.tools.knowledge.tool import KnowledgeTool
 
 __all__ = [
     "HttpKnowledgeClient",
+    "APPolicyBundleError",
     "KnowledgeClient",
     "KnowledgeContext",
     "KnowledgeHealthResult",
     "KnowledgeResult",
     "KnowledgeSource",
     "KnowledgeTool",
+    "LoadedAPPolicyBundle",
     "MockKnowledgeClient",
     "RAGAuthenticationError",
     "RAGError",
@@ -36,4 +44,6 @@ __all__ = [
     "RAGInvalidResponseError",
     "RAGTimeoutError",
     "RAGUnavailableError",
+    "load_ap_policy_bundle",
+    "publish_ap_policy_bundle",
 ]

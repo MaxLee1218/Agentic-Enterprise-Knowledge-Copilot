@@ -68,6 +68,12 @@ implemented before its own acceptance criteria and all prior stages pass.
 
 ## Stage 3 — Controlled AP policy corpus and rule manifest
 
+**Status:** `COMPLETE — 2026-08-23`
+
+**Acceptance artifact:** [Stage 3 policy corpus and rules report](stage-3-policy-corpus-and-rules.md)
+
+**Execution boundary:** policy publication validates; AP query, analytics and task execution remain disabled.
+
 - **Goal:** make policy text and executable rules version-consistent.
 - **Scope/work:** author sanitized four-document fixture set; rule manifest/schema/loader; atomic
   ingestion and binding consistency command; snapshot metadata.

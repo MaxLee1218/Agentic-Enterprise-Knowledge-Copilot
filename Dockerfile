@@ -15,7 +15,9 @@ FROM python:3.11-slim-bookworm AS runtime
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    AP_POLICY_BUNDLE_DIR=/app/data/policies/accounts_payable/v1 \
+    POLICY_SNAPSHOT_DIR=/app/data/policy-snapshots
 
 RUN groupadd --gid 10001 appuser \
     && useradd --uid 10001 --gid appuser --create-home --shell /usr/sbin/nologin appuser
@@ -29,8 +31,9 @@ COPY alembic.ini ./alembic.ini
 COPY migrations ./migrations
 COPY business_alembic.ini ./business_alembic.ini
 COPY business_migrations ./business_migrations
+COPY data/policies ./data/policies
 COPY scripts/seed_demo_database.py ./scripts/seed_demo_database.py
-RUN mkdir -p /app/data/artifacts \
+RUN mkdir -p /app/data/artifacts /app/data/policy-snapshots \
     && chown -R appuser:appuser /app
 
 USER appuser

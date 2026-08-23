@@ -1,6 +1,6 @@
 # Accounts Payable Invoice Compliance & Exception Investigation v1
 
-**Design status:** `FROZEN — STAGE 2 DATA FOUNDATION COMPLETE — UC2 NOT EXECUTABLE`
+**Design status:** `FROZEN — STAGE 3 POLICY FOUNDATION COMPLETE — UC2 NOT EXECUTABLE`
 **Task type:** `accounts_payable_analysis.v1`  
 **Design version:** `1.0`  
 **Date:** 2026-08-22
@@ -53,6 +53,7 @@ invoice, PO, payment, supplier, bank account, or external system.
 | [Stage 0 design review](design-review.md) | Architecture, security, data-owner lens and gate results |
 | [Stage 1 compatibility matrix](stage-1-compatibility-matrix.md) | Implemented domain contracts, profiles, upcasting and execution-denial boundary |
 | [Stage 2 schema and seed report](stage-2-schema-and-seed.md) | Implemented business migrations, AP fact schema, deterministic fixture profile and verification |
+| [Stage 3 policy corpus and rules report](stage-3-policy-corpus-and-rules.md) | Implemented controlled documents, exact rule bindings, immutable snapshot publication and verification |
 
 ## Terminology authority
 
@@ -83,7 +84,8 @@ ACCOUNTS PAYABLE USE CASE: DESIGN FROZEN
 STAGE 0: COMPLETE
 STAGE 1: COMPLETE — CONTRACTS AND MANIFEST ROUTING ONLY
 STAGE 2: COMPLETE — ISOLATED BUSINESS SCHEMA AND DETERMINISTIC SEED ONLY
-STAGE 3: NOT STARTED
+STAGE 3: COMPLETE — CONTROLLED POLICY CORPUS AND RULE MANIFEST ONLY
+STAGE 4: NOT STARTED
 UC2 TOOL EXECUTION: DISABLED
 PRODUCTION READINESS: NOT CLAIMED
 ```

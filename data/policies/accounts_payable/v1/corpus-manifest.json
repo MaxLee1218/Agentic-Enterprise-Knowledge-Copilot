@@ -1,0 +1,115 @@
+{
+  "approved_collection_id": "accounts-payable-policy-v1",
+  "collection_id": "accounts-payable-policy-v1",
+  "corpus_checksum": "sha256:b8856e48c279338525f847f34df227d3e669fa492cdeb3ad2bebdb1a067ba02f",
+  "documents": [
+    {
+      "approved_at": "2026-01-01T00:00:00Z",
+      "approved_by": "demo-finance-policy-owner",
+      "checksum": "sha256:3fa54ee01258949a7baea6df47353849f3cf20fe1775d240c495d3a2fd1936e6",
+      "chunks": [
+        {
+          "chunk_id": "ap-policy-invoice-processing",
+          "excerpt_checksum": "sha256:5f29c09002606197298815753320b392c6b442b68633d1368b55a7b9bc70264f",
+          "page": 1
+        },
+        {
+          "chunk_id": "ap-policy-scope-and-escalation",
+          "excerpt_checksum": "sha256:50e9e1ad9927e8e463633ceeccac0c26eb1f36fff5ec91241c17e7e5eb1237fc",
+          "page": 2
+        }
+      ],
+      "classification": "CONFIDENTIAL",
+      "content_path": "documents/accounts-payable-policy.md",
+      "document_id": "accounts-payable-policy",
+      "document_version": "2026.1",
+      "effective_from": "2026-01-01",
+      "effective_to": "2026-12-31",
+      "family": "ACCOUNTS_PAYABLE_POLICY",
+      "language": "en-US",
+      "owner": "demo-finance-policy-owner"
+    },
+    {
+      "approved_at": "2026-01-01T00:00:00Z",
+      "approved_by": "demo-procurement-policy-owner",
+      "checksum": "sha256:b19df438bb7778c1065a6c14f6f1a3f237059fa061562b70df401206548daccb",
+      "chunks": [
+        {
+          "chunk_id": "procurement-po-required",
+          "excerpt_checksum": "sha256:3592314e562df0e9ad681708f1ae3ed13c33eff71970e9704e0db65140616da3",
+          "page": 1
+        },
+        {
+          "chunk_id": "procurement-po-variance",
+          "excerpt_checksum": "sha256:ff7be305a7faffe1c88ccedd0ec97d5af0b84ca541cb8b2515080208acce7274",
+          "page": 2
+        }
+      ],
+      "classification": "CONFIDENTIAL",
+      "content_path": "documents/procurement-and-purchase-order-policy.md",
+      "document_id": "procurement-and-purchase-order-policy",
+      "document_version": "2026.1",
+      "effective_from": "2026-01-01",
+      "effective_to": "2026-12-31",
+      "family": "PROCUREMENT_AND_PURCHASE_ORDER_POLICY",
+      "language": "en-US",
+      "owner": "demo-procurement-policy-owner"
+    },
+    {
+      "approved_at": "2026-01-01T00:00:00Z",
+      "approved_by": "demo-finance-controls-owner",
+      "checksum": "sha256:ef8dd8314d94926f29e20ffdc22faab7a355526dbc22ac5640d8b65b050da306",
+      "chunks": [
+        {
+          "chunk_id": "invoice-no-po-exception",
+          "excerpt_checksum": "sha256:fe6af9a49aa844d619eae2aae30a3641c54f910214736810d877cf535abb9c66",
+          "page": 1
+        },
+        {
+          "chunk_id": "invoice-materiality",
+          "excerpt_checksum": "sha256:257b5e93995c8b3addab535bb05ec08ac5421c0318c349a83ef3125aa0870810",
+          "page": 2
+        }
+      ],
+      "classification": "CONFIDENTIAL",
+      "content_path": "documents/invoice-approval-and-delegation-policy.md",
+      "document_id": "invoice-approval-and-delegation-policy",
+      "document_version": "2026.1",
+      "effective_from": "2026-01-01",
+      "effective_to": "2026-12-31",
+      "family": "INVOICE_APPROVAL_AND_DELEGATION_POLICY",
+      "language": "en-US",
+      "owner": "demo-finance-controls-owner"
+    },
+    {
+      "approved_at": "2026-01-01T00:00:00Z",
+      "approved_by": "demo-treasury-policy-owner",
+      "checksum": "sha256:145f6d6d6c2b45756b672b3cad0845980fde39744af5e84318fcbd47ae83181b",
+      "chunks": [
+        {
+          "chunk_id": "payment-timing",
+          "excerpt_checksum": "sha256:990213c4a9bee15aebfb6c9fcb782d432e87dfa2a7af7fa8d67cf51e8e78add5",
+          "page": 1
+        },
+        {
+          "chunk_id": "payment-overpayment",
+          "excerpt_checksum": "sha256:0d464230bb1cf26ea66242681480405274e1b6b3fac4702393ac34513bc1cf98",
+          "page": 2
+        }
+      ],
+      "classification": "CONFIDENTIAL",
+      "content_path": "documents/payment-terms-policy.md",
+      "document_id": "payment-terms-policy",
+      "document_version": "2026.1",
+      "effective_from": "2026-01-01",
+      "effective_to": "2026-12-31",
+      "family": "PAYMENT_TERMS_POLICY",
+      "language": "en-US",
+      "owner": "demo-treasury-policy-owner"
+    }
+  ],
+  "namespace": "tenant/TENANT-DEMO/finance/accounts-payable/v1",
+  "policy_profile": "accounts_payable_policy.v1",
+  "schema_version": "ap-policy-corpus-manifest.v1",
+  "tenant_id": "TENANT-DEMO"
+}

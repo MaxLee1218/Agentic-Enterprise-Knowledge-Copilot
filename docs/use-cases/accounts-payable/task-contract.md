@@ -28,7 +28,7 @@ class APTaskUnderstandingOutput(BaseModel):
 
     goal: str = Field(min_length=1, max_length=2_000)
     task_type: Literal["accounts_payable_analysis.v1"]
-    time_range: DateRangeCandidate                # start/end may be None
+    time_range: DateRangeCandidate  # start/end may be None
     requested_supplier_ids: tuple[str, ...] = ()
     requested_legal_entity_ids: tuple[str, ...] = ()
     requested_business_unit_ids: tuple[str, ...] = ()
@@ -60,9 +60,11 @@ class DateRange(ImmutableContractModel):
     start_date: date
     end_date: date
 
+
 class MoneyThreshold(ImmutableContractModel):
     currency: str = Field(pattern=r"^[A-Z]{3}$")
     amount: Decimal = Field(ge=Decimal("0"), max_digits=20, decimal_places=4)
+
 
 class APExceptionType(StrEnum):
     EXACT_DUPLICATE_INVOICE = "EXACT_DUPLICATE_INVOICE"
@@ -72,25 +74,27 @@ class APExceptionType(StrEnum):
     MATERIAL_EARLY_PAYMENT = "MATERIAL_EARLY_PAYMENT"
     OVERPAYMENT = "OVERPAYMENT"
 
+
 class AccountsPayableConstraintsV1(ImmutableContractModel):
-    time_range: DateRange                              # required
-    supplier_ids: tuple[str, ...] = ()                 # resolved authorized scope
-    legal_entity_ids: tuple[str, ...]                  # required, 1..10
-    business_unit_ids: tuple[str, ...] = ()            # resolved authorized scope
-    currency_scope: tuple[str, ...] = ()               # empty = all authorized, partitioned
+    time_range: DateRange  # required
+    supplier_ids: tuple[str, ...] = ()  # resolved authorized scope
+    legal_entity_ids: tuple[str, ...]  # required, 1..10
+    business_unit_ids: tuple[str, ...] = ()  # resolved authorized scope
+    currency_scope: tuple[str, ...] = ()  # empty = all authorized, partitioned
     exception_types: tuple[APExceptionType, ...] = ALL_AP_V1_EXCEPTIONS
     requested_materiality: tuple[MoneyThreshold, ...] = ()
     effective_materiality: tuple[MoneyThreshold, ...]  # trusted rule merge, required
     include_policy_comparison: bool = True
-    tenant_id: str                                     # trusted, required
-    data_scope: tuple[str, ...]                        # trusted, required
-    policy_rule_set_id: str                            # trusted, required
-    policy_rule_set_version: str                       # trusted, required
-    policy_manifest_checksum: str                      # trusted, required
-    snapshot_at: datetime                              # trusted, required
-    deadline_at: datetime                              # trusted, required
+    tenant_id: str  # trusted, required
+    data_scope: tuple[str, ...]  # trusted, required
+    policy_rule_set_id: str  # trusted, required
+    policy_rule_set_version: str  # trusted, required
+    policy_manifest_checksum: str  # trusted, required
+    snapshot_at: datetime  # trusted, required
+    deadline_at: datetime  # trusted, required
     read_only: Literal[True] = True
     max_cost: Decimal | None = Field(default=None, ge=0)
+
 
 class TaskContract(ImmutableContractModel):
     contract_schema_version: Literal["task-contract.v1", "task-contract.v2"]

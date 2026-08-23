@@ -72,6 +72,7 @@ db.sqlite3-journal
 /data/database/*.db-journal
 /data/database/*.db-shm
 /data/database/*.db-wal
+/data/policy-snapshots/
 
 # Flask stuff:
 instance/

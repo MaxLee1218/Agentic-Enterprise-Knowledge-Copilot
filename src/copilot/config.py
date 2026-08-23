@@ -58,6 +58,8 @@ class Settings(BaseSettings):
         max_length=256,
     )
     rag_trace_header: str = Field(default="X-Trace-ID", min_length=1, max_length=128)
+    ap_policy_bundle_dir: Path = Path("data/policies/accounts_payable/v1")
+    policy_snapshot_dir: Path = Path("data/policy-snapshots")
     knowledge_provider: Literal["mock", "http"] = "mock"
     llm_provider: Literal["mock", "deepseek"] = "mock"
     llm_model: str = Field(default="deepseek-chat", min_length=1, max_length=128)
@@ -191,7 +193,13 @@ class Settings(BaseSettings):
             raise ValueError("RAG_BASE_URL must not use a loopback address in production")
         return self
 
-    @field_validator("artifact_dir", "checkpoint_database_path", mode="after")
+    @field_validator(
+        "ap_policy_bundle_dir",
+        "artifact_dir",
+        "checkpoint_database_path",
+        "policy_snapshot_dir",
+        mode="after",
+    )
     @classmethod
     def normalize_project_path(cls, value: Path) -> Path:
         """Resolve configured local persistence paths against the repository root."""

@@ -1,0 +1,17 @@
+{
+  "binding_count": 5,
+  "chunk_count": 8,
+  "collection_id": "accounts-payable-policy-v1",
+  "corpus_checksum": "sha256:b8856e48c279338525f847f34df227d3e669fa492cdeb3ad2bebdb1a067ba02f",
+  "document_count": 4,
+  "manifest_checksum": "sha256:3095ebb099a2db12dffbc699cf1f65bb7d8e324d025eb701af4bf825d6adab33",
+  "namespace": "tenant/TENANT-DEMO/finance/accounts-payable/v1",
+  "payload_checksum": "sha256:2c1045677d53c7528246bae144430c7797f7752fc1270cc95f2ef42d1d5d9fbf",
+  "policy_profile": "accounts_payable_policy.v1",
+  "published": false,
+  "rule_set_version": "ap_rules.2026.1",
+  "schema_version": "ap-policy-validation-report.v1",
+  "tenant_id": "TENANT-DEMO",
+  "validated": true,
+  "validated_at": "2026-08-23T00:00:00Z"
+}

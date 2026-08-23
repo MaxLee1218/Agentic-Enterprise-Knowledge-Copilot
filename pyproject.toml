@@ -36,7 +36,7 @@ dev = [
     "mypy>=1.14,<2.0",
     "pytest>=8.3,<9.0",
     "pytest-cov>=6.0,<7.0",
-    "ruff>=0.9,<1.0",
+    "ruff==0.16.4",
     "types-jsonschema>=4.23,<5.0",
     "types-reportlab>=4.4,<5.0",
 ]
@@ -44,6 +44,7 @@ dev = [
 [project.scripts]
 enterprise-copilot = "copilot.bootstrap.cli:app"
 enterprise-copilot-rag-warmup = "copilot.bootstrap.knowledge_cli:warmup_entrypoint"
+enterprise-copilot-publish-ap-policy = "copilot.bootstrap.policy_cli:policy_publish_entrypoint"
 
 [tool.setuptools.packages.find]
 where = ["src"]
