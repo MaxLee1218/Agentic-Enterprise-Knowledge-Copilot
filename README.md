@@ -43,9 +43,9 @@ and [ADR-006](docs/adr/ADR-006-deployment-persistence-boundary.md). Stage 18 adm
 in [ADR-007](docs/adr/ADR-007-stage-18-mcp-readiness-boundary.md); the pinned protocol decision is
 [ADR-008](docs/adr/ADR-008-mcp-protocol-2025-11-25.md).
 
-## Supported vertical slice
+## Supported executable vertical slice
 
-The only implemented business scenario is **Supplier Quality Deviation Investigation / Supplier
+The only executable business scenario is **Supplier Quality Deviation Investigation / Supplier
 Quality Analysis v1.1**. A request must include an explicit year and quarter. The frozen four
 tools are `knowledge_search`, `database_query`, `analysis_engine`, and `report_generator`.
 Artifacts are PDF or JSON.
@@ -63,10 +63,12 @@ Current boundaries are intentional:
   implemented; MCP does not broaden the frozen four-tool business scope.
 
 The second vertical slice, **Accounts Payable Invoice Compliance & Exception Investigation v1**,
-is architecture- and contract-designed but not implemented. Its accepted design is indexed at
-[`docs/use-cases/accounts-payable/README.md`](docs/use-cases/accounts-payable/README.md). It does
-not broaden the currently implemented Supplier Quality runtime until its staged implementation
-and regression gates are complete.
+has completed its frozen design plus Stages 1–5 foundations: contracts and routing, isolated demo
+data, controlled policy, five governed read models, and seven deterministic analytics operations.
+Its status and acceptance records are indexed at
+[`docs/use-cases/accounts-payable/README.md`](docs/use-cases/accounts-payable/README.md). The AP
+domain manifest remains disabled; Evidence/verifier, report, workflow and end-to-end stages are
+not implemented, so this work does not broaden the executable Supplier Quality runtime.
 
 ## Requirements and installation
 

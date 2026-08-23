@@ -114,6 +114,13 @@ later workflow integration; the AP domain manifest remains disabled and analytic
 
 ## Stage 5 — Deterministic AP analytics
 
+**Status:** `COMPLETE — 2026-08-23`
+
+**Acceptance artifact:** [Stage 5 deterministic AP analytics report](stage-5-deterministic-ap-analytics.md)
+
+**Execution boundary:** the AP analytics adapter is explicitly composable over governed Stage 3
+and 4 Evidence; the AP domain manifest remains disabled and no report or verifier profile exists.
+
 - **Goal:** implement all frozen detection, aggregation and metric operations.
 - **Scope/work:** operation union, normalization v1, cross-record consistency, Decimal/date rules,
   batching, materiality and lineage.
