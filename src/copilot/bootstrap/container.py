@@ -52,6 +52,7 @@ from copilot.security import OutputGuard, PromptInjectionDetector, SensitiveData
 from copilot.services.approval_service import ApprovalGateService, ApprovalService
 from copilot.services.artifact_service import ArtifactService
 from copilot.services.domains import builtin_domain_manifest_registry
+from copilot.services.domains.manifests import SUPPLIER_QUALITY_MANIFEST
 from copilot.services.health import ReadinessService
 from copilot.services.llm import LLMGenerationOptions, LLMProvider
 from copilot.services.task_intake import IntakeLimits
@@ -399,6 +400,8 @@ def build_workflow_container(
             allowed_tables=schema_registry.list_tables(),
             allowed_columns=schema_registry.list_columns(),
             sensitive_fields=schema_registry.list_sensitive_columns(),
+            allowed_query_templates=schema_registry.list_templates(),
+            verifier_profile_id=SUPPLIER_QUALITY_MANIFEST.verifier_profile,
             clock=clock,
         ),
         evidence_reader=evidence,

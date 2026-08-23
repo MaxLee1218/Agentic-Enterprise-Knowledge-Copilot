@@ -117,6 +117,7 @@ from copilot.contracts.tools import (
     ToolTimeout,
 )
 from copilot.contracts.verification import (
+    APReportClaimV1,
     CandidateResult,
     CitationClaim,
     ClaimType,
@@ -128,10 +129,12 @@ from copilot.contracts.verification import (
     VerificationResult,
     VerificationSeverity,
     VerificationStatus,
+    VerifierProfileV1,
 )
 
 __all__ = [
     "ACCOUNTS_PAYABLE_CONTRACT_PROFILES",
+    "APReportClaimV1",
     "APExceptionType",
     "APPolicyDocumentFamily",
     "APPolicyRuleBindingV1",
@@ -248,4 +251,5 @@ __all__ = [
     "VerificationResult",
     "VerificationSeverity",
     "VerificationStatus",
+    "VerifierProfileV1",
 ]

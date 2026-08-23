@@ -1,16 +1,16 @@
 # Accounts Payable Invoice Compliance & Exception Investigation v1
 
-**Design status:** `FROZEN — STAGE 5 DETERMINISTIC ANALYTICS COMPLETE — UC2 NOT EXECUTABLE`
+**Design status:** `FROZEN — STAGE 6 VERIFIER PROFILE COMPLETE — UC2 NOT EXECUTABLE`
 **Task type:** `accounts_payable_analysis.v1`  
 **Design version:** `1.0`  
 **Date:** 2026-08-22
 
 This directory is the frozen implementation authority for Use Case 2. It does not alter the
 frozen Supplier Quality Analysis v1.1 baseline in `docs/design/`.
-Stages 1 through 5 implement the AP contracts/routing, isolated synthetic data, controlled policy,
-read-only query and deterministic analytics foundations. The Stage 4 and 5 adapters are explicitly
-composable at their governed boundaries, but AP workflow execution remains disabled until the
-later Evidence/verifier, reporting and workflow stages pass their gates.
+Stages 1 through 6 implement the AP contracts/routing, isolated synthetic data, controlled policy,
+read-only query, deterministic analytics and independent verification foundations. The Stage 4–6
+adapters are explicitly composable at their governed boundaries, but AP workflow execution remains
+disabled until the later reporting and workflow stages pass their gates.
 
 ## Business outcome
 
@@ -58,6 +58,7 @@ invoice, PO, payment, supplier, bank account, or external system.
 | [Stage 3 policy corpus and rules report](stage-3-policy-corpus-and-rules.md) | Implemented controlled documents, exact rule bindings, immutable snapshot publication and verification |
 | [Stage 4 AP database query templates report](stage-4-ap-database-query-templates.md) | Implemented five allowlisted AP read models, exact scope controls and Database Evidence |
 | [Stage 5 deterministic AP analytics report](stage-5-deterministic-ap-analytics.md) | Implemented seven strict operations, Decimal/date calculations, lineage validation and Calculation Evidence batching |
+| [Stage 6 AP Evidence and verifier profiles report](stage-6-ap-evidence-and-verifier-profiles.md) | Implemented structured claim mapping, AP metadata/policy/consistency/numeric rules and domain Safety allowlists |
 
 ## Terminology authority
 
@@ -91,7 +92,7 @@ STAGE 2: COMPLETE — ISOLATED BUSINESS SCHEMA AND DETERMINISTIC SEED ONLY
 STAGE 3: COMPLETE — CONTROLLED POLICY CORPUS AND RULE MANIFEST ONLY
 STAGE 4: COMPLETE — FIVE GOVERNED READ MODELS; WORKFLOW STILL DISABLED
 STAGE 5: COMPLETE — SEVEN DETERMINISTIC OPERATIONS; WORKFLOW STILL DISABLED
-STAGE 6: NOT STARTED — AP VERIFIER PROFILE ABSENT
+STAGE 6: COMPLETE — AP EVIDENCE AND VERIFIER PROFILE; WORKFLOW STILL DISABLED
 STAGE 7: NOT STARTED — AP REPORT PROFILE ABSENT
 UC2 TOOL EXECUTION: DISABLED
 PRODUCTION READINESS: NOT CLAIMED

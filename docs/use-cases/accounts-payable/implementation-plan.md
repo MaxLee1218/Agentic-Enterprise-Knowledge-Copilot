@@ -137,6 +137,13 @@ and 4 Evidence; the AP domain manifest remains disabled and no report or verifie
 
 ## Stage 6 — AP Evidence and verifier profiles
 
+**Status:** `COMPLETE — 2026-08-23`
+
+**Acceptance artifact:** [Stage 6 AP Evidence and verifier profiles report](stage-6-ap-evidence-and-verifier-profiles.md)
+
+**Execution boundary:** the verifier profile is composable and selected by its exact manifest ID;
+the AP manifest remains disabled and no Stage 7 report Artifact or Stage 8 workflow path is enabled.
+
 - **Goal:** enforce claim, numeric, policy and relationship correctness.
 - **Scope/work:** AP report-to-claim adapter; AP metadata, policy-binding and consistency verifier
   rules; per-domain Safety allowlists; money/currency baselines.

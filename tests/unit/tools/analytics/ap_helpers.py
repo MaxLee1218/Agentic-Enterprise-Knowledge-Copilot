@@ -234,6 +234,13 @@ def add_policy_evidence(
                             "page": binding.page,
                             "document_checksum": binding.document_checksum,
                             "excerpt_checksum": binding.excerpt_checksum,
+                            "collection_id": "accounts-payable-policy-v1",
+                            "index_snapshot_id": "ap-policy-2026-1",
+                            "effective_from": "2026-01-01",
+                            "effective_to": "2026-12-31",
+                            "classification": "CONFIDENTIAL",
+                            "retrieval_score": 1.0,
+                            "retrieval_trace_id": "RAG-AP-POLICY-001",
                             "policy_rule_set_version": bundle.rule_manifest.rule_set_version,
                             "bound_rule_ids": [rule.rule_id],
                         }
@@ -274,16 +281,18 @@ def add_database_dataset(
     evidence_id = f"E-AP-DB-{template.value}"
     dataset_checksum = checksum(rows)
     scope: JsonMapping = {
-        "tenant_scope_hash": checksum("TENANT-DEMO"),
-        "time_scope_hash": checksum({"start_date": "2026-04-01", "end_date": "2026-06-30"}),
+        "tenant_scope_hash": checksum("TENANT-DEMO", prefixed=True),
+        "time_scope_hash": checksum(
+            {"start_date": "2026-04-01", "end_date": "2026-06-30"}, prefixed=True
+        ),
         "supplier_count": 0,
-        "supplier_scope_hash": checksum([]),
+        "supplier_scope_hash": checksum([], prefixed=True),
         "legal_entity_count": 1,
-        "legal_entity_scope_hash": checksum(["LE-US-01"]),
+        "legal_entity_scope_hash": checksum(["LE-US-01"], prefixed=True),
         "business_unit_count": 0,
-        "business_unit_scope_hash": checksum([]),
+        "business_unit_scope_hash": checksum([], prefixed=True),
         "currency_count": 0,
-        "currency_scope_hash": checksum([]),
+        "currency_scope_hash": checksum([], prefixed=True),
     }
     ledger.add(
         EvidenceItem(
@@ -296,6 +305,7 @@ def add_database_dataset(
                 reference=JsonObject(
                     {
                         "query_template_id": template.value,
+                        "query_id": checksum({"template": template.value, "scope": scope}),
                         "template_version": template.value,
                         "schema_version": "accounts_payable.v1",
                         "schema_snapshot": {
@@ -304,7 +314,7 @@ def add_database_dataset(
                         },
                         "query_fingerprint": checksum({"template": template.value, "scope": scope}),
                         "table_names": ["invoices"],
-                        "column_names": ["invoice_record_key"],
+                        "column_names": ["invoices.id"],
                         "statement_type": "SELECT",
                         "read_only": True,
                         "snapshot_at": "2026-10-01T00:00:00+00:00",

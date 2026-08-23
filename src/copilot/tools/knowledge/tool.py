@@ -301,7 +301,21 @@ def _to_frozen_matches(
             "chunk_id": chunk_id,
             "index_snapshot_id": index_snapshot_id,
             "rag_trace_id": result.rag_trace_id,
+            "retrieval_trace_id": result.rag_trace_id,
+            "retrieval_score": score,
+            "classification": classification,
+            "excerpt_checksum": checksum,
         }
+        for key in (
+            "collection_id",
+            "effective_from",
+            "effective_to",
+            "policy_rule_set_version",
+            "bound_rule_ids",
+            "document_checksum",
+        ):
+            if key in metadata:
+                reference[key] = metadata[key]
         raw_page = metadata.get("page")
         if isinstance(raw_page, int) and not isinstance(raw_page, bool):
             reference["page"] = raw_page

@@ -72,6 +72,30 @@ _FIELD_POLICIES = (
         RedactionStrategy.LAST_FOUR,
     ),
     SensitiveFieldPolicy(
+        "internal_account_number",
+        ("internal_account_number", "internal_account_id"),
+        DataClassification.RESTRICTED,
+        RedactionStrategy.LAST_FOUR,
+    ),
+    SensitiveFieldPolicy(
+        "swift",
+        ("swift", "swift_code", "bic"),
+        DataClassification.RESTRICTED,
+        RedactionStrategy.REMOVE,
+    ),
+    SensitiveFieldPolicy(
+        "tax_id",
+        ("tax_id", "tax_identifier", "tax_number"),
+        DataClassification.RESTRICTED,
+        RedactionStrategy.REMOVE,
+    ),
+    SensitiveFieldPolicy(
+        "payment_reference",
+        ("payment_reference", "full_payment_reference"),
+        DataClassification.RESTRICTED,
+        RedactionStrategy.REMOVE,
+    ),
+    SensitiveFieldPolicy(
         "salary",
         ("salary", "base_salary", "compensation"),
         DataClassification.RESTRICTED,
@@ -133,6 +157,10 @@ class SensitiveDataRegistry:
     def sensitive_names(self) -> tuple[str, ...]:
         """Return canonical field names for documentation and deterministic tests."""
         return tuple(policy.canonical_name for policy in _FIELD_POLICIES)
+
+    def sensitive_aliases(self) -> tuple[str, ...]:
+        """Return every normalized alias used by deterministic output verification."""
+        return tuple(sorted(self._aliases))
 
     def sanitize_json(self, value: JsonValue, *, target: str) -> SensitiveSanitizationResult:
         """Recursively sanitize structured values for report, Evidence, API, or logs."""

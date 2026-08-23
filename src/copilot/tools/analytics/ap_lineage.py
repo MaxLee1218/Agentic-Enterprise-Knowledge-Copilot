@@ -128,6 +128,7 @@ class APAnalyticsLineageValidator:
                 context,
                 manifest_checksum=manifest.manifest_checksum,
                 document_evidence_ids=document_ids,
+                rule_versions={rule.rule_id: rule.rule_version for rule in manifest.rules},
             )
         parent_ids = tuple(
             dict.fromkeys(
@@ -254,6 +255,7 @@ class APAnalyticsLineageValidator:
         *,
         manifest_checksum: str,
         document_evidence_ids: tuple[str, ...],
+        rule_versions: dict[str, str],
     ) -> tuple[APAnalyticsResultV1, ...]:
         grouped: dict[tuple[str, str], list[EvidenceItem]] = {}
         for evidence_id in evidence_ids:
@@ -298,7 +300,8 @@ class APAnalyticsLineageValidator:
                 "AP aggregation cannot combine multiple runs of one operation"
             )
         results = tuple(
-            self._assemble_calculation_run(items) for _identity, items in sorted(grouped.items())
+            self._assemble_calculation_run(items, rule_versions=rule_versions)
+            for _identity, items in sorted(grouped.items())
         )
         if not results:
             raise APAnalyticsInputError("AP aggregation requires calculation results")
@@ -337,7 +340,9 @@ class APAnalyticsLineageValidator:
             )
 
     @staticmethod
-    def _assemble_calculation_run(items: list[EvidenceItem]) -> APAnalyticsResultV1:
+    def _assemble_calculation_run(
+        items: list[EvidenceItem], *, rule_versions: dict[str, str]
+    ) -> APAnalyticsResultV1:
         ordered = sorted(
             items,
             key=lambda item: cast(int, item.source_reference.reference.root.get("batch_index", -1)),
@@ -417,6 +422,11 @@ class APAnalyticsLineageValidator:
             "precision": result.precision,
             "rounding_mode": result.rounding_mode,
             "rule_ids": list(result.rule_ids),
+            "rule_versions": {
+                rule_id: rule_versions[rule_id]
+                for rule_id in sorted(result.rule_ids)
+                if rule_id in rule_versions
+            },
             "rule_set_version": result.rule_set_version,
             "manifest_checksum": result.manifest_checksum,
             "input_checksums": list(result.input_checksums),

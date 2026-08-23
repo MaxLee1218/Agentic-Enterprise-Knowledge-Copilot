@@ -30,6 +30,7 @@ from copilot.contracts import (
     VerificationResult,
     VerificationSeverity,
     VerificationStatus,
+    VerifierProfileV1,
 )
 from copilot.contracts.base import JsonMapping
 from copilot.contracts.validators import utc_now
@@ -509,7 +510,13 @@ class SafetyVerifier:
 
     name = "SafetyVerifier"
 
-    def __init__(self, *, clock: Callable[[], datetime] = utc_now) -> None:
+    def __init__(
+        self,
+        *,
+        profile: VerifierProfileV1 | None = None,
+        clock: Callable[[], datetime] = utc_now,
+    ) -> None:
+        self._profile = profile
         self._clock = clock
 
     def verify(
@@ -525,6 +532,20 @@ class SafetyVerifier:
         task_id = task_contract.task_id
         tenant_id = task_contract.constraints.tenant_id
         issues: list[VerificationIssue] = []
+        if self._profile is not None and (
+            task_contract.task_type is not self._profile.task_type
+            or (
+                verification_context.verifier_profile_id is not None
+                and verification_context.verifier_profile_id != self._profile.profile_id
+            )
+        ):
+            issues.append(
+                _safety_issue(
+                    "VERIFIER_PROFILE_MISMATCH",
+                    "Verification profile does not match the governed task domain",
+                    task_id,
+                )
+            )
         definitions = {
             definition.tool_name: definition for definition in verification_context.registered_tools
         }
@@ -684,10 +705,27 @@ class SafetyVerifier:
                             )
                         )
 
-        allowed_tables = set(verification_context.allowed_tables)
-        allowed_columns = set(verification_context.allowed_columns)
-        sensitive_fields = set(verification_context.sensitive_fields) | set(
-            SensitiveDataRegistry().sensitive_names()
+        allowed_tables = set(
+            self._profile.allowed_tables
+            if self._profile is not None
+            else verification_context.allowed_tables
+        )
+        allowed_columns = set(
+            self._profile.allowed_columns
+            if self._profile is not None
+            else verification_context.allowed_columns
+        )
+        allowed_templates = set(
+            self._profile.allowed_query_templates
+            if self._profile is not None
+            else verification_context.allowed_query_templates
+        )
+        registry = SensitiveDataRegistry()
+        sensitive_fields = (
+            set(verification_context.sensitive_fields)
+            | set(self._profile.sensitive_fields if self._profile is not None else ())
+            | set(registry.sensitive_names())
+            | set(registry.sensitive_aliases())
         )
         sensitive_names = sensitive_fields | {
             field.rsplit(".", 1)[-1] for field in sensitive_fields
@@ -729,6 +767,17 @@ class SafetyVerifier:
                     _safety_issue(
                         "DATABASE_QUERY_ID_MISSING",
                         "Database evidence has no stable query fingerprint",
+                        task_id,
+                        item.step_id,
+                        (item.evidence_id,),
+                    )
+                )
+            template_id = reference.get("query_template_id")
+            if allowed_templates and template_id not in allowed_templates:
+                issues.append(
+                    _safety_issue(
+                        "DATABASE_TEMPLATE_NOT_ALLOWED",
+                        "Database evidence references a query template outside the domain profile",
                         task_id,
                         item.step_id,
                         (item.evidence_id,),
@@ -793,7 +842,10 @@ class SafetyVerifier:
                             {"column_name": column},
                         )
                     )
-                if column in sensitive_fields:
+                if (
+                    column in sensitive_fields
+                    or registry.policy_for(column.rsplit(".", 1)[-1]) is not None
+                ):
                     issues.append(
                         _safety_issue(
                             "DATABASE_SENSITIVE_FIELD",
@@ -807,7 +859,9 @@ class SafetyVerifier:
         leaked = sorted(
             field
             for field in candidate_result.output_fields
-            if field in sensitive_fields or field.rsplit(".", 1)[-1] in sensitive_names
+            if field in sensitive_fields
+            or field.rsplit(".", 1)[-1] in sensitive_names
+            or registry.policy_for(field.rsplit(".", 1)[-1]) is not None
         )
         for field in leaked:
             issues.append(

@@ -10,6 +10,7 @@ from pydantic import Field, JsonValue, field_validator, model_validator
 
 from copilot.contracts.approvals import ApprovalRequest
 from copilot.contracts.base import ImmutableContractModel, JsonObject
+from copilot.contracts.enums import TaskType
 from copilot.contracts.tools import ToolCall, ToolDefinition, ToolResult
 from copilot.contracts.validators import utc_now, validate_identifier, validate_utc_datetime
 
@@ -120,6 +121,8 @@ class CitationClaim(ImmutableContractModel):
     claim_type: ClaimType
     evidence_ids: tuple[str, ...]
     step_id: str | None = None
+    policy_governed: bool = False
+    rule_ids: tuple[str, ...] = ()
 
     _validate_claim_id = field_validator("claim_id")(validate_identifier)
 
@@ -135,6 +138,7 @@ class NumericClaim(ImmutableContractModel):
     evidence_ids: tuple[str, ...]
     dimensions: JsonObject = Field(default_factory=lambda: JsonObject({}))
     ranking: tuple[str, ...] = ()
+    operation_name: str | None = None
 
     _validate_ids = field_validator("claim_id", "metric_name", "unit")(validate_identifier)
 
@@ -145,6 +149,86 @@ class NumericClaim(ImmutableContractModel):
         if isinstance(value, Decimal) and not value.is_finite():
             raise ValueError("numeric claim value must be finite")
         return value
+
+
+class APReportClaimV1(ImmutableContractModel):
+    """One explicit AP report claim mapped without natural-language parsing."""
+
+    claim_id: str
+    claim_type: ClaimType
+    evidence_ids: tuple[str, ...]
+    policy_governed: bool = False
+    rule_ids: tuple[str, ...] = ()
+    metric_name: str | None = None
+    value: Decimal | int | None = None
+    unit: str | None = None
+    precision: int | None = Field(default=None, ge=0, le=12)
+    operation_name: str | None = None
+    dimensions: JsonObject = Field(default_factory=lambda: JsonObject({}))
+
+    _validate_claim_id = field_validator("claim_id")(validate_identifier)
+
+    @field_validator("evidence_ids", "rule_ids")
+    @classmethod
+    def validate_unique_references(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        """Reject blank or duplicate AP Evidence/rule references."""
+        normalized = tuple(validate_identifier(value) for value in values)
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("AP report Evidence and rule references must be unique")
+        return normalized
+
+    @field_validator("value")
+    @classmethod
+    def reject_non_finite_value(cls, value: Decimal | int | None) -> Decimal | int | None:
+        """Reject non-finite material AP values at the report boundary."""
+        if isinstance(value, Decimal) and not value.is_finite():
+            raise ValueError("AP report claim value must be finite")
+        return value
+
+    @model_validator(mode="after")
+    def validate_claim_shape(self) -> APReportClaimV1:
+        """Require deterministic baseline coordinates for every numeric AP claim."""
+        if self.policy_governed and not self.rule_ids:
+            raise ValueError("policy-governed AP claims require rule_ids")
+        numeric_fields = (
+            self.metric_name,
+            self.unit,
+            self.precision,
+            self.operation_name,
+        )
+        if self.claim_type is ClaimType.NUMERIC:
+            if any(value is None for value in numeric_fields):
+                raise ValueError("numeric AP claims require metric, unit, precision, and operation")
+            if not self.policy_governed:
+                raise ValueError("numeric AP claims must retain their controlled rule binding")
+        elif any(value is not None for value in numeric_fields) or self.value is not None:
+            raise ValueError("non-numeric AP claims cannot define a numeric baseline")
+        return self
+
+
+class VerifierProfileV1(ImmutableContractModel):
+    """Versioned domain allowlists and verifier-selection identity."""
+
+    profile_id: str = Field(min_length=1)
+    task_type: TaskType
+    allowed_tables: tuple[str, ...]
+    allowed_columns: tuple[str, ...]
+    allowed_query_templates: tuple[str, ...]
+    sensitive_fields: tuple[str, ...]
+
+    @model_validator(mode="after")
+    def validate_unique_sorted_allowlists(self) -> VerifierProfileV1:
+        """Keep code-owned verification profiles canonical and unambiguous."""
+        for name in (
+            "allowed_tables",
+            "allowed_columns",
+            "allowed_query_templates",
+            "sensitive_fields",
+        ):
+            values = getattr(self, name)
+            if tuple(sorted(set(values))) != values:
+                raise ValueError(f"{name} must be unique and sorted")
+        return self
 
 
 class CandidateResult(ImmutableContractModel):
@@ -163,11 +247,13 @@ class VerificationContext(ImmutableContractModel):
     """Serializable policy, approval, schema, and execution context."""
 
     trace_id: str | None = None
+    verifier_profile_id: str | None = None
     registered_tools: tuple[ToolDefinition, ...]
     tool_calls: tuple[ToolCall, ...] = ()
     tool_results: tuple[ToolResult, ...]
     approvals: tuple[ApprovalRequest, ...] = ()
     allowed_tables: tuple[str, ...] = ()
     allowed_columns: tuple[str, ...] = ()
+    allowed_query_templates: tuple[str, ...] = ()
     sensitive_fields: tuple[str, ...] = ()
     readonly_task: bool = True

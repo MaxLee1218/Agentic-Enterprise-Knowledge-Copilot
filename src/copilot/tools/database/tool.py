@@ -523,6 +523,7 @@ def _database_evidence(
     if schema_version == ACCOUNTS_PAYABLE_SCHEMA_VERSION:
         source_reference: JsonMapping = {
             "database_name": database_name,
+            "query_id": query_fingerprint,
             "query_template_id": template_id,
             "template_version": template_id,
             "query_fingerprint": query_fingerprint,

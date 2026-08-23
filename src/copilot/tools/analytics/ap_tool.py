@@ -129,6 +129,11 @@ class AccountsPayableAnalyticsTool:
             result,
             parent_evidence_ids=validated.parent_evidence_ids,
             task_id=context.call.task_id,
+            rule_versions={
+                rule.rule_id: rule.rule_version
+                for rule in request.rule_snapshot.rule_manifest.rules
+                if rule.rule_id in result.rule_ids
+            },
         )
         output = JsonObject(cast(JsonMapping, result.model_dump(mode="json")))
         LOGGER.info(
@@ -169,6 +174,7 @@ def _calculation_evidence(
     *,
     parent_evidence_ids: tuple[str, ...],
     task_id: str,
+    rule_versions: dict[str, str],
 ) -> tuple[EvidenceDraft, ...]:
     items: list[JsonMapping] = []
     items.extend(
@@ -214,6 +220,7 @@ def _calculation_evidence(
             "precision": result.precision,
             "rounding_mode": result.rounding_mode,
             "rule_ids": list(result.rule_ids),
+            "rule_versions": dict(sorted(rule_versions.items())),
             "rule_set_version": result.rule_set_version,
             "manifest_checksum": result.manifest_checksum,
             "input_checksums": list(result.input_checksums),

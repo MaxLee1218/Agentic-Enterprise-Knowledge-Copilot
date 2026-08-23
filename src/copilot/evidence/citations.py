@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 
-from pydantic import JsonValue
+from pydantic import JsonValue, TypeAdapter
 
 from copilot.contracts import (
+    APReportClaimV1,
     CandidateResult,
     CitationClaim,
     ClaimType,
@@ -16,9 +17,12 @@ from copilot.contracts import (
     JsonObject,
     NumericClaim,
     TaskContract,
+    TaskType,
 )
 from copilot.contracts.base import JsonMapping
 from copilot.tools.analytics.precision import DECIMAL_PLACES
+
+_AP_REPORT_CLAIMS = TypeAdapter(tuple[APReportClaimV1, ...])
 
 
 def candidate_from_json_report(
@@ -55,7 +59,6 @@ def candidate_from_json_report(
         for section in task_contract.expected_output.required_sections
         if section in report
     )
-
     claims: list[CitationClaim] = []
     if "quality_policy_findings" in report:
         claims.append(
@@ -119,6 +122,97 @@ def candidate_from_json_report(
     )
 
 
+def candidate_from_ap_report(
+    *,
+    task_contract: TaskContract,
+    report_step_id: str,
+    report: JsonMapping,
+    evidence: tuple[EvidenceItem, ...],
+) -> CandidateResult:
+    """Map the frozen AP report claim envelope without parsing narrative text."""
+    if task_contract.task_type is not TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1:
+        raise ValueError("AP report claims require the Accounts Payable task profile")
+    raw_evidence = report.get("evidence")
+    if not isinstance(raw_evidence, dict):
+        raise ValueError("AP report evidence section is missing")
+    raw_claims = raw_evidence.get("claims")
+    if not isinstance(raw_claims, list):
+        raise ValueError("AP report evidence claims are missing")
+    report_claims = _AP_REPORT_CLAIMS.validate_python(raw_claims)
+    claim_ids = tuple(claim.claim_id for claim in report_claims)
+    if len(set(claim_ids)) != len(claim_ids):
+        raise ValueError("AP report claim identifiers must be unique")
+
+    available_ids = {item.evidence_id for item in evidence}
+    cited_ids = tuple(
+        dict.fromkeys(
+            evidence_id
+            for claim in report_claims
+            for evidence_id in claim.evidence_ids
+            if evidence_id in available_ids
+        )
+    )
+    data_overview = report.get("data_overview")
+    overview = data_overview if isinstance(data_overview, dict) else {}
+    empty_result = overview.get("empty_result") is True
+    deliverables = tuple(
+        DeliverableRecord(
+            deliverable_id=section,
+            producing_step_id=report_step_id,
+            content=report[section],
+            evidence_ids=cited_ids,
+            empty_result=empty_result and section in {"data_overview", "exception_summary"},
+        )
+        for section in task_contract.expected_output.required_sections
+        if section in report
+    )
+    claims = tuple(
+        CitationClaim(
+            claim_id=claim.claim_id,
+            claim_type=claim.claim_type,
+            evidence_ids=claim.evidence_ids,
+            step_id=report_step_id,
+            policy_governed=claim.policy_governed,
+            rule_ids=claim.rule_ids,
+        )
+        for claim in report_claims
+    )
+    numeric_claims: list[NumericClaim] = []
+    for claim in report_claims:
+        if claim.claim_type is not ClaimType.NUMERIC:
+            continue
+        value = claim.value
+        unit = claim.unit or "invalid"
+        precision = claim.precision if claim.precision is not None else 0
+        if unit == "percent":
+            value = (
+                None
+                if value is None
+                else (Decimal(value) / Decimal(100)).quantize(Decimal("0.00000001"))
+            )
+            unit = "ratio"
+            precision = 8
+        numeric_claims.append(
+            NumericClaim(
+                claim_id=claim.claim_id,
+                metric_name=claim.metric_name or "invalid",
+                value=value,
+                unit=unit,
+                precision=precision,
+                evidence_ids=claim.evidence_ids,
+                dimensions=claim.dimensions,
+                operation_name=claim.operation_name,
+            )
+        )
+    return CandidateResult(
+        task_id=task_contract.task_id,
+        deliverables=deliverables,
+        claims=claims,
+        numeric_claims=tuple(numeric_claims),
+        output_fields=tuple(sorted(_field_names(report))),
+    )
+
+
 def _cited_ids(report: JsonMapping) -> tuple[str, ...]:
     references = report.get("evidence_references")
     if not isinstance(references, list):
@@ -158,4 +252,4 @@ def _field_names(value: JsonValue, prefix: str = "") -> set[str]:
     return fields
 
 
-__all__ = ["candidate_from_json_report"]
+__all__ = ["candidate_from_ap_report", "candidate_from_json_report"]

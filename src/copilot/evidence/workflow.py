@@ -21,7 +21,13 @@ from copilot.contracts import (
     VerificationStatus,
 )
 from copilot.contracts.validators import utc_now
-from copilot.evidence.citations import candidate_from_json_report
+from copilot.evidence.citations import candidate_from_ap_report, candidate_from_json_report
+from copilot.evidence.profiles import (
+    ACCOUNTS_PAYABLE_VERIFIER_PROFILE_ID,
+    SUPPLIER_QUALITY_VERIFIER_PROFILE_ID,
+    composite_verifier_for_profile,
+    verifier_profile,
+)
 from copilot.evidence.validators import CompositeVerifier, EvidenceLedgerView
 from copilot.services.workflows.models import WorkflowExecutionContext
 from copilot.services.workflows.ports import ArtifactStore
@@ -39,6 +45,8 @@ class WorkflowVerifier:
         allowed_tables: tuple[str, ...],
         allowed_columns: tuple[str, ...],
         sensitive_fields: tuple[str, ...],
+        allowed_query_templates: tuple[str, ...] = (),
+        verifier_profile_id: str = SUPPLIER_QUALITY_VERIFIER_PROFILE_ID,
         composite: CompositeVerifier | None = None,
         clock: Callable[[], datetime] = utc_now,
     ) -> None:
@@ -47,14 +55,19 @@ class WorkflowVerifier:
         self._allowed_tables = allowed_tables
         self._allowed_columns = allowed_columns
         self._sensitive_fields = sensitive_fields
+        self._allowed_query_templates = allowed_query_templates
+        self._verifier_profile = verifier_profile(verifier_profile_id)
         self._clock = clock
-        self._composite = composite or CompositeVerifier(clock=clock)
+        self._composite = composite or composite_verifier_for_profile(
+            verifier_profile_id, clock=clock
+        )
 
     def verify(self, context: WorkflowExecutionContext) -> VerificationResult:
         """Return all safe verification issues instead of failing on the first issue."""
         artifact_issues, candidate = self._artifact_candidate(context)
         verification_context = VerificationContext(
             trace_id=context.task_id,
+            verifier_profile_id=self._verifier_profile.profile_id,
             registered_tools=tuple(
                 # Registry ordering is supplied by the runner as a safe snapshot.
                 cast(tuple[ToolDefinition, ...], context.metadata["registered_tools"])
@@ -68,6 +81,7 @@ class WorkflowVerifier:
             approvals=context.approvals,
             allowed_tables=self._allowed_tables,
             allowed_columns=self._allowed_columns,
+            allowed_query_templates=self._allowed_query_templates,
             sensitive_fields=self._sensitive_fields,
             readonly_task=True,
         )
@@ -208,7 +222,12 @@ class WorkflowVerifier:
                 for step in context.plan.steps
                 if step.step_type is StepType.REPORT_GENERATION
             )
-            candidate = candidate_from_json_report(
+            adapter = (
+                candidate_from_ap_report
+                if self._verifier_profile.profile_id == ACCOUNTS_PAYABLE_VERIFIER_PROFILE_ID
+                else candidate_from_json_report
+            )
+            candidate = adapter(
                 task_contract=context.contract,
                 report_step_id=report_step_id,
                 report=raw,

@@ -63,12 +63,13 @@ Current boundaries are intentional:
   implemented; MCP does not broaden the frozen four-tool business scope.
 
 The second vertical slice, **Accounts Payable Invoice Compliance & Exception Investigation v1**,
-has completed its frozen design plus Stages 1–5 foundations: contracts and routing, isolated demo
-data, controlled policy, five governed read models, and seven deterministic analytics operations.
+has completed its frozen design plus Stages 1–6 foundations: contracts and routing, isolated demo
+data, controlled policy, five governed read models, seven deterministic analytics operations, and
+an independent AP Evidence/verifier profile.
 Its status and acceptance records are indexed at
 [`docs/use-cases/accounts-payable/README.md`](docs/use-cases/accounts-payable/README.md). The AP
-domain manifest remains disabled; Evidence/verifier, report, workflow and end-to-end stages are
-not implemented, so this work does not broaden the executable Supplier Quality runtime.
+domain manifest remains disabled; report, workflow and end-to-end stages are not implemented, so
+this work does not broaden the executable Supplier Quality runtime.
 
 ## Requirements and installation
 
