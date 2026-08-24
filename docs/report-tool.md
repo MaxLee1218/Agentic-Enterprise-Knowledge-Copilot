@@ -59,7 +59,8 @@ that sentinel as zero suppliers. Supplier order is alphanumeric, not a risk rank
 Metadata includes Artifact ID, Task ID, type, location, media type, SHA-256, byte size, generator
 version, cited Evidence IDs, and UTC creation time. If metadata persistence fails, the newly
 written file is deleted. Queries support ID lookup, Task listing, and existence checks.
-`REPORT_MAX_SIZE_BYTES` defaults to 10 MiB and is validated by `Settings`.
+`REPORT_MAX_SIZE_BYTES` defaults to 25 MiB for the shared Artifact boundary and is validated by
+`Settings`; domain report schemas may impose a tighter limit.
 
 ## Validation and Evidence
 

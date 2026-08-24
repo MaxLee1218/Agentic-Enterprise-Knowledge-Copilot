@@ -54,6 +54,24 @@ def test_settings_load_defaults_and_normalize_paths(
     assert settings.artifact_path.is_absolute()
 
 
+def test_example_governance_limits_match_runtime_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep the safe template aligned with limits shared by both domain profiles."""
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///test.db")
+    settings = get_settings()
+    template = {
+        key: value
+        for line in (PROJECT_ROOT / ".env.example").read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#") and "=" in line
+        for key, value in (line.split("=", maxsplit=1),)
+    }
+
+    assert int(template["MAX_DATABASE_ROWS"]) == settings.max_database_rows
+    assert int(template["REPORT_MAX_SIZE_BYTES"]) == settings.report_max_size_bytes
+    assert int(template["MAX_TASK_STEPS"]) == settings.max_task_steps
+
+
 def test_get_settings_returns_singleton(monkeypatch: pytest.MonkeyPatch) -> None:
     """Repeated settings access should return the same instance."""
     monkeypatch.setenv("DATABASE_URL", "sqlite:///test.db")

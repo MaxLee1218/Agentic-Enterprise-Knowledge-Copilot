@@ -331,7 +331,7 @@ API and CLI use the same Task Service and LangGraph. CLI exit codes are document
 | `ARTIFACT_DIR` | `data/artifacts` | persistent, writable, backed-up volume |
 | `LOG_LEVEL` / `LOG_FORMAT` | `INFO` / `json` | structured stdout/stderr |
 | `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `5` / `10` | size for deployment concurrency |
-| `MAX_TASK_STEPS` | `10` | may be tightened, not expanded past policy |
+| `MAX_TASK_STEPS` | `14` | supports the full AP plan; may be tightened when that profile is disabled |
 | `MCP_ENABLED` | `false` | explicit opt-in; client/server roles separately enabled |
 | `MCP_PROTOCOL_REVISION` | `2025-11-25` | pinned; upgrades require ADR and compatibility gates |
 | `MCP_JWT_ISSUER` / `MCP_JWT_AUDIENCE` | blank | required for HTTP server mode |

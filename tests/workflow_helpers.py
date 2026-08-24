@@ -13,6 +13,7 @@ from copilot.services.workflows.ports import IdentifierFactory
 from copilot.tools.mock_supplier_quality import MockBehavior
 
 FIXED_NOW = datetime(2026, 7, 22, 8, 0, tzinfo=UTC)
+TEST_MAX_TASK_STEPS = 14
 
 
 def fixed_clock() -> datetime:
@@ -35,6 +36,7 @@ def build_test_container(
 ) -> WorkflowContainer:
     """Compose the real runner/runtime with offline adapters and no real waiting."""
     settings = Settings(
+        app_env="test",
         database_url=database_url,
         artifact_dir=artifact_dir,
         checkpoint_database_path=(
@@ -42,6 +44,9 @@ def build_test_container(
         ),
         workflow_max_retries=2,
         workflow_retry_delay_seconds=0,
+        max_database_rows=50_000,
+        report_max_size_bytes=25 * 1024 * 1024,
+        max_task_steps=TEST_MAX_TASK_STEPS,
     )
     return build_workflow_container(
         settings,

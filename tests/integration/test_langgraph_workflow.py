@@ -10,7 +10,7 @@ from copilot.agent.state import AgentGraphState
 from copilot.contracts import ApprovalRequirement, TaskState, TaskStatus
 from copilot.persistence.identifiers import SequentialIdentifierFactory
 from copilot.services.workflows.models import SupplierQualityCommand
-from tests.workflow_helpers import FIXED_NOW, build_test_container
+from tests.workflow_helpers import FIXED_NOW, TEST_MAX_TASK_STEPS, build_test_container
 
 COMMAND = SupplierQualityCommand(
     supplier_id="SUP-001",
@@ -314,7 +314,7 @@ def test_max_business_step_guard_stops_before_extra_tool_call(tmp_path: Path) ->
         policy_update = container.graph_runtime.policy_check(state)
         state["domain_state"] = cast(TaskState, policy_update["domain_state"])
         state["current_step_id"] = cast(str, policy_update["current_step_id"])
-        state["executed_step_count"] = 10
+        state["executed_step_count"] = TEST_MAX_TASK_STEPS
 
         update = container.graph_runtime.execute_tool(state)
 
