@@ -1,0 +1,112 @@
+{
+  "schema_version": "accounts-payable-stage12-readiness-manifest.v1",
+  "review_id": "accounts-payable-stage12-review.2026-08-24",
+  "generated_at": "2026-08-24T07:39:07Z",
+  "use_case": "accounts_payable_analysis.v1",
+  "design_version": "1.0",
+  "base_revision": "41be9c2c395c517b0c137a467ccc4fbc5b2a700f",
+  "worktree_dirty": true,
+  "stage_status": "COMPLETE",
+  "readiness_decision": "NOT_READY",
+  "release_authorized": false,
+  "evaluation_inputs": {
+    "accounts_payable_dataset_sha256": "9e806a6c7531fd972576201cf5619850202aee20c9ba6f9b2877d6610908ad3d",
+    "accounts_payable_baseline_sha256": "48f181fd6c9b2b90ab2fb458fa502da106fdbcceb1d794a5decd88a0ab63e3bb",
+    "supplier_quality_dataset_sha256": "13ff939d7af5f665d99f3832409dd4cb0fe444e0de1cc9471b53ee52567fc3c7",
+    "supplier_quality_baseline_sha256": "5200745454268d5d7496c0ffbbd5a398017397f0a8a87629ab69c80df708fec5"
+  },
+  "verification": {
+    "python_suite": {
+      "result": "PASS",
+      "passed": 740,
+      "skipped": 9,
+      "duration_seconds": 85.41
+    },
+    "stage12_targeted_tests": {
+      "result": "PASS",
+      "passed": 29,
+      "skipped": 0
+    },
+    "static_and_governance": {
+      "result": "PASS",
+      "checks": [
+        "ruff_check",
+        "ruff_format_check",
+        "mypy_strict",
+        "documentation_governance",
+        "architecture_dependencies",
+        "git_diff_check",
+        "actionlint",
+        "production_compose_config"
+      ]
+    },
+    "frontend": {
+      "result": "PASS",
+      "unit_component_tests_passed": 31,
+      "playwright_passed": 6,
+      "playwright_skipped_live_environment": 1,
+      "checks": [
+        "openapi_client_current",
+        "typescript",
+        "eslint",
+        "prettier",
+        "production_build"
+      ]
+    },
+    "accounts_payable_evaluation": {
+      "result": "PASS",
+      "run_id": "20260824T073717.292998Z-da0d4f78",
+      "report_path": "evaluation/reports/accounts-payable-stage12/runs/20260824T073717.292998Z-da0d4f78/report.json",
+      "source_hash": "sha256:53b5e764ad624ead7d2f7685a0e0b3b4ae2988ef44b768f2468fad32969a8ec8",
+      "fixture_hash": "sha256:6c11921a3ab580a7b54464ad839b45ea56f3ea70f721ae5e9508624e09901f40",
+      "passed_cases": 25,
+      "failed_cases": 0,
+      "duration_ms": 24166,
+      "performance_rows": 50000,
+      "analytics_p95_ms": 591.7005000010249,
+      "absolute_limit_ms": 20000,
+      "baseline_regressions": []
+    },
+    "supplier_quality_evaluation": {
+      "result": "PASS",
+      "run_id": "20260824T073748.347962Z-da0d4f78",
+      "report_path": "evaluation/reports/accounts-payable-stage12/runs/20260824T073748.347962Z-da0d4f78/report.json",
+      "source_hash": "sha256:53b5e764ad624ead7d2f7685a0e0b3b4ae2988ef44b768f2468fad32969a8ec8",
+      "fixture_hash": "sha256:658fbb40562a44efbbfe4685f2c4d271ae1ec55d9c91eb0efb3cbf909705d326",
+      "passed_cases": 30,
+      "failed_cases": 0,
+      "duration_ms": 4122,
+      "baseline_regressions": []
+    },
+    "isolated_postgresql_restore": {
+      "result": "PASS",
+      "scope": "disposable local database-only rehearsal",
+      "copilot_schema_version": "20260812_0004",
+      "business_schema_version": "20260822_b002",
+      "restored_invoice_count": 27
+    }
+  },
+  "production_guards": {
+    "published_ap_policy_snapshot_required": true,
+    "embedded_demo_policy_paths_rejected_in_production": true,
+    "policy_bundle_mount_read_only": true,
+    "policy_snapshot_mount_read_only": true,
+    "api_startup_policy_publication_forbidden": true,
+    "separate_business_and_copilot_database_restore_gates_in_ci": true
+  },
+  "release_blockers": [
+    "coordinated_full_restore_rehearsal",
+    "retention_and_legal_hold_policy",
+    "production_identity_and_finance_authorization",
+    "target_tenant_policy_owner_approval",
+    "external_model_and_rag_data_governance",
+    "production_shaped_data_and_load_evidence",
+    "security_architecture_business_and_operations_signoff",
+    "approved_rpo_rto_and_failover_evidence"
+  ],
+  "limitations": [
+    "The accepted evaluations use synthetic fixtures and offline or controlled-local model boundaries.",
+    "The PostgreSQL restore evidence covers each database independently, not a coordinated production recovery point.",
+    "No organizational approval, retention period, production credential, or live-provider result was inferred or fabricated."
+  ]
+}

@@ -37,7 +37,7 @@
   "metrics": {
     "ap_analytics_latency_p95_ms": {
       "coverage": "1",
-      "direction": "lower_is_better",
+      "direction": "informational",
       "tolerance": "0",
       "value": "585.3150000039022"
     },

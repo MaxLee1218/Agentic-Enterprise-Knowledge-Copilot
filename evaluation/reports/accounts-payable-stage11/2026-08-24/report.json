@@ -1,0 +1,75 @@
+{
+  "ap_dataset_checksum": "e920b4b13403831b0c4e7150edea452736f5c278cb2ed272b98c25da66b02f91",
+  "ap_policy_manifest_checksum": "sha256:3095ebb099a2db12dffbc699cf1f65bb7d8e324d025eb701af4bf825d6adab33",
+  "browser_e2e": {
+    "artifact_checksum": "sha256:668edbd511a126aaab2a10ac83d37f2611ca5585e820c83b236bd405ba71d755",
+    "artifact_id": "A-579dea0e6c024a14ad5bd3a65dba3077",
+    "browser": "Google Chrome",
+    "passed": true,
+    "task_id": "T-2db4c2a1b2ab4c95832fbf238d97101a",
+    "trace_id": "TRACE-930c98a4280a41908761ce1f43b2f2cf"
+  },
+  "checks": [
+    "supplier_quality_json_pdf",
+    "accounts_payable_clean_json",
+    "accounts_payable_mixed_json_pdf",
+    "accounts_payable_approval_restart",
+    "postgres_select_only_and_tenant_isolation",
+    "artifact_download_checksum",
+    "restricted_finance_field_absence",
+    "configured_secret_absence",
+    "volume_preserving_restart"
+  ],
+  "code_revision": "41be9c2c395c517b0c137a467ccc4fbc5b2a700f",
+  "external_planner_path_verified": false,
+  "formal_supplier_rag": true,
+  "generated_at": "2026-08-24T03:51:58.265086Z",
+  "planner_provider": "controlled-local-mock",
+  "runtime_recovery_checks": true,
+  "schema_version": "accounts-payable-stage11-e2e-report.v1",
+  "tasks": [
+    {
+      "artifact_checksum": "sha256:69613d5ed2a39b8207e7d79165167fa5783ec50f750da64848b9a670f6222678",
+      "artifact_id": "A-63bf367308f14ed591e26c609fe9fd52",
+      "format": "JSON",
+      "task_id": "T-c0ba4ab58a314dfea792948966c7529f",
+      "trace_id": "TRACE-333a50f54901446482ec0784e2c2e34c"
+    },
+    {
+      "artifact_checksum": "sha256:31aa1ed26a211eb775af68e7efe40179d7b890dc706ab809bfa6078881aeebb2",
+      "artifact_id": "A-8b7e6bba537d4a52bf977a3165b39f0e",
+      "format": "PDF",
+      "task_id": "T-cc0f49cc574c4db08779c3a066e13acd",
+      "trace_id": "TRACE-85d398de621d4ade81d9cad1480d4e74"
+    },
+    {
+      "artifact_checksum": "sha256:d88aeb8b28e234efc99baf79dc25fb55636ae05bd938a8e62a06253985196d5d",
+      "artifact_id": "A-c3dbdf4e60cc41e38afe7bfda9e7ba01",
+      "format": "JSON",
+      "task_id": "T-ba08cb3a03bd4175970f834bb0358ad1",
+      "trace_id": "TRACE-dc3892358790406eae75ab2a28d6880b"
+    },
+    {
+      "artifact_checksum": "sha256:0ae03558cd1016321cdecfd022c63611e6361202d6ba30850331e8f0aa254979",
+      "artifact_id": "A-992d56c7bc544db0a434e670580c6928",
+      "format": "JSON",
+      "task_id": "T-160e4d5837584a35b2f9489617c4b0e5",
+      "trace_id": "TRACE-521fe91a9c7b4518a151c4f1923835d4"
+    },
+    {
+      "artifact_checksum": "sha256:41ba821d8bbc9f4755c28e51e51bd6af44c975ea66dde6f719f581e6fccc7c63",
+      "artifact_id": "A-1ca99f27656f4ec3a4bfb91ec0b28ac6",
+      "format": "PDF",
+      "task_id": "T-0979a273e3e84cf7905ca565bcabfeda",
+      "trace_id": "TRACE-97ed5904fd014be09051506856ba41b5"
+    },
+    {
+      "artifact_checksum": "sha256:2c169d757f881126dcfdafecd6cde7db859a84b4d42ccbcf36767682918a48e5",
+      "artifact_id": "A-68f675d5b84d4aa29b92c2164330e6d7",
+      "format": "JSON",
+      "task_id": "T-50d7bdbe21924b89abe59cbc6af17dab",
+      "trace_id": "TRACE-7425676aea294805bfdee19a008ae522"
+    }
+  ],
+  "worktree_dirty": true
+}

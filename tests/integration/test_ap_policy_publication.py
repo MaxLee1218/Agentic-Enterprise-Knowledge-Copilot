@@ -6,7 +6,14 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from copilot.tools.knowledge import load_ap_policy_bundle, publish_ap_policy_bundle
+import pytest
+
+from copilot.tools.knowledge import (
+    APPolicyBundleError,
+    load_ap_policy_bundle,
+    publish_ap_policy_bundle,
+    require_current_ap_policy_snapshot,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BUNDLE_ROOT = PROJECT_ROOT / "data" / "policies" / "accounts_payable" / "v1"
@@ -68,3 +75,22 @@ def test_reindex_keeps_old_snapshot_and_idempotent_republish_reuses_it(tmp_path:
     assert (tenant_root / second.snapshot_id / "snapshot.json").is_file()
     current = json.loads((tenant_root / "current.json").read_text())
     assert current["snapshot_id"] == second.snapshot_id
+
+
+def test_runtime_requires_the_exact_current_published_snapshot(tmp_path: Path) -> None:
+    bundle = load_ap_policy_bundle(BUNDLE_ROOT)
+    snapshot = publish_ap_policy_bundle(
+        bundle,
+        tmp_path,
+        index_revision="local-enterprise-v1",
+        published_at=datetime(2026, 8, 24, tzinfo=UTC),
+    )
+
+    loaded = require_current_ap_policy_snapshot(bundle, tmp_path)
+
+    assert loaded == snapshot
+    payload_path = tmp_path / bundle.corpus.tenant_id / snapshot.snapshot_id / "documents.jsonl"
+    payload_path.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(APPolicyBundleError) as captured:
+        require_current_ap_policy_snapshot(bundle, tmp_path)
+    assert captured.value.code == "POLICY_SNAPSHOT_UNAVAILABLE"

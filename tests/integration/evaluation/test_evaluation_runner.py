@@ -4,7 +4,7 @@ from pathlib import Path
 
 from copilot.contracts import TaskStatus
 from evaluation.config import ACCOUNTS_PAYABLE_DATASET, DEFAULT_DATASET, EvaluationConfig
-from evaluation.contracts import EvaluationRunResult, MetricStatus
+from evaluation.contracts import EvaluationRunResult, MetricDirection, MetricStatus
 from evaluation.dataset_loader import load_dataset
 from evaluation.runner import EvaluationRunner
 
@@ -97,6 +97,7 @@ def test_complete_accounts_payable_dataset_passes_frozen_stage10_gates(
         assert metrics[name].value == 0
     assert metrics["ap_performance_input_rows"].value == 50_000
     assert metrics["ap_analytics_latency_p95_ms"].status is MetricStatus.PASS
+    assert metrics["ap_analytics_latency_p95_ms"].direction is MetricDirection.INFORMATIONAL
     assert run.provider == "mock"
     assert run.model == "offline-accounts-payable-eval-v1"
     assert run.rule_versions == ("ap_rules.2026.1",)

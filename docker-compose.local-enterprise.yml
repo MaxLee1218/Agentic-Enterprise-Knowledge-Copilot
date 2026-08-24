@@ -12,11 +12,14 @@ x-copilot-persistence-environment: &copilot-persistence-environment
   KNOWLEDGE_PROVIDER: http
   RAG_BASE_URL: http://enterprise-rag-engine:8000
   ARTIFACT_DIR: /app/data/artifacts
+  POLICY_SNAPSHOT_DIR: /app/data/policy-snapshots
+  AP_POLICY_REQUIRE_PUBLISHED_SNAPSHOT: "true"
   CHECKPOINT_ENABLED: "true"
   IDENTITY_PROVIDER: demo
+  DEMO_IDENTITY_PROFILE: local_enterprise
   DEMO_USER_ID: ${DEMO_USER_ID:-U-LOCAL-ENTERPRISE}
   DEMO_TENANT_ID: ${DEMO_TENANT_ID:-TENANT-DEMO}
-  DEMO_APPROVAL_ROLES: ${DEMO_APPROVAL_ROLES:-["quality_analyst"]}
+  DEMO_APPROVAL_ROLES: ${DEMO_ENTERPRISE_ROLES:-["quality_analyst","quality_data_approver","finance_analyst","finance_approver"]}
   TASK_FORCE_READ_ONLY: "true"
   TASK_REQUIRE_APPROVAL_BY_DEFAULT: ${TASK_REQUIRE_APPROVAL_BY_DEFAULT:-false}
   MCP_ENABLED: "false"
@@ -147,6 +150,29 @@ services:
         condition: service_completed_successfully
     networks: [enterprise-backend]
 
+  ap-policy-publish:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    environment:
+      APP_ENV: development
+      DATABASE_URL: sqlite:////tmp/unused-ap-policy-publication.db
+      POLICY_SNAPSHOT_DIR: /app/data/policy-snapshots
+    command:
+      [
+        "enterprise-copilot-publish-ap-policy",
+        "--tenant-id",
+        "TENANT-DEMO",
+        "--output-dir",
+        "/app/data/policy-snapshots",
+        "--index-revision",
+        "local-enterprise-v1",
+      ]
+    volumes:
+      - copilot-policy-snapshots:/app/data/policy-snapshots
+    networks: [enterprise-backend]
+
   rag-generation-stub:
     build:
       context: tests/fixtures/deployment
@@ -259,12 +285,15 @@ services:
       - "8000"
     volumes:
       - copilot-artifacts:/app/data/artifacts
+      - copilot-policy-snapshots:/app/data/policy-snapshots:ro
     depends_on:
       copilot-postgres:
         condition: service_healthy
       copilot-migrate:
         condition: service_completed_successfully
       ap-business-db-seed:
+        condition: service_completed_successfully
+      ap-policy-publish:
         condition: service_completed_successfully
       enterprise-rag-engine:
         condition: service_healthy
@@ -314,6 +343,7 @@ volumes:
   copilot-postgres-data:
   business-postgres-data:
   copilot-artifacts:
+  copilot-policy-snapshots:
   enterprise-rag-data:
 
 networks:

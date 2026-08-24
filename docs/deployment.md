@@ -14,6 +14,7 @@ Client
        -> Copilot API
        -> Copilot PostgreSQL (task/state/evidence/approval/audit/artifact metadata/checkpoints)
        -> Artifact volume (report content)
+       -> Approved AP policy bundle + immutable published snapshot (read-only mounts)
        -> Enterprise RAG Engine (approved HTTP contract)
        -> Enterprise business database (read-only Database Tool only)
 ```
@@ -28,6 +29,7 @@ directly.
 - Docker Engine and Docker Compose v2, or Python 3.11 plus PostgreSQL 16.
 - An immutable frontend image built from `frontend/Dockerfile`.
 - An approved Enterprise RAG Engine endpoint or separately built image.
+- An owner-approved, tenant-bound AP policy bundle and its separately published immutable snapshot.
 - A writable, persistent Artifact path.
 - Deployment-managed secrets and backups for a non-demo environment.
 
@@ -48,6 +50,9 @@ Start from `.env.example`, but do not put production secrets in a committed `.en
 | `KNOWLEDGE_PROVIDER` | Knowledge adapter | `http` |
 | `RAG_BASE_URL` | Independent RAG endpoint | Valid, approved, non-loopback URL |
 | `RAG_TIMEOUT_SECONDS` | Per-attempt timeout | Bounded for the environment |
+| `AP_POLICY_BUNDLE_DIR` | Controlled AP document/rule input | Read-only deployment mount |
+| `POLICY_SNAPSHOT_DIR` | Published immutable AP snapshot root | Read-only deployment mount |
+| `AP_POLICY_REQUIRE_PUBLISHED_SNAPSHOT` | Fail-closed AP publication gate | Required `true` |
 | `LLM_PROVIDER`, `LLM_API_KEY` | Structured planning provider | Real provider and injected credential |
 | `ARTIFACT_DIR` | Artifact content root | Writable persistent volume |
 | `DB_POOL_SIZE` | PostgreSQL base pool | Match worker concurrency |
@@ -58,8 +63,10 @@ Start from `.env.example`, but do not put production secrets in a committed `.en
 Production validation fails fast if trusted identity/signing material is missing, debug or
 automatic schema creation is enabled, persistence is not PostgreSQL, real providers are not
 selected, the business database uses SQLite, the model credential is absent, checkpointing is
-disabled, or RAG is loopback. `DemoIdentityProvider` refuses production construction; failed
-authentication never falls back to demo authority.
+disabled, the AP published-snapshot gate is disabled, the AP paths still point at the repository's
+embedded demo locations, or RAG is loopback.
+`DemoIdentityProvider` refuses production construction; failed authentication never falls back to
+demo authority.
 
 ## Docker image build
 
@@ -90,8 +97,9 @@ Compose service `copilot-api:8000` and serves React Router deep links through `i
 credentials and Mock LLM/business-database providers and must not be promoted as a production
 manifest. `docker-compose.production.yml` is the fail-closed production expectation: it requires
 immutable Copilot and frontend images, an approved RAG image, trusted identity secret, model
-credential, PostgreSQL URL/credentials, and read-only enterprise business database URL. It
-contains no secret defaults and runs migration as a one-shot dependency before the API.
+credential, PostgreSQL URL/credentials, read-only enterprise business database URL, and explicit
+read-only paths for an approved AP policy bundle and published snapshot. It contains no secret
+defaults and runs migration as a one-shot dependency before the API.
 
 Obtain the independently packaged RAG image first:
 
@@ -99,6 +107,8 @@ Obtain the independently packaged RAG image first:
 export RAG_IMAGE=approved-registry.example/enterprise-rag-engine:VERSION
 export COPILOT_IMAGE=approved-registry.example/enterprise-copilot:VERSION
 export FRONTEND_IMAGE=approved-registry.example/enterprise-copilot-frontend:VERSION
+export AP_POLICY_BUNDLE_PATH=/approved/config/accounts-payable-policy
+export AP_POLICY_SNAPSHOT_PATH=/approved/state/accounts-payable-policy-snapshots
 docker compose config
 docker compose build
 docker compose up -d
@@ -123,6 +133,15 @@ must be the user-facing edge. Do not expose this port directly as a substitute f
 Keep `PERSISTENCE_DATABASE_URL` consistent with the composed PostgreSQL credentials, or point it
 at an approved managed PostgreSQL and remove the local database through a reviewed override. The
 enterprise business database remains an external, independently governed dependency.
+
+The two AP policy paths are mandatory bind mounts. The API mounts both read-only, loads the
+controlled bundle, and verifies that the current published snapshot has the exact tenant,
+namespace, collection, rule-set, manifest, corpus and payload checksums before accepting the AP
+profile. Production startup does not publish or repair policy content. A policy owner must run the
+publication command in a separate controlled job, retain the prior immutable generation, and then
+deploy the reviewed bundle and snapshot together. The synthetic `TENANT-DEMO` bundle shipped for
+tests is not a production policy approval, and production configuration rejects its embedded
+default bundle and snapshot paths even outside Compose.
 
 The current sibling Enterprise RAG Engine source checkout has no Dockerfile. Its owner must supply
 an approved image or separately governed image packaging. Do not improvise that packaging inside
@@ -172,18 +191,19 @@ image layer, command transcript, or committed file.
 
 ## Deployment lifecycle and startup order
 
-1. Prepare non-secret configuration.
+1. Prepare non-secret configuration and approved AP bundle/snapshot mounts.
 2. Inject database and RAG secrets through the deployment platform.
-3. Start PostgreSQL and wait for `pg_isready`.
-4. Run `python -m copilot.persistence.migrate` once as a deployment job.
-5. Verify the independent RAG with `scripts/check_rag_health.py`.
-6. Configure the upstream trusted gateway to replace spoofable inbound identity headers and sign
+3. Verify the AP policy bundle/snapshot pair in a separate publication job.
+4. Start PostgreSQL and wait for `pg_isready`.
+5. Run `python -m copilot.persistence.migrate` once as a deployment job.
+6. Verify the independent RAG with `scripts/check_rag_health.py`.
+7. Configure the upstream trusted gateway to replace spoofable inbound identity headers and sign
    the normalized identity assertion; route the browser origin to the frontend and preserve the
    signed assertion on `/api` requests.
-7. Start `copilot.bootstrap.api:app` using the same composition root as local execution.
-8. Start the frontend only after API readiness succeeds.
-9. Check API `/health/live`, `/health/ready`, and frontend `/health` through the intended routes.
-10. Run an authenticated browser smoke request with approved test data.
+8. Start `copilot.bootstrap.api:app` using the same composition root as local execution.
+9. Start the frontend only after API readiness succeeds.
+10. Check API `/health/live`, `/health/ready`, and frontend `/health` through the intended routes.
+11. Run authenticated Supplier Quality and AP browser smoke requests with approved test data.
 
 Do not have every API worker race to apply migrations.
 
@@ -201,8 +221,10 @@ strings.
 ## Volumes
 
 Compose creates `postgres-data` and `artifact-data`. PostgreSQL contains Artifact metadata only;
-the `artifact-data` volume contains report bytes. Preserve ownership for UID/GID 10001 and mount the
-Artifact directory read/write. Do not mount source code or `.env` files into a production image.
+the `artifact-data` volume contains report bytes. AP policy input and snapshots are explicit
+operator-owned bind mounts rather than API-writable volumes. Preserve ownership for UID/GID 10001
+and mount the Artifact directory read/write. Do not mount source code or `.env` files into a
+production image.
 
 ## Production configuration and secrets
 
@@ -243,10 +265,16 @@ tested restore procedure when a data-destructive change must be reversed.
 
 ## Backup considerations
 
-Use platform snapshots or `pg_dump` for PostgreSQL and regularly test `pg_restore` into an isolated
-database. Back up the Artifact volume separately and align its snapshot time with the database.
-A PostgreSQL backup does not include Artifact file content. Preserve application/config versions
-needed to interpret a backup; never commit backup files to Git.
+Use platform snapshots or `pg_dump` independently for Copilot PostgreSQL and the enterprise
+business database, and regularly test `pg_restore` into isolated databases. Back up the Artifact
+volume, AP policy bundle, published AP policy generations and the independently owned RAG state
+separately. Align the recovery point for Copilot metadata and Artifact bytes. A PostgreSQL backup
+does not include Artifact or policy files. Preserve application/config/profile versions needed to
+interpret a backup; never commit backup files to Git.
+
+The repository CI dry-runs both PostgreSQL backup/restore boundaries with synthetic data. That
+gate does not replace an environment-specific restore rehearsal, recovery-time objective,
+recovery-point objective, encryption/access review, or Artifact/policy/RAG checksum sampling.
 
 ## Known limitations
 
@@ -258,6 +286,9 @@ needed to interpret a backup; never commit backup files to Git.
 - Audit is durable but not cryptographically tamper-proof.
 - No distributed task queue or guaranteed forced cancellation of an in-flight external call.
 - No automatic cross-resource transaction for PostgreSQL, RAG, business DB, and Artifact storage.
+- Retention and legal-hold periods remain deployment-owned; the application does not yet perform
+  an automatic coordinated purge across Task, Evidence, Audit, checkpoints, Artifacts, policy and
+  RAG state.
 - MCP, Kubernetes, cloud-provider templates, and zero-downtime deployment are outside Stage 17.1.
 
 ## Reproducible and controlled builds

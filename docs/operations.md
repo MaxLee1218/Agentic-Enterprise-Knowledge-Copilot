@@ -1,8 +1,9 @@
 # Operations Runbook
 
-This runbook operates the Stage 17.1 deployment. Commands assume the repository root and Docker
-Compose unless noted otherwise. Plain `docker compose` refers to the development topology;
-production commands must pass `-f docker-compose.production.yml`.
+This runbook operates the shared Supplier Quality and Accounts Payable deployment foundation.
+Commands assume the repository root and Docker Compose unless noted otherwise. Plain
+`docker compose` refers to the development topology; production commands must pass
+`-f docker-compose.production.yml`.
 
 ## Service topology
 
@@ -14,6 +15,7 @@ production commands must pass `-f docker-compose.production.yml`.
 | `postgres` | Copilot internal state and checkpoints | `postgres-data` volume |
 | `enterprise-rag-engine` | Independent knowledge retrieval | Owned by the RAG deployment |
 | Artifact storage | Immutable report content | `artifact-data` volume |
+| AP policy mounts | Approved bundle plus immutable published snapshot | Operator-owned read-only paths |
 
 The enterprise business database is external and read-only from the Database Tool. It is not the
 Copilot persistence database.
@@ -165,6 +167,24 @@ docker compose exec copilot-api python scripts/check_rag_health.py
 RAG is independently deployed. Confirm service DNS, port, credentials, timeouts, and contract
 compatibility. Mock Knowledge tests are not a live dependency check.
 
+## Accounts Payable policy snapshot
+
+Production AP startup requires `AP_POLICY_REQUIRE_PUBLISHED_SNAPSHOT=true` and separate read-only
+mounts for the approved bundle and its published snapshot root. Publication is an owner-controlled
+deployment job, not an API startup side effect. Validate the exact tenant before activation:
+
+```bash
+enterprise-copilot-publish-ap-policy \
+  --bundle-dir /approved/config/accounts-payable-policy \
+  --output-dir /approved/state/accounts-payable-policy-snapshots \
+  --tenant-id APPROVED_TENANT \
+  --index-revision RELEASE_REVISION
+```
+
+Retain the prior immutable snapshot generation until rollback and retention review complete. If
+the bundle, current pointer, snapshot identity, document payload or rule manifest differs, keep the
+API unavailable for AP work; do not regenerate checksums or fall back to the embedded demo bundle.
+
 ## Task and approval inspection
 
 ```bash
@@ -192,8 +212,9 @@ deterministic Mock evaluation.
 
 ## PostgreSQL backup and recovery
 
-Production PostgreSQL must have an external backup strategy with retention, encryption, access
-control, and restore testing. A portable baseline is:
+Both Copilot PostgreSQL and the separately governed enterprise business database must have external
+backup strategies with retention, encryption, access control, and restore testing. A portable
+Copilot baseline is:
 
 ```bash
 pg_dump --format=custom --dbname="$PERSISTENCE_DATABASE_URL" --file=/secure/backup/copilot.dump
@@ -205,6 +226,8 @@ pg_restore --clean --if-exists --no-owner \
 
 Run commands from a secure operator environment so secrets and backups do not enter shell history,
 logs, images, or Git. Managed-database snapshots are acceptable when restore is regularly tested.
+Use the business database's approved backup identity and restore into a separate isolated database;
+the runtime Database Tool credential must remain SELECT-only and is not a backup credential.
 
 ## Artifact backup and recovery
 
@@ -212,6 +235,19 @@ Back up `ARTIFACT_DIR` or the `artifact-data` volume independently. PostgreSQL c
 metadata but not file content. For a consistent recovery point, coordinate the database and volume
 snapshots; after restore, sample-download Artifacts and verify stored checksums. Restore permissions
 for container UID/GID 10001.
+
+Back up the approved AP policy bundle and every retained immutable published generation separately.
+After restore, run the same bundle/snapshot identity verification used at API startup. RAG-owned
+indexes have their own backup authority and must not be inferred from Copilot PostgreSQL.
+
+## Retention and legal hold
+
+Before a production rollout, the data owner must approve explicit periods and deletion owners for
+Task/Contract/Plan/Result, Evidence, Approval, Audit, checkpoint, Artifact, policy-snapshot and RAG
+state. Audit and legal-hold obligations may require different periods from report content. The
+current runtime retains these records and does not provide a coordinated automatic purge, so an
+approved external procedure and a tested cross-store deletion reconciliation are release blockers,
+not defaults to invent at deployment time.
 
 ## Task recovery
 
@@ -230,6 +266,9 @@ docker system df                      # diagnostic only
 alembic current
 python evaluation/run_eval.py --mode mock --seed 42 \
   --baseline evaluation/baselines/supplier_quality_v1.json --fail-on-regression
+python evaluation/run_eval.py --dataset evaluation/datasets/accounts_payable_v1.jsonl \
+  --mode mock --seed 42 --baseline evaluation/baselines/accounts_payable_v1.json \
+  --fail-on-regression
 ```
 
 For a disposable local cleanup only, first verify the Compose project and then run

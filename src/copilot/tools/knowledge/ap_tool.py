@@ -55,10 +55,15 @@ class AccountsPayablePolicyTool:
         ),
     )
 
-    def __init__(self, bundle: LoadedAPPolicyBundle) -> None:
+    def __init__(
+        self,
+        bundle: LoadedAPPolicyBundle,
+        *,
+        index_snapshot_id: str | None = None,
+    ) -> None:
         self.bundle = bundle
         checksum = bundle.rule_manifest.manifest_checksum.removeprefix("sha256:")[:24]
-        self.index_snapshot_id = f"ap-policy-{checksum}"
+        self.index_snapshot_id = index_snapshot_id or f"ap-policy-{checksum}"
         self.call_count = 0
 
     def execute(self, arguments: JsonObject, context: ToolExecutionContext) -> ToolExecutionOutput:

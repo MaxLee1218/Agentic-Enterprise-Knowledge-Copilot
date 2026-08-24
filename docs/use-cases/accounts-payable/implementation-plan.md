@@ -254,6 +254,14 @@ claimed.
 
 ## Stage 11 — Full local enterprise E2E
 
+**Status:** `COMPLETE — 2026-08-24`
+
+**Acceptance artifact:** [Stage 11 full local enterprise E2E](stage-11-local-enterprise-e2e.md)
+
+**Release boundary:** browser-to-controlled-knowledge-to-real-PostgreSQL-to-Artifact behavior is
+accepted on an isolated local topology. External-model governance and Stage 12 release/operations
+gates remain incomplete; production readiness is not claimed.
+
 - **Goal:** prove browser-to-RAG-to-business-DB-to-Artifact behavior on the local topology.
 - **Scope/work:** additive AP business seed service, controlled AP RAG ingestion, real PostgreSQL
   business reads, persistence/checkpoint restart and frontend workflow.
@@ -268,6 +276,14 @@ claimed.
 - **Out of scope:** production ERP/SAP/MCP integrations.
 
 ## Stage 12 — Regression and production-readiness review
+
+**Status:** `COMPLETE — 2026-08-24`
+
+**Acceptance artifact:** [Stage 12 production-readiness review](stage-12-production-readiness-review.md)
+
+**Decision:** `NOT READY`. The review and repository-controlled gates are complete; deployment-
+specific retention, full restore, production data/model performance and required owner/security/
+architecture approvals remain blocking and are not invented by implementation.
 
 - **Goal:** decide readiness using evidence, not implementation claims.
 - **Scope/work:** full Python/frontend/static/build/Compose/evaluation suites; migration, backup,

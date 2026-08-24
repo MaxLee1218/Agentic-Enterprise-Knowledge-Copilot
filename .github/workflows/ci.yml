@@ -135,6 +135,15 @@ jobs:
           --baseline evaluation/baselines/supplier_quality_v1.json
           --fail-on-regression
 
+      - name: Run Accounts Payable evaluation regression gate
+        run: >-
+          python evaluation/run_eval.py
+          --dataset evaluation/datasets/accounts_payable_v1.jsonl
+          --mode mock
+          --seed 42
+          --baseline evaluation/baselines/accounts_payable_v1.json
+          --fail-on-regression
+
       - name: Upload offline Agent evaluation reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -203,7 +212,95 @@ jobs:
       - name: Run PostgreSQL integration test
         run: pytest tests/integration/test_postgres_persistence.py -v
       - name: Run PostgreSQL business migration and seed tests
-        run: pytest tests/integration/test_postgres_business_database.py -v
+        run: >-
+          pytest tests/integration/test_postgres_business_database.py -v
+          -k "not runtime_identity and not natural_language_agent"
+
+      - name: Provision the PostgreSQL SELECT-only business runtime identity
+        run: |
+          docker run --rm --network host \
+            -e PGPASSWORD=business_test_password \
+            postgres:16.4-alpine \
+            psql --host 127.0.0.1 --port 5433 --username business_test --dbname business_test \
+            --command "CREATE ROLE business_readonly LOGIN PASSWORD 'business_readonly_password'" \
+            --command "GRANT CONNECT ON DATABASE business_test TO business_readonly" \
+            --command "GRANT USAGE ON SCHEMA public TO business_readonly" \
+            --command "GRANT SELECT ON ALL TABLES IN SCHEMA public TO business_readonly" \
+            --command "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO business_readonly"
+
+      - name: Run PostgreSQL read-only identity and governed workflow tests
+        env:
+          TEST_BUSINESS_POSTGRES_READONLY_URL: >-
+            postgresql+psycopg://business_readonly:business_readonly_password@127.0.0.1:5433/business_test
+        run: >-
+          pytest tests/integration/test_postgres_business_database.py -v
+          -k "runtime_identity or natural_language_agent"
+
+      - name: Dry-run PostgreSQL backup and restore for both trust boundaries
+        run: |
+          set -euo pipefail
+          stage12_backup_dir="$RUNNER_TEMP/stage12-postgres-backups"
+          mkdir -p "$stage12_backup_dir"
+
+          docker run --rm --network host \
+            -e PGPASSWORD=copilot_test_password \
+            -v "$stage12_backup_dir:/backup" \
+            postgres:16.4-alpine \
+            pg_dump --host 127.0.0.1 --port 5432 --username copilot_test \
+            --format custom --file /backup/copilot.dump copilot_test
+          docker run --rm --network host \
+            -e PGPASSWORD=copilot_test_password \
+            postgres:16.4-alpine \
+            psql --host 127.0.0.1 --port 5432 --username copilot_test --dbname postgres \
+            --command 'DROP DATABASE IF EXISTS copilot_stage12_restore'
+          docker run --rm --network host \
+            -e PGPASSWORD=copilot_test_password \
+            postgres:16.4-alpine \
+            psql --host 127.0.0.1 --port 5432 --username copilot_test --dbname postgres \
+            --command 'CREATE DATABASE copilot_stage12_restore'
+          docker run --rm --network host \
+            -e PGPASSWORD=copilot_test_password \
+            -v "$stage12_backup_dir:/backup:ro" \
+            postgres:16.4-alpine \
+            pg_restore --host 127.0.0.1 --port 5432 --username copilot_test \
+            --no-owner --dbname copilot_stage12_restore /backup/copilot.dump
+          copilot_table_count="$(docker run --rm --network host \
+            -e PGPASSWORD=copilot_test_password \
+            postgres:16.4-alpine \
+            psql --host 127.0.0.1 --port 5432 --username copilot_test \
+            --dbname copilot_stage12_restore --tuples-only --no-align \
+            --command "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")"
+          test "$copilot_table_count" -gt 0
+
+          docker run --rm --network host \
+            -e PGPASSWORD=business_test_password \
+            -v "$stage12_backup_dir:/backup" \
+            postgres:16.4-alpine \
+            pg_dump --host 127.0.0.1 --port 5433 --username business_test \
+            --format custom --file /backup/business.dump business_test
+          docker run --rm --network host \
+            -e PGPASSWORD=business_test_password \
+            postgres:16.4-alpine \
+            psql --host 127.0.0.1 --port 5433 --username business_test --dbname postgres \
+            --command 'DROP DATABASE IF EXISTS business_stage12_restore'
+          docker run --rm --network host \
+            -e PGPASSWORD=business_test_password \
+            postgres:16.4-alpine \
+            psql --host 127.0.0.1 --port 5433 --username business_test --dbname postgres \
+            --command 'CREATE DATABASE business_stage12_restore'
+          docker run --rm --network host \
+            -e PGPASSWORD=business_test_password \
+            -v "$stage12_backup_dir:/backup:ro" \
+            postgres:16.4-alpine \
+            pg_restore --host 127.0.0.1 --port 5433 --username business_test \
+            --no-owner --dbname business_stage12_restore /backup/business.dump
+          business_invoice_count="$(docker run --rm --network host \
+            -e PGPASSWORD=business_test_password \
+            postgres:16.4-alpine \
+            psql --host 127.0.0.1 --port 5433 --username business_test \
+            --dbname business_stage12_restore --tuples-only --no-align \
+            --command 'SELECT count(*) FROM invoices')"
+          test "$business_invoice_count" -gt 0
 
   container-build:
     name: Container and Compose build gate
@@ -227,6 +324,8 @@ jobs:
           DATABASE_URL: postgresql+psycopg://readonly:ci-only-placeholder@business-db/quality
           LLM_API_KEY: ci-only-placeholder
           IDENTITY_SIGNING_SECRET: ci-only-identity-signing-secret-32-bytes
+          AP_POLICY_BUNDLE_PATH: /tmp/ci-ap-policy-bundle
+          AP_POLICY_SNAPSHOT_PATH: /tmp/ci-ap-policy-snapshots
         run: docker compose -f docker-compose.production.yml config
       - name: Validate Local Enterprise Compose topology
         env:

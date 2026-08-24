@@ -267,6 +267,59 @@ def publish_ap_policy_bundle(
     return snapshot
 
 
+def require_current_ap_policy_snapshot(
+    bundle: LoadedAPPolicyBundle,
+    output_root: Path,
+) -> APPolicySnapshotV1:
+    """Load and verify the exact immutable snapshot published for this controlled bundle."""
+    tenant_root = output_root.resolve() / bundle.corpus.tenant_id
+    try:
+        current = _read_json_object(tenant_root / "current.json")
+        if set(current) != {"schema_version", "snapshot_id", "publication_checksum"}:
+            raise ValueError("current pointer fields differ from the frozen schema")
+        if current["schema_version"] != "ap-policy-current.v1":
+            raise ValueError("current pointer schema version is invalid")
+        snapshot_id = current["snapshot_id"]
+        if not isinstance(snapshot_id, str) or not snapshot_id:
+            raise ValueError("current pointer snapshot ID is invalid")
+        snapshot_directory = (tenant_root / snapshot_id).resolve()
+        snapshot_directory.relative_to(tenant_root.resolve())
+        snapshot = _load_published_snapshot(snapshot_directory / "snapshot.json")
+        if (
+            snapshot.snapshot_id != snapshot_id
+            or current["publication_checksum"] != snapshot.publication_checksum
+        ):
+            raise ValueError("current pointer does not bind the published snapshot")
+        expected_identity = {
+            "tenant_id": bundle.corpus.tenant_id,
+            "namespace": bundle.corpus.namespace,
+            "collection_id": bundle.corpus.collection_id,
+            "policy_profile": bundle.corpus.policy_profile,
+            "rule_set_id": bundle.rule_manifest.rule_set_id,
+            "rule_set_version": bundle.rule_manifest.rule_set_version,
+            "manifest_checksum": bundle.rule_manifest.manifest_checksum,
+            "corpus_checksum": bundle.corpus.corpus_checksum,
+            "payload_checksum": bundle.payload_checksum,
+            "binding_count": len(bundle.rule_manifest.rules),
+        }
+        actual_identity = {name: getattr(snapshot, name) for name in expected_identity}
+        if actual_identity != expected_identity:
+            raise ValueError("published snapshot identity differs from the controlled bundle")
+        if (snapshot_directory / "documents.jsonl").read_bytes() != _canonical_json_lines(
+            bundle.rag_payload
+        ):
+            raise ValueError("published RAG payload differs from the controlled bundle")
+        published_rules = _read_json_object(snapshot_directory / RULE_MANIFEST_FILENAME)
+        if published_rules != bundle.rule_manifest.model_dump(mode="json"):
+            raise ValueError("published rule manifest differs from the controlled bundle")
+    except (APPolicyBundleError, OSError, ValueError) as exc:
+        raise APPolicyBundleError(
+            "POLICY_SNAPSHOT_UNAVAILABLE",
+            "The required controlled AP policy snapshot is unavailable or inconsistent",
+        ) from exc
+    return snapshot
+
+
 def _read_json_object(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -560,4 +613,5 @@ __all__ = [
     "RULE_MANIFEST_FILENAME",
     "load_ap_policy_bundle",
     "publish_ap_policy_bundle",
+    "require_current_ap_policy_snapshot",
 ]

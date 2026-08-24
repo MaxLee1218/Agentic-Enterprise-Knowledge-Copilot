@@ -1,0 +1,310 @@
+{
+  "completed_at": "2026-08-24T07:37:41.458751+00:00",
+  "config_hash": "sha256:1fad9876341f0b442eba771516a5639882ce37be095ffc1c7152132fda0d4f78",
+  "configuration": {
+    "max_workers": 1,
+    "mode": "mock",
+    "output_dir": "evaluation/reports",
+    "pricing": {
+      "currency": "USD",
+      "effective_from": "2026-08-03",
+      "input_cost_per_million_tokens": "0",
+      "model": "offline-supplier-quality-eval-v1",
+      "output_cost_per_million_tokens": "0",
+      "provider": "mock",
+      "version": "mock-pricing.v1"
+    },
+    "regression": {
+      "hard_gate_metrics": [
+        "overall_task_success_rate",
+        "final_plan_validity",
+        "citation_correctness",
+        "numeric_accuracy",
+        "safety_violation_rate",
+        "unauthorized_tool_execution_rate",
+        "unauthorized_table_access_rate",
+        "unauthorized_field_access_rate",
+        "sensitive_data_leakage_rate",
+        "secret_leakage_rate",
+        "prompt_injection_success_rate",
+        "artifact_authorization_failure_rate",
+        "missing_audit_event_rate",
+        "unsafe_error_exposure_rate",
+        "legitimate_task_false_rejection_rate"
+      ],
+      "minimum_coverage": "1",
+      "tolerances": {}
+    },
+    "seed": 42,
+    "timeout_seconds": 30,
+    "update_latest": true
+  },
+  "dataset_hash": "sha256:9e806a6c7531fd972576201cf5619850202aee20c9ba6f9b2877d6610908ad3d",
+  "dataset_id": "accounts_payable",
+  "dataset_version": "1.0.0",
+  "fixture_hash": "sha256:6c11921a3ab580a7b54464ad839b45ea56f3ea70f721ae5e9508624e09901f40",
+  "git_commit": "41be9c2c395c517b0c137a467ccc4fbc5b2a700f",
+  "git_dirty": true,
+  "known_limitations": [
+    "Synthetic offline data does not establish production ERP or model quality.",
+    "PostgreSQL topology and browser-to-service E2E remain Stage 11/12 gates."
+  ],
+  "metric_definitions": {
+    "ap_analytics_latency_p95_ms": {
+      "direction": "informational",
+      "unit": "milliseconds"
+    },
+    "ap_performance_exception_records": {
+      "direction": "lower_is_better",
+      "unit": "records"
+    },
+    "ap_performance_input_rows": {
+      "direction": "lower_is_better",
+      "unit": "rows"
+    },
+    "ap_performance_peak_memory_bytes": {
+      "direction": "informational",
+      "unit": "bytes"
+    },
+    "artifact_authorization_failure_rate": {
+      "direction": "lower_is_better",
+      "unit": "ratio"
+    },
+    "attack_block_rate": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "authorization_block_rate": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "average_replan_count": {
+      "direction": "lower_is_better",
+      "unit": "count"
+    },
+    "average_steps_per_task": {
+      "direction": "lower_is_better",
+      "unit": "steps"
+    },
+    "average_tokens_per_task": {
+      "direction": "informational",
+      "unit": "tokens"
+    },
+    "citation_correctness": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "cost_coverage": {
+      "direction": "informational",
+      "unit": "ratio"
+    },
+    "duplicate_detection_precision": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "duplicate_detection_recall": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "estimated_average_cost_per_task": {
+      "direction": "informational",
+      "unit": "USD"
+    },
+    "estimated_total_cost": {
+      "direction": "informational",
+      "unit": "USD"
+    },
+    "evidence_coverage": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "exception_amount_accuracy": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "exception_detection_precision": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "exception_detection_recall": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "exclusion_accuracy": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "false_negative_rate": {
+      "direction": "lower_is_better",
+      "unit": "ratio"
+    },
+    "false_positive_rate": {
+      "direction": "lower_is_better",
+      "unit": "ratio"
+    },
+    "final_plan_validity": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "initial_plan_validity": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "latency_average_ms": {
+      "direction": "informational",
+      "unit": "milliseconds"
+    },
+    "latency_max_ms": {
+      "direction": "informational",
+      "unit": "milliseconds"
+    },
+    "latency_min_ms": {
+      "direction": "informational",
+      "unit": "milliseconds"
+    },
+    "latency_p50_ms": {
+      "direction": "informational",
+      "unit": "milliseconds"
+    },
+    "latency_p95_ms": {
+      "direction": "informational",
+      "unit": "milliseconds"
+    },
+    "legitimate_task_false_rejection_rate": {
+      "direction": "lower_is_better",
+      "unit": "ratio"
+    },
+    "max_replan_count": {
+      "direction": "informational",
+      "unit": "count"
+    },
+    "max_steps": {
+      "direction": "informational",
+      "unit": "steps"
+    },
+    "median_steps_per_task": {
+      "direction": "informational",
+      "unit": "steps"
+    },
+    "min_steps": {
+      "direction": "informational",
+      "unit": "steps"
+    },
+    "missing_audit_event_rate": {
+      "direction": "lower_is_better",
+      "unit": "ratio"
+    },
+    "numeric_accuracy": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "overall_task_success_rate": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "payment_term_accuracy": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "plan_repair_success_rate": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "po_variance_accuracy": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "policy_binding_accuracy": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "prompt_injection_success_rate": {
+      "direction": "lower_is_better",
+      "unit": "ratio"
+    },
+    "replan_exhausted_count": {
+      "direction": "lower_is_better",
+      "unit": "count"
+    },
+    "replan_recovery_rate": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "safety_violation_rate": {
+      "direction": "lower_is_better",
+      "unit": "ratio"
+    },
+    "secret_leakage_rate": {
+      "direction": "lower_is_better",
+      "unit": "ratio"
+    },
+    "sensitive_data_leakage_rate": {
+      "direction": "lower_is_better",
+      "unit": "ratio"
+    },
+    "token_usage_coverage": {
+      "direction": "informational",
+      "unit": "ratio"
+    },
+    "tool_execution_success_rate": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "tool_selection_accuracy": {
+      "direction": "higher_is_better",
+      "unit": "ratio"
+    },
+    "total_input_tokens": {
+      "direction": "informational",
+      "unit": "tokens"
+    },
+    "total_output_tokens": {
+      "direction": "informational",
+      "unit": "tokens"
+    },
+    "total_tokens": {
+      "direction": "informational",
+      "unit": "tokens"
+    },
+    "unauthorized_field_access_rate": {
+      "direction": "lower_is_better",
+      "unit": "ratio"
+    },
+    "unauthorized_table_access_rate": {
+      "direction": "lower_is_better",
+      "unit": "ratio"
+    },
+    "unauthorized_tool_execution_rate": {
+      "direction": "lower_is_better",
+      "unit": "ratio"
+    },
+    "unsafe_error_exposure_rate": {
+      "direction": "lower_is_better",
+      "unit": "ratio"
+    }
+  },
+  "model": "offline-accounts-payable-eval-v1",
+  "profile_versions": [
+    "accounts_payable_policy.v1",
+    "accounts_payable_database.v1",
+    "accounts_payable_analytics.v1",
+    "accounts_payable_verifier.v1"
+  ],
+  "prompt_versions": [
+    "accounts_payable_understanding.v1",
+    "accounts_payable_plan.v1"
+  ],
+  "provider": "mock",
+  "report_versions": [
+    "accounts_payable_report.v1",
+    "accounts_payable_report_generator.v1"
+  ],
+  "rule_versions": [
+    "ap_rules.2026.1"
+  ],
+  "run_id": "20260824T073717.292998Z-da0d4f78",
+  "schema_version": "evaluation-run.v1",
+  "seed": 42,
+  "source_hash": "sha256:53b5e764ad624ead7d2f7685a0e0b3b4ae2988ef44b768f2468fad32969a8ec8",
+  "started_at": "2026-08-24T07:37:17.292998+00:00"
+}

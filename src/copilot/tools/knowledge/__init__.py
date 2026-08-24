@@ -22,6 +22,7 @@ from copilot.tools.knowledge.policy_bundle import (
     LoadedAPPolicyBundle,
     load_ap_policy_bundle,
     publish_ap_policy_bundle,
+    require_current_ap_policy_snapshot,
 )
 from copilot.tools.knowledge.schemas import (
     KnowledgeContext,
@@ -52,4 +53,5 @@ __all__ = [
     "RAGUnavailableError",
     "load_ap_policy_bundle",
     "publish_ap_policy_bundle",
+    "require_current_ap_policy_snapshot",
 ]

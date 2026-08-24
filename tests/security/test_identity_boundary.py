@@ -81,6 +81,39 @@ def test_development_demo_is_explicit_and_production_demo_is_rejected() -> None:
         DemoIdentityProvider(production)
 
 
+def test_local_enterprise_demo_profile_has_server_owned_multi_domain_authority() -> None:
+    provider = DemoIdentityProvider(
+        Settings(
+            app_env="development",
+            database_url="sqlite:///x",
+            demo_identity_profile="local_enterprise",
+        )
+    )
+
+    identity = provider.resolve(IdentityRequest(headers={}, source="test"))
+
+    assert tuple(item.value for item in identity.allowed_task_types) == (
+        "supplier_quality_analysis.v1",
+        "accounts_payable_analysis.v1",
+    )
+    assert identity.data_scope == (
+        "quality.v1",
+        "supplier-quality-policy-v1",
+        "accounts_payable.v1",
+        "accounts-payable-policy-v1",
+    )
+    assert identity.legal_entity_ids == ("LE-CN-01", "LE-US-01")
+    assert identity.currency_scope == ("CNY", "USD")
+    assert {"finance_analyst", "finance_approver"}.issubset(identity.roles)
+    assert {
+        "finance:ap.detail",
+        "finance:ap.artifact:download",
+        "approvals:resolve",
+    }.issubset(identity.scopes)
+    assert identity.policy_rule_set_version == "ap_rules.2026.1"
+    assert identity.policy_snapshot_at is not None
+
+
 def test_signed_identity_preserves_authority_and_rejects_missing_tampered_or_stale_input() -> None:
     provider = TrustedHeaderIdentityProvider(SECRET, clock=lambda: 1000)
     identity = provider.resolve(IdentityRequest(headers=_headers(), source="api"))

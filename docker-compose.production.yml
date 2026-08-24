@@ -11,6 +11,9 @@ x-copilot-environment: &copilot-production-environment
   DATABASE_PROVIDER: sqlalchemy
   KNOWLEDGE_PROVIDER: http
   RAG_BASE_URL: ${RAG_BASE_URL:-http://enterprise-rag-engine:8000}
+  AP_POLICY_BUNDLE_DIR: /app/config/accounts-payable-policy
+  POLICY_SNAPSHOT_DIR: /app/data/policy-snapshots
+  AP_POLICY_REQUIRE_PUBLISHED_SNAPSHOT: "true"
   ARTIFACT_DIR: /app/data/artifacts
   LLM_PROVIDER: deepseek
   LLM_API_KEY: ${LLM_API_KEY:?inject the model credential}
@@ -74,6 +77,14 @@ services:
       - "${COPILOT_PORT:-8000}:8000"
     volumes:
       - artifact-data:/app/data/artifacts
+      - type: bind
+        source: ${AP_POLICY_BUNDLE_PATH:?mount the approved tenant-bound AP policy bundle}
+        target: /app/config/accounts-payable-policy
+        read_only: true
+      - type: bind
+        source: ${AP_POLICY_SNAPSHOT_PATH:?mount the published AP policy snapshot root}
+        target: /app/data/policy-snapshots
+        read_only: true
     depends_on:
       postgres:
         condition: service_healthy

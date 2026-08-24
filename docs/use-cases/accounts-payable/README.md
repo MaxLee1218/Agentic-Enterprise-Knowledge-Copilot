@@ -1,18 +1,20 @@
 # Accounts Payable Invoice Compliance & Exception Investigation v1
 
-**Design status:** `FROZEN — STAGE 10 EVALUATION AND SECURITY GATES COMPLETE`
+**Design status:** `FROZEN — STAGE 12 REVIEW COMPLETE; PRODUCTION NOT READY`
 **Task type:** `accounts_payable_analysis.v1`  
 **Design version:** `1.0`  
 **Date:** 2026-08-24
 
 This directory is the frozen implementation authority for Use Case 2. It does not alter the
 frozen Supplier Quality Analysis v1.1 baseline in `docs/design/`.
-Stages 1 through 10 implement the AP contracts/routing, isolated synthetic data, controlled policy,
+Stages 1 through 11 implement the AP contracts/routing, isolated synthetic data, controlled policy,
 read-only query, deterministic analytics, independent verification and JSON/PDF reporting
 foundations, governed execution through the existing Task Service and shared Graph, exposure
 through the existing permission-scoped Task API and console, and an independent synthetic AP
-evaluation/security baseline. Stage 10 does not use live production data or models and does not
-establish production readiness.
+evaluation/security baseline, and a fresh-volume browser-to-controlled-knowledge-to-real-
+PostgreSQL-to-Artifact local E2E. Stage 11 uses synthetic data and does not establish production
+readiness. Stage 12 completes the evidence-based release review and records a `NOT READY` decision
+with explicit deployment, retention, recovery, performance and organizational blockers.
 
 ## Business outcome
 
@@ -65,6 +67,8 @@ invoice, PO, payment, supplier, bank account, or external system.
 | [Stage 8 understanding, planner and shared Graph](stage-8-understanding-planner-and-shared-graph.md) | Implemented trusted AP understanding, exact 14-step Plan profile, policy/approval/input wiring and shared-Graph execution |
 | [Stage 9 permission, Task API and console integration](stage-9-permission-api-and-frontend.md) | Implemented finance authorization profiles, trusted AP scope, existing Task resource integration, public enum expansion, console selector/badges/safe summary and regenerated contracts |
 | [Stage 10 AP evaluation and security gates](stage-10-evaluation-and-security-gates.md) | Implemented independent AP dataset/oracles, deterministic metrics, attack and recovery cases, 50,000-row performance gate, baseline and versioned report |
+| [Stage 11 full local enterprise E2E](stage-11-local-enterprise-e2e.md) | Accepted isolated fresh-volume dual-use-case topology, AP clean/mixed JSON/PDF, approval restart, real PostgreSQL, formal Supplier RAG and real Chrome download verification |
+| [Stage 12 production-readiness review](stage-12-production-readiness-review.md) | Final regression/operations review, fail-closed production policy inputs, CI AP baseline and explicit NOT READY blockers |
 
 ## Terminology authority
 
@@ -103,9 +107,10 @@ STAGE 7: COMPLETE — AP REPORT MODEL AND JSON/PDF PROFILE; WORKFLOW STILL DISAB
 STAGE 8: COMPLETE — INTERNAL TASK SERVICE AND SHARED GRAPH EXECUTION
 STAGE 9: COMPLETE — PERMISSION-SCOPED PUBLIC TASK API AND CONSOLE INTEGRATION
 STAGE 10: COMPLETE — INDEPENDENT SYNTHETIC EVALUATION AND SECURITY GATES
+STAGE 11: COMPLETE — FULL LOCAL ENTERPRISE E2E FOR BOTH FROZEN USE CASES
 UC2 TOOL EXECUTION: ENABLED THROUGH THE GOVERNED SHARED TASK WORKFLOW
-STAGE 11–12: NOT COMPLETE — LOCAL ENTERPRISE E2E AND RELEASE/OPERATIONS GATES OUTSTANDING
-PRODUCTION READINESS: NOT CLAIMED
+STAGE 12: COMPLETE — EVIDENCE-BASED REVIEW; RELEASE BLOCKED
+PRODUCTION READINESS: NOT READY
 ```
 
 ## Non-goals

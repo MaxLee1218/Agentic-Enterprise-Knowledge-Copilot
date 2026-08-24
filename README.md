@@ -66,14 +66,15 @@ Current boundaries are intentional:
   implemented; MCP does not broaden the frozen four-tool business scope.
 
 The second vertical slice, **Accounts Payable Invoice Compliance & Exception Investigation v1**,
-has completed its frozen design plus Stages 1–9: contracts and routing, isolated demo data,
-controlled policy, five governed read models, seven deterministic analytics operations, an
-independent AP Evidence/verifier and report profile, governed execution through the existing Task
-Service and shared Graph, and permission-scoped public Task API and console integration.
-Its status and acceptance records are indexed at
+has completed its frozen staged implementation and final Stage 12 readiness review: contracts and
+routing, isolated demo data, controlled policy, five governed read models, seven deterministic
+analytics operations, independent AP Evidence/verifier and report profiles, shared-Graph execution,
+permission-scoped API/console integration, synthetic evaluation/security gates, and the isolated
+Local Enterprise E2E. Its status and acceptance records are indexed at
 [`docs/use-cases/accounts-payable/README.md`](docs/use-cases/accounts-payable/README.md). AP is not
-exposed through a separate `/v1/finance/*` route. Stage 10 evaluation/security gates and later
-release gates remain outstanding, so production readiness is not claimed.
+exposed through a separate `/v1/finance/*` route. The final review decision is `NOT READY` until
+the documented deployment-specific retention, recovery, live-data/model performance and formal
+owner/security/architecture approvals are supplied.
 
 ## Requirements and installation
 
@@ -182,8 +183,9 @@ browser-to-Evidence-to-Artifact path plus approval, rejection, cancellation, and
 
 ### Local Enterprise E2E
 
-For the browser-to-Artifact single-machine topology with separate RAG, Business PostgreSQL, and
-Copilot PostgreSQL services, see [Local Enterprise E2E](docs/local-enterprise-e2e.md).
+For the browser-to-Artifact single-machine topology covering Supplier Quality and Accounts Payable
+with separate RAG, controlled AP policy snapshots, Business PostgreSQL, and Copilot PostgreSQL
+services, see [Local Enterprise E2E](docs/local-enterprise-e2e.md).
 
 On macOS, after completing the one-time environment and RAG setup, double-click
 `一键启动或关闭.command` in Finder to toggle the complete topology. Startup waits for the
@@ -198,8 +200,9 @@ cd ../Agentic-Enterprise-Knowledge-Copilot
 ```
 
 The Local Enterprise Compose consumes that image, explicitly ingests the sibling's five controlled
-Supplier Quality PDFs into its own named RAG volume, and uses a backend-only local generation stub
-by default so retrieved document contexts are not silently sent to an external provider. See the
+Supplier Quality PDFs into its own named RAG volume, publishes the controlled AP policy bundle into
+a separate read-only snapshot, and uses deterministic local model boundaries for the Stage 11
+acceptance run so task and document contexts are not silently sent to an external provider. See the
 guide for the fresh-volume sequence and the separate Planner/RAG data-egress boundaries.
 
 Then start this repository:

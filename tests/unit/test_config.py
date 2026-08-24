@@ -50,6 +50,8 @@ def test_settings_load_defaults_and_normalize_paths(
         == (PROJECT_ROOT / "data/policies/accounts_payable/v1").resolve()
     )
     assert settings.policy_snapshot_dir == (PROJECT_ROOT / "data/policy-snapshots").resolve()
+    assert settings.demo_identity_profile == "supplier_quality"
+    assert settings.ap_policy_require_published_snapshot is False
     assert settings.artifact_path == (PROJECT_ROOT / "build/test-artifacts").resolve()
     assert settings.artifact_path.is_absolute()
 
@@ -207,6 +209,9 @@ def test_valid_production_profile_is_strict_and_separates_databases(
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://readonly:secret@business/quality")
     monkeypatch.setenv("DATABASE_PROVIDER", "sqlalchemy")
     monkeypatch.setenv("KNOWLEDGE_PROVIDER", "http")
+    monkeypatch.setenv("AP_POLICY_REQUIRE_PUBLISHED_SNAPSHOT", "true")
+    monkeypatch.setenv("AP_POLICY_BUNDLE_DIR", "/approved/accounts-payable-policy")
+    monkeypatch.setenv("POLICY_SNAPSHOT_DIR", "/approved/accounts-payable-policy-snapshots")
     monkeypatch.setenv("RAG_BASE_URL", "https://rag.internal.example")
     monkeypatch.setenv("IDENTITY_PROVIDER", "trusted_headers")
     monkeypatch.setenv("IDENTITY_SIGNING_SECRET", "stage17-test-identity-secret-value")
@@ -218,6 +223,51 @@ def test_valid_production_profile_is_strict_and_separates_databases(
     assert settings.app_env == "production"
     assert settings.persistence_auto_create_schema is False
     assert settings.effective_persistence_database_url.endswith("/copilot")
+    assert settings.ap_policy_require_published_snapshot is True
+    assert settings.ap_policy_bundle_dir == Path("/approved/accounts-payable-policy")
+    assert settings.policy_snapshot_dir == Path("/approved/accounts-payable-policy-snapshots")
+
+
+def test_production_requires_published_ap_policy_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("PERSISTENCE_DATABASE_URL", "postgresql+psycopg://user:secret@db/copilot")
+    monkeypatch.setenv("PERSISTENCE_AUTO_CREATE_SCHEMA", "false")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://readonly:secret@business/quality")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlalchemy")
+    monkeypatch.setenv("KNOWLEDGE_PROVIDER", "http")
+    monkeypatch.setenv("RAG_BASE_URL", "https://rag.internal.example")
+    monkeypatch.setenv("IDENTITY_PROVIDER", "trusted_headers")
+    monkeypatch.setenv("IDENTITY_SIGNING_SECRET", "stage17-test-identity-secret-value")
+    monkeypatch.setenv("LLM_PROVIDER", "deepseek")
+    monkeypatch.setenv("LLM_API_KEY", "stage17-test-llm-key")
+    monkeypatch.setenv("AP_POLICY_REQUIRE_PUBLISHED_SNAPSHOT", "false")
+    monkeypatch.setenv("AP_POLICY_BUNDLE_DIR", "/approved/accounts-payable-policy")
+    monkeypatch.setenv("POLICY_SNAPSHOT_DIR", "/approved/accounts-payable-policy-snapshots")
+
+    with pytest.raises(ConfigurationError, match="SETTINGS"):
+        get_settings()
+
+
+def test_production_rejects_embedded_demo_ap_policy_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("PERSISTENCE_DATABASE_URL", "postgresql+psycopg://user:secret@db/copilot")
+    monkeypatch.setenv("PERSISTENCE_AUTO_CREATE_SCHEMA", "false")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://readonly:secret@business/quality")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlalchemy")
+    monkeypatch.setenv("KNOWLEDGE_PROVIDER", "http")
+    monkeypatch.setenv("AP_POLICY_REQUIRE_PUBLISHED_SNAPSHOT", "true")
+    monkeypatch.setenv("RAG_BASE_URL", "https://rag.internal.example")
+    monkeypatch.setenv("IDENTITY_PROVIDER", "trusted_headers")
+    monkeypatch.setenv("IDENTITY_SIGNING_SECRET", "stage17-test-identity-secret-value")
+    monkeypatch.setenv("LLM_PROVIDER", "deepseek")
+    monkeypatch.setenv("LLM_API_KEY", "stage17-test-llm-key")
+
+    with pytest.raises(ConfigurationError, match="SETTINGS"):
+        get_settings()
 
 
 def test_production_requires_checkpoint_recovery(

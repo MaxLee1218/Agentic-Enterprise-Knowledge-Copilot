@@ -75,6 +75,9 @@ def run_accounts_payable_performance_fixture(*, samples: int = 3) -> tuple[Metri
             "milliseconds",
             passed=p95 <= AP_ANALYTICS_LIMIT_MS,
             notes=notes,
+            # The frozen gate is the absolute 20-second ceiling above. Wall-clock
+            # measurements are not reproducible enough to compare with zero tolerance.
+            direction=MetricDirection.INFORMATIONAL,
         ),
         _measurement(
             "ap_performance_peak_memory_bytes",

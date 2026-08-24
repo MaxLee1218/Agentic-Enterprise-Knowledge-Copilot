@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import time
 from collections.abc import Callable, Mapping
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
 from pydantic import ValidationError
@@ -68,6 +68,8 @@ class DemoIdentityProvider:
 
     def resolve(self, request: IdentityRequest) -> TrustedCallerContext:
         del request
+        if self._settings.demo_identity_profile == "local_enterprise":
+            return self._local_enterprise_identity()
         return TrustedCallerContext(
             user_id=self._settings.demo_user_id,
             tenant_id=self._settings.demo_tenant_id,
@@ -78,6 +80,64 @@ class DemoIdentityProvider:
             authenticated=True,
             is_demo_identity=True,
             purpose="supplier_quality_analysis.v1",
+            policy_forces_read_only=self._settings.task_force_read_only,
+            policy_requires_approval=self._settings.task_require_approval_by_default,
+        )
+
+    def _local_enterprise_identity(self) -> TrustedCallerContext:
+        """Return the explicit multi-domain authority for the disposable local E2E topology."""
+        roles = tuple(
+            dict.fromkeys(
+                (
+                    *self._settings.demo_approval_roles,
+                    "quality_analyst",
+                    "quality_data_approver",
+                    "finance_analyst",
+                    "finance_approver",
+                )
+            )
+        )
+        return TrustedCallerContext(
+            user_id=self._settings.demo_user_id,
+            tenant_id=self._settings.demo_tenant_id,
+            data_scope=(
+                "quality.v1",
+                "supplier-quality-policy-v1",
+                "accounts_payable.v1",
+                "accounts-payable-policy-v1",
+            ),
+            legal_entity_ids=("LE-CN-01", "LE-US-01"),
+            currency_scope=("CNY", "USD"),
+            allowed_task_types=(
+                TaskType.SUPPLIER_QUALITY_ANALYSIS_V1,
+                TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1,
+            ),
+            roles=roles,
+            scopes=(
+                "task:read",
+                "task:execute",
+                "task:cancel",
+                "evidence:read",
+                "approvals:read",
+                "approvals:resolve",
+                "finance:ap.detail",
+                "finance:ap.artifact:download",
+                "artifact.write",
+            ),
+            authentication_source="configured_local_enterprise_demo_identity",
+            authenticated=True,
+            is_demo_identity=True,
+            purpose=TaskType.SUPPLIER_QUALITY_ANALYSIS_V1.value,
+            policy_rule_set_id="accounts-payable-v1",
+            policy_rule_set_version="ap_rules.2026.1",
+            policy_manifest_checksum=(
+                "sha256:3095ebb099a2db12dffbc699cf1f65bb7d8e324d025eb701af4bf825d6adab33"
+            ),
+            policy_materiality=(
+                MoneyThreshold(currency="CNY", amount=Decimal("5000")),
+                MoneyThreshold(currency="USD", amount=Decimal("1000")),
+            ),
+            policy_snapshot_at=datetime(2026, 7, 1, tzinfo=UTC),
             policy_forces_read_only=self._settings.task_force_read_only,
             policy_requires_approval=self._settings.task_require_approval_by_default,
         )

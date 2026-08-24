@@ -110,6 +110,8 @@ class Settings(BaseSettings):
     demo_user_id: str = Field(default="U-DEMO", min_length=1, max_length=200)
     demo_tenant_id: str = Field(default="TENANT-DEMO", min_length=1, max_length=200)
     demo_approval_roles: tuple[str, ...] = ("quality_analyst",)
+    demo_identity_profile: Literal["supplier_quality", "local_enterprise"] = "supplier_quality"
+    ap_policy_require_published_snapshot: bool = False
     approval_ttl_seconds: int = Field(default=86_400, ge=60, le=604_800)
     workflow_max_retries: int = Field(default=2, ge=0, le=2)
     workflow_retry_delay_seconds: float = Field(default=0, ge=0)
@@ -182,6 +184,15 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_URL must not use the demo SQLite database in production")
         if self.knowledge_provider != "http":
             raise ValueError("KNOWLEDGE_PROVIDER must be http in production")
+        if not self.ap_policy_require_published_snapshot:
+            raise ValueError("AP_POLICY_REQUIRE_PUBLISHED_SNAPSHOT must be true in production")
+        if (
+            self.ap_policy_bundle_dir
+            == (PROJECT_ROOT / "data/policies/accounts_payable/v1").resolve()
+        ):
+            raise ValueError("AP_POLICY_BUNDLE_DIR must not use the demo bundle in production")
+        if self.policy_snapshot_dir == (PROJECT_ROOT / "data/policy-snapshots").resolve():
+            raise ValueError("POLICY_SNAPSHOT_DIR must be deployment-owned in production")
         if self.database_provider != "sqlalchemy":
             raise ValueError("DATABASE_PROVIDER must be sqlalchemy in production")
         if self.llm_provider != "deepseek":

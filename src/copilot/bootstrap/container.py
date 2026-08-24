@@ -75,6 +75,7 @@ from copilot.tools.knowledge import (
     HttpKnowledgeClient,
     KnowledgeTool,
     load_ap_policy_bundle,
+    require_current_ap_policy_snapshot,
 )
 from copilot.tools.mock_supplier_quality import (
     MockAnalyticsTool,
@@ -313,7 +314,17 @@ def build_workflow_container(
             behavior=report_behavior,
         )
     ap_policy_bundle = load_ap_policy_bundle(settings.ap_policy_bundle_dir)
-    ap_knowledge_tool = AccountsPayablePolicyTool(ap_policy_bundle)
+    ap_policy_snapshot = (
+        require_current_ap_policy_snapshot(ap_policy_bundle, settings.policy_snapshot_dir)
+        if settings.ap_policy_require_published_snapshot
+        else None
+    )
+    ap_knowledge_tool = AccountsPayablePolicyTool(
+        ap_policy_bundle,
+        index_snapshot_id=(
+            ap_policy_snapshot.snapshot_id if ap_policy_snapshot is not None else None
+        ),
+    )
     ap_database_tool = DatabaseTool.accounts_payable(
         DatabaseConnection(
             settings.database_url,

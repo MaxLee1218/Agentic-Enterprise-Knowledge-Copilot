@@ -52,6 +52,7 @@ def test_local_enterprise_topology_has_only_one_browser_facing_port() -> None:
         "copilot-migrate",
         "copilot-postgres",
         "business-postgres",
+        "ap-policy-publish",
         "enterprise-rag-engine",
         "rag-warmup",
         "rag-generation-stub",
@@ -94,8 +95,25 @@ def test_local_enterprise_uses_separate_state_volumes_and_compose_dns() -> None:
         "copilot-postgres-data",
         "business-postgres-data",
         "copilot-artifacts",
+        "copilot-policy-snapshots",
         "enterprise-rag-data",
     }.issubset(volumes)
+
+    policy_publish = services["ap-policy-publish"]
+    assert policy_publish["restart"] == "no"
+    assert policy_publish["command"][0] == "enterprise-copilot-publish-ap-policy"
+    assert policy_publish["command"][policy_publish["command"].index("--index-revision") + 1] == (
+        "local-enterprise-v1"
+    )
+    assert services["copilot-api"]["depends_on"]["ap-policy-publish"]["condition"] == (
+        "service_completed_successfully"
+    )
+    api_policy_mount = {mount["target"]: mount for mount in services["copilot-api"]["volumes"]}[
+        "/app/data/policy-snapshots"
+    ]
+    assert api_policy_mount["read_only"] is True
+    assert api_environment["AP_POLICY_REQUIRE_PUBLISHED_SNAPSHOT"] == "true"
+    assert api_environment["DEMO_IDENTITY_PROFILE"] == "local_enterprise"
 
 
 def test_formal_rag_is_the_default_with_read_only_documents_and_isolated_data() -> None:
@@ -150,7 +168,7 @@ def test_compose_source_contains_no_host_specific_absolute_path_or_fixture_defau
     assert "${ENTERPRISE_RAG_IMAGE:-enterprise-rag-engine:local}" in source
 
 
-def test_copilot_image_contains_controlled_ap_policy_bundle_without_enabling_execution() -> None:
+def test_copilot_image_contains_the_controlled_ap_policy_publication_input() -> None:
     dockerfile = (PROJECT_ROOT / "Dockerfile").read_text(encoding="utf-8")
     manifest = (PROJECT_ROOT / "data/policies/accounts_payable/v1/corpus-manifest.json").read_text(
         encoding="utf-8"
