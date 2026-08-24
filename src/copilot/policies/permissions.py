@@ -59,30 +59,79 @@ _ROLE_PERMISSIONS = {
         }
     ),
     "quality_data_approver": frozenset(Permission),
+    "finance_analyst": frozenset(
+        {
+            Permission.EXECUTE_TOOL,
+            Permission.READ_TASK,
+            Permission.READ_EVIDENCE,
+            Permission.READ_ARTIFACT,
+            Permission.GENERATE_REPORT,
+            Permission.CANCEL_TASK,
+        }
+    ),
+    "finance_approver": frozenset(Permission),
+    "finance_auditor": frozenset(
+        {
+            Permission.READ_TASK,
+            Permission.READ_EVIDENCE,
+            Permission.READ_ARTIFACT,
+        }
+    ),
+}
+
+_PURPOSE_ROLES = {
+    "supplier_quality_analysis.v1": {"quality_analyst", "quality_data_approver"},
+    "accounts_payable_analysis.v1": {
+        "finance_analyst",
+        "finance_approver",
+        "finance_auditor",
+    },
 }
 
 
 class PermissionMatrix:
     """Evaluate centralized role/action/tool rules; unknown values never imply access."""
 
-    def effective_roles(self, roles: tuple[str, ...], *, is_demo_identity: bool) -> tuple[str, ...]:
+    def effective_roles(
+        self,
+        roles: tuple[str, ...],
+        *,
+        is_demo_identity: bool,
+        purpose: str = "supplier_quality_analysis.v1",
+    ) -> tuple[str, ...]:
         """Apply the documented demo-only least-privilege fallback."""
         if roles:
             return tuple(dict.fromkeys(roles))
-        return ("quality_analyst",) if is_demo_identity else ()
+        if not is_demo_identity:
+            return ()
+        return (
+            ("finance_analyst",)
+            if purpose == "accounts_payable_analysis.v1"
+            else ("quality_analyst",)
+        )
 
     def evaluate(self, request: AuthorizationRequest) -> PolicyDecision:
         """Return an explicit reason-coded decision for one requested action."""
-        roles = self.effective_roles(request.roles, is_demo_identity=request.is_demo_identity)
+        roles = self.effective_roles(
+            request.roles,
+            is_demo_identity=request.is_demo_identity,
+            purpose=request.purpose,
+        )
         if not roles:
             return _deny("UNKNOWN_ROLE", "No authorized role is available", request.action)
         unknown = tuple(role for role in roles if role not in _ROLE_PERMISSIONS)
         if unknown:
             return _deny("UNKNOWN_ROLE", "Caller role is not recognized", request.action)
-        if request.purpose != "supplier_quality_analysis.v1":
+        if request.purpose not in _PURPOSE_ROLES:
             return _deny(
                 "V1_1_CAPABILITY_NOT_ALLOWED",
-                "Requested purpose is outside the frozen v1.1 scenario",
+                "Requested purpose is outside the governed task profiles",
+                request.action,
+            )
+        if any(role not in _PURPOSE_ROLES[request.purpose] for role in roles):
+            return _deny(
+                "UNKNOWN_ROLE",
+                "Caller role is not authorized for the selected purpose",
                 request.action,
             )
         if request.action is Permission.EXECUTE_TOOL:

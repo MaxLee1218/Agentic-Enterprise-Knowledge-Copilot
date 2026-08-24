@@ -43,9 +43,9 @@ and [ADR-006](docs/adr/ADR-006-deployment-persistence-boundary.md). Stage 18 adm
 in [ADR-007](docs/adr/ADR-007-stage-18-mcp-readiness-boundary.md); the pinned protocol decision is
 [ADR-008](docs/adr/ADR-008-mcp-protocol-2025-11-25.md).
 
-## Supported executable vertical slice
+## Supported executable vertical slices
 
-The only executable business scenario is **Supplier Quality Deviation Investigation / Supplier
+The public API and console currently expose **Supplier Quality Deviation Investigation / Supplier
 Quality Analysis v1.1**. A request must include an explicit year and quarter. The frozen four
 tools are `knowledge_search`, `database_query`, `analysis_engine`, and `report_generator`.
 Artifacts are PDF or JSON.
@@ -63,13 +63,14 @@ Current boundaries are intentional:
   implemented; MCP does not broaden the frozen four-tool business scope.
 
 The second vertical slice, **Accounts Payable Invoice Compliance & Exception Investigation v1**,
-has completed its frozen design plus Stages 1–6 foundations: contracts and routing, isolated demo
-data, controlled policy, five governed read models, seven deterministic analytics operations, and
-an independent AP Evidence/verifier profile.
+has completed its frozen design plus Stages 1–8: contracts and routing, isolated demo data,
+controlled policy, five governed read models, seven deterministic analytics operations, an
+independent AP Evidence/verifier and report profile, and governed execution through the existing
+internal Task Service and shared Graph.
 Its status and acceptance records are indexed at
 [`docs/use-cases/accounts-payable/README.md`](docs/use-cases/accounts-payable/README.md). The AP
-domain manifest remains disabled; report, workflow and end-to-end stages are not implemented, so
-this work does not broaden the executable Supplier Quality runtime.
+public API identity and frontend surfaces remain disabled until Stage 9; evaluation and release
+gates also remain outstanding, so production readiness is not claimed.
 
 ## Requirements and installation
 
@@ -136,8 +137,8 @@ python scripts/publish_ap_policy.py --tenant-id TENANT-DEMO --index-revision loc
 ```
 
 Publication verifies exact document, chunk, effective-date and rule-manifest checksums before
-atomically advancing the tenant's snapshot pointer. This policy foundation does not enable the AP
-query, analytics, reporting, or task-execution profiles.
+atomically advancing the tenant's snapshot pointer. Publication itself does not bypass the shared
+AP workflow, policy, approval, evidence or verification gates.
 
 ## Frontend
 

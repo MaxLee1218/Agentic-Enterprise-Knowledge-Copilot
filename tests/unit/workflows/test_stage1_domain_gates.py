@@ -1,4 +1,4 @@
-"""Stage 1 must represent AP contracts without enabling AP execution."""
+"""Stage 8 keeps AP execution fail-closed when its governed dependencies are absent."""
 
 import pytest
 
@@ -11,20 +11,19 @@ from tests.unit.domain.ap_helpers import make_ap_contract
 from tests.unit.domain.helpers import make_plan
 
 
-def test_plan_validation_denies_disabled_ap_manifest_before_tool_lookup() -> None:
+def test_plan_validation_denies_ap_when_exact_profile_tools_are_not_registered() -> None:
     result = PlanValidator(registry=ToolRegistry(), max_task_steps=20).evaluate(
         make_plan(), make_ap_contract()
     )
 
     assert result.is_valid is False
-    assert result.errors[0].error_code == "DOMAIN_EXECUTION_NOT_ENABLED"
-    assert result.errors[0].repairable is False
+    assert any(issue.error_code == "TOOL_PROFILE_MISMATCH" for issue in result.errors)
 
 
-def test_step_input_builder_denies_ap_before_constructing_quality_arguments() -> None:
+def test_step_input_builder_denies_ap_without_controlled_policy_bundle() -> None:
     plan = make_plan()
 
-    with pytest.raises(StepInputError, match="DOMAIN_EXECUTION_NOT_ENABLED"):
+    with pytest.raises(StepInputError, match="controlled policy bundle is unavailable"):
         StepInputBuilder().build(
             plan.steps[0],
             request=TaskRequest(

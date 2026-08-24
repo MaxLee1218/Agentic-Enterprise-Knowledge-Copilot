@@ -12,6 +12,8 @@ from typing import Annotated, Final, Literal, TypeAlias, cast
 from pydantic import Field, TypeAdapter, field_validator, model_validator
 
 from copilot.contracts import (
+    APAnalyticsOperation,
+    APDatabaseTemplate,
     APExceptionType,
     APPolicyRuleManifestV1,
     ContractModel,
@@ -36,28 +38,6 @@ INVOICE_NUMBER_NORMALIZATION_VERSION: Final[Literal["invoice_number_normalizatio
 
 _CHECKSUM = re.compile(r"^(?:sha256:)?[0-9a-f]{64}$")
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
-
-
-class APAnalyticsOperation(StrEnum):
-    """The seven exact operation identifiers authorized for AP v1."""
-
-    EXACT_DUPLICATE_INVOICE_DETECTION = "ap.exact_duplicate_invoice_detection.v1"
-    INVOICE_PO_VARIANCE_DETECTION = "ap.invoice_po_variance_detection.v1"
-    MISSING_PO_DETECTION = "ap.missing_po_detection.v1"
-    PAYMENT_TERM_COMPLIANCE_DETECTION = "ap.payment_term_compliance_detection.v1"
-    OVERPAYMENT_DETECTION = "ap.overpayment_detection.v1"
-    EXCEPTION_SUMMARY = "ap.exception_summary.v1"
-    SUPPLIER_EXCEPTION_RATE = "ap.supplier_exception_rate.v1"
-
-
-class APDatabaseTemplate(StrEnum):
-    """The five read models exposed by the frozen AP database profile."""
-
-    INVOICE_POPULATION = "ap_invoice_population_v1"
-    DUPLICATE_CANDIDATES = "ap_duplicate_invoice_candidates_v1"
-    INVOICE_PO_VARIANCE = "ap_invoice_po_variance_v1"
-    PAYMENT_TERMS = "ap_payment_terms_v1"
-    PAYMENT_AMOUNT = "ap_payment_amount_v1"
 
 
 class APExceptionStatus(StrEnum):

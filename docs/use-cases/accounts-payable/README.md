@@ -1,16 +1,16 @@
 # Accounts Payable Invoice Compliance & Exception Investigation v1
 
-**Design status:** `FROZEN — STAGE 7 REPORT PROFILE COMPLETE — UC2 NOT EXECUTABLE`
+**Design status:** `FROZEN — STAGE 8 SHARED WORKFLOW COMPLETE — PUBLIC API/UI NOT ENABLED`
 **Task type:** `accounts_payable_analysis.v1`  
 **Design version:** `1.0`  
 **Date:** 2026-08-22
 
 This directory is the frozen implementation authority for Use Case 2. It does not alter the
 frozen Supplier Quality Analysis v1.1 baseline in `docs/design/`.
-Stages 1 through 7 implement the AP contracts/routing, isolated synthetic data, controlled policy,
+Stages 1 through 8 implement the AP contracts/routing, isolated synthetic data, controlled policy,
 read-only query, deterministic analytics, independent verification and JSON/PDF reporting
-foundations. The Stage 4–7 adapters are explicitly composable at their governed boundaries, but AP
-workflow execution remains disabled until the Stage 8 workflow gate passes.
+foundations plus governed execution through the existing internal Task Service and shared Graph.
+Public API identity selection and frontend exposure remain disabled until Stage 9.
 
 ## Business outcome
 
@@ -60,6 +60,7 @@ invoice, PO, payment, supplier, bank account, or external system.
 | [Stage 5 deterministic AP analytics report](stage-5-deterministic-ap-analytics.md) | Implemented seven strict operations, Decimal/date calculations, lineage validation and Calculation Evidence batching |
 | [Stage 6 AP Evidence and verifier profiles report](stage-6-ap-evidence-and-verifier-profiles.md) | Implemented structured claim mapping, AP metadata/policy/consistency/numeric rules and domain Safety allowlists |
 | [Stage 7 AP report model and JSON/PDF report](stage-7-ap-report-model-and-renderers.md) | Implemented strong AP report model, deterministic JSON/PDF renderers, governed parser and atomic Artifact profile |
+| [Stage 8 understanding, planner and shared Graph](stage-8-understanding-planner-and-shared-graph.md) | Implemented trusted AP understanding, exact 14-step Plan profile, policy/approval/input wiring and shared-Graph execution |
 
 ## Terminology authority
 
@@ -95,8 +96,9 @@ STAGE 4: COMPLETE — FIVE GOVERNED READ MODELS; WORKFLOW STILL DISABLED
 STAGE 5: COMPLETE — SEVEN DETERMINISTIC OPERATIONS; WORKFLOW STILL DISABLED
 STAGE 6: COMPLETE — AP EVIDENCE AND VERIFIER PROFILE; WORKFLOW STILL DISABLED
 STAGE 7: COMPLETE — AP REPORT MODEL AND JSON/PDF PROFILE; WORKFLOW STILL DISABLED
-STAGE 8: NOT STARTED — AP WORKFLOW INTEGRATION ABSENT
-UC2 TOOL EXECUTION: DISABLED
+STAGE 8: COMPLETE — INTERNAL TASK SERVICE AND SHARED GRAPH EXECUTION
+STAGE 9: NOT STARTED — PUBLIC API AND FRONTEND INTEGRATION ABSENT
+UC2 TOOL EXECUTION: ENABLED ONLY THROUGH THE GOVERNED INTERNAL WORKFLOW
 PRODUCTION READINESS: NOT CLAIMED
 ```
 

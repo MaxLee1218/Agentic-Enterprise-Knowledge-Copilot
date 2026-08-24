@@ -521,6 +521,8 @@ def _database_evidence(
         else list(supplier_ids)
     )
     if schema_version == ACCOUNTS_PAYABLE_SCHEMA_VERSION:
+        supplier_scope_hash = f"sha256:{supplier_scope_hash}"
+    if schema_version == ACCOUNTS_PAYABLE_SCHEMA_VERSION:
         source_reference: JsonMapping = {
             "database_name": database_name,
             "query_id": query_fingerprint,
@@ -538,18 +540,18 @@ def _database_evidence(
             "statement_type": "SELECT",
             "read_only": True,
             "parameter_summary": {
-                "tenant_scope_hash": _checksum(tenant_id),
-                "time_scope_hash": _checksum(
+                "tenant_scope_hash": _prefixed_checksum(tenant_id),
+                "time_scope_hash": _prefixed_checksum(
                     {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()}
                 ),
                 "supplier_count": len(supplier_ids),
                 "supplier_scope_hash": supplier_scope_hash,
                 "legal_entity_count": len(legal_entity_ids),
-                "legal_entity_scope_hash": _checksum(sorted(legal_entity_ids)),
+                "legal_entity_scope_hash": _prefixed_checksum(sorted(legal_entity_ids)),
                 "business_unit_count": len(business_unit_ids),
-                "business_unit_scope_hash": _checksum(sorted(business_unit_ids)),
+                "business_unit_scope_hash": _prefixed_checksum(sorted(business_unit_ids)),
                 "currency_count": len(currency_scope),
-                "currency_scope_hash": _checksum(sorted(currency_scope)),
+                "currency_scope_hash": _prefixed_checksum(sorted(currency_scope)),
             },
             "row_count": row_count,
             "dataset_checksum": dataset_checksum,
@@ -726,6 +728,10 @@ def _validate_scope_contract(
 def _checksum(value: object) -> str:
     canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _prefixed_checksum(value: object) -> str:
+    return f"sha256:{_checksum(value)}"
 
 
 def _required_mapping(arguments: JsonObject, key: str) -> JsonMapping:

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from copilot.contracts import (
+    APExceptionType,
     ArtifactType,
     JsonObject,
+    MoneyThreshold,
     ReportLanguage,
     RiskLevel,
     TaskType,
@@ -84,6 +88,64 @@ class TaskUnderstandingOutput(BaseModel):
         return self
 
 
+class APDateRangeCandidate(BaseModel):
+    """Explicit AP date range; missing endpoints remain visible to deterministic code."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    start_date: date | None = None
+    end_date: date | None = None
+
+    @model_validator(mode="after")
+    def reject_partial_range(self) -> APDateRangeCandidate:
+        if (self.start_date is None) != (self.end_date is None):
+            raise ValueError("AP start_date and end_date must both be present or absent")
+        return self
+
+
+class APDeliverableCandidate(BaseModel):
+    """Untrusted AP format and language preference."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    artifact_type: ArtifactType = ArtifactType.ACCOUNTS_PAYABLE_REPORT_PDF
+    language: ReportLanguage = ReportLanguage.EN_US
+
+
+class APTaskUnderstandingOutput(BaseModel):
+    """Model-facing AP intent candidate with no authorization-bearing fields."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    goal: str = Field(min_length=1, max_length=2000)
+    task_type: TaskType
+    time_range: APDateRangeCandidate
+    requested_supplier_ids: tuple[str, ...] = ()
+    requested_legal_entity_ids: tuple[str, ...] = ()
+    requested_business_unit_ids: tuple[str, ...] = ()
+    currency_scope: tuple[str, ...] = ()
+    exception_types: tuple[APExceptionType, ...] = ()
+    requested_materiality: tuple[MoneyThreshold, ...] = ()
+    deliverable: APDeliverableCandidate = APDeliverableCandidate()
+    include_policy_comparison: bool = True
+    missing_information: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_ap_candidate(self) -> APTaskUnderstandingOutput:
+        if self.task_type is not TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1:
+            raise ValueError("AP understanding requires accounts_payable_analysis.v1")
+        collections = (
+            self.requested_supplier_ids,
+            self.requested_legal_entity_ids,
+            self.requested_business_unit_ids,
+            self.currency_scope,
+            self.exception_types,
+        )
+        if any(len(values) != len(set(values)) for values in collections):
+            raise ValueError("AP candidate scope collections must be unique")
+        return self
+
+
 class PlannerToolManifestEntry(BaseModel):
     """Minimized deterministic ToolRegistry view exposed to the planner."""
 
@@ -113,6 +175,9 @@ class PlannerToolManifest(BaseModel):
 __all__ = [
     "PlannerToolManifest",
     "PlannerToolManifestEntry",
+    "APDateRangeCandidate",
+    "APDeliverableCandidate",
+    "APTaskUnderstandingOutput",
     "TaskUnderstandingOutput",
     "UnderstandingConstraints",
     "UnderstandingDeliverable",

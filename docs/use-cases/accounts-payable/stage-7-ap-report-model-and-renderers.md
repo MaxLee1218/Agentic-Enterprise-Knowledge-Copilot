@@ -4,8 +4,8 @@
 **Report model:** `accounts_payable_report_model.v1`  
 **Template:** `accounts_payable_report.v1`  
 **Generator:** `report_generator.v2`  
-**Execution boundary:** UC2 remains disabled; Stage 8 understanding, planning, input construction
-and shared-Graph integration are not implemented.
+**Stage-local execution boundary:** UC2 was disabled at the Stage 7 acceptance checkpoint. Stage 8
+now supplies understanding, planning, input construction and shared-Graph integration.
 
 ## Delivered scope
 
@@ -83,8 +83,8 @@ The Stage 7 suite covers:
 
 ## Deferred work
 
-Stage 7 deliberately does not enable `ACCOUNTS_PAYABLE_MANIFEST.execution_enabled`. AP Task
+Stage 7 deliberately did not enable `ACCOUNTS_PAYABLE_MANIFEST.execution_enabled`. AP Task
 Understanding, Plan generation/validation, report input construction, policy/approval pause and
-shared Graph execution remain Stage 8. API/frontend exposure remains Stage 9; evaluation,
-performance and release evidence remain Stages 10–12. No external report delivery or finance
-business action is introduced.
+shared Graph execution were completed by Stage 8. API/frontend exposure remains Stage 9;
+evaluation, performance and release evidence remain Stages 10–12. No external report delivery or
+finance business action is introduced.

@@ -154,7 +154,10 @@ class InMemoryEvidenceLedger:
                     source_type=ContentSourceType.RETRIEVED_DOCUMENT,
                     source_id=f"{call.tool_call_id}:{reference.get('chunk_id', 'document')}",
                 )
-                data["excerpt"] = scan.content
+                # Preserve byte-exact benign source wording so controlled document
+                # checksums remain reproducible; replace content only when a rule fired.
+                if scan.findings:
+                    data["excerpt"] = scan.content
                 findings = [
                     cast(
                         JsonValue,

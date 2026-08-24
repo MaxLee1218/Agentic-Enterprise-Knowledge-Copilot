@@ -34,7 +34,7 @@ class PlannerToolManifestBuilder:
         entries = []
         for capability in sorted(selected.capabilities, key=lambda item: item.value):
             profile = selected.profile_for(capability)
-            registration = self._registry.registration(capability.value)
+            registration = self._registry.profile_registration(capability.value, profile)
             definition = self._registry.get_profile(
                 capability.value,
                 registration.tool.definition.tool_version,

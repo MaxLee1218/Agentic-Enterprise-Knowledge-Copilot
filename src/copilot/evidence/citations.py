@@ -155,13 +155,21 @@ def candidate_from_ap_report(
     data_overview = report.get("data_overview")
     overview = data_overview if isinstance(data_overview, dict) else {}
     empty_result = overview.get("empty_result") is True
+    empty_sections = {
+        "data_overview",
+        "exception_summary",
+        "duplicate_invoice_findings",
+        "po_compliance_findings",
+        "payment_findings",
+        "supplier_summary",
+    }
     deliverables = tuple(
         DeliverableRecord(
             deliverable_id=section,
             producing_step_id=report_step_id,
             content=report[section],
             evidence_ids=cited_ids,
-            empty_result=empty_result and section in {"data_overview", "exception_summary"},
+            empty_result=empty_result and section in empty_sections,
         )
         for section in task_contract.expected_output.required_sections
         if section in report

@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     database_url: str
     database_provider: Literal["mock", "sqlalchemy"] = "mock"
     database_statement_timeout_seconds: float = Field(default=8, gt=0, le=8)
-    max_database_rows: int = Field(default=10_000, ge=1, le=10_000)
+    max_database_rows: int = Field(default=50_000, ge=1, le=50_000)
     # Copilot-owned Task/Evidence/Audit persistence.  When omitted outside production, the
     # existing checkpoint SQLite path remains the backward-compatible local database.
     persistence_database_url: str | None = None
@@ -94,10 +94,10 @@ class Settings(BaseSettings):
     db_connect_max_attempts: int = Field(default=5, ge=1, le=20)
     db_connect_retry_delay_seconds: float = Field(default=1, ge=0, le=30)
     artifact_dir: Path = Path("data/artifacts")
-    report_max_size_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=100 * 1024 * 1024)
+    report_max_size_bytes: int = Field(default=25 * 1024 * 1024, ge=1, le=100 * 1024 * 1024)
     max_evidence_items: int = Field(default=500, ge=1, le=10_000)
     max_step_duration_seconds: int = Field(default=60, ge=1, le=300)
-    max_task_steps: int = Field(default=10, gt=0)
+    max_task_steps: int = Field(default=14, ge=1, le=100)
     max_task_text_length: int = Field(default=10_000, ge=1, le=100_000)
     max_task_metadata_bytes: int = Field(default=16_384, ge=2, le=1_048_576)
     max_task_metadata_depth: int = Field(default=5, ge=1, le=20)

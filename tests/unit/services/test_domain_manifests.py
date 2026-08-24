@@ -17,15 +17,13 @@ def test_manifest_selection_uses_exact_trusted_task_type() -> None:
     assert manifest.profile_for(CapabilityName.DATABASE_QUERY) == ("supplier_quality_database.v1")
 
 
-def test_ap_contract_validates_but_execution_is_not_enabled() -> None:
+def test_ap_contract_validates_and_execution_is_enabled_in_stage_8() -> None:
     registry = builtin_domain_manifest_registry()
     manifest = registry.validate_contract(make_ap_contract())
 
     assert manifest.task_type is TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1
-    assert manifest.execution_enabled is False
-    with pytest.raises(DomainManifestError) as caught:
-        registry.require_execution(make_ap_contract())
-    assert caught.value.code == "DOMAIN_EXECUTION_NOT_ENABLED"
+    assert manifest.execution_enabled is True
+    assert registry.require_execution(make_ap_contract()) is manifest
 
 
 def test_unknown_or_fuzzy_domain_has_no_fallback() -> None:

@@ -79,6 +79,41 @@ def test_profile_lookup_requires_exact_version_and_domain_profile() -> None:
         )
 
 
+def test_additional_domain_profile_resolves_by_exact_version_without_replacing_default() -> None:
+    registry = ToolRegistry()
+    supplier_quality = MockKnowledgeTool()
+    accounts_payable = MockKnowledgeTool()
+    accounts_payable.definition = accounts_payable.definition.model_copy(
+        update={"tool_version": "2.0.0-controlled"}
+    )
+    registry.register(supplier_quality)
+    registry.register_profile(
+        accounts_payable,
+        contract_profiles=("accounts_payable_policy.v1",),
+    )
+
+    assert registry.get("knowledge_search") is supplier_quality
+    assert (
+        registry.get_profile("knowledge_search", "2.0.0-controlled", "accounts_payable_policy.v1")
+        is accounts_payable
+    )
+    assert registry.get_version("knowledge_search", "2.0.0-controlled") is accounts_payable
+    assert (
+        registry.profile_registration("knowledge_search", "accounts_payable_policy.v1").tool
+        is accounts_payable
+    )
+
+
+def test_additional_profile_requires_a_stable_primary_registration() -> None:
+    registry = ToolRegistry()
+
+    with pytest.raises(ToolNotFoundError, match="Register the stable tool name"):
+        registry.register_profile(
+            MockKnowledgeTool(),
+            contract_profiles=("accounts_payable_policy.v1",),
+        )
+
+
 def test_profile_lookup_rejects_unrecognized_legacy_alias() -> None:
     registry = ToolRegistry()
     tool = MockKnowledgeTool()

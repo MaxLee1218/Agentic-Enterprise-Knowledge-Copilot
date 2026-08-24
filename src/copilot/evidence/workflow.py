@@ -12,6 +12,7 @@ from copilot.contracts import (
     JsonObject,
     StepResultStatus,
     StepType,
+    TaskType,
     ToolDefinition,
     VerificationCheck,
     VerificationContext,
@@ -46,7 +47,7 @@ class WorkflowVerifier:
         allowed_columns: tuple[str, ...],
         sensitive_fields: tuple[str, ...],
         allowed_query_templates: tuple[str, ...] = (),
-        verifier_profile_id: str = SUPPLIER_QUALITY_VERIFIER_PROFILE_ID,
+        verifier_profile_id: str | None = SUPPLIER_QUALITY_VERIFIER_PROFILE_ID,
         composite: CompositeVerifier | None = None,
         clock: Callable[[], datetime] = utc_now,
     ) -> None:
@@ -56,18 +57,29 @@ class WorkflowVerifier:
         self._allowed_columns = allowed_columns
         self._sensitive_fields = sensitive_fields
         self._allowed_query_templates = allowed_query_templates
-        self._verifier_profile = verifier_profile(verifier_profile_id)
+        self._verifier_profile = (
+            verifier_profile(verifier_profile_id) if verifier_profile_id is not None else None
+        )
         self._clock = clock
-        self._composite = composite or composite_verifier_for_profile(
-            verifier_profile_id, clock=clock
+        self._composite = (
+            composite
+            if composite is not None
+            else (
+                composite_verifier_for_profile(verifier_profile_id, clock=clock)
+                if verifier_profile_id is not None
+                else None
+            )
         )
 
     def verify(self, context: WorkflowExecutionContext) -> VerificationResult:
         """Return all safe verification issues instead of failing on the first issue."""
-        artifact_issues, candidate = self._artifact_candidate(context)
+        profile_id = self._profile_id_for(context)
+        profile = verifier_profile(profile_id)
+        composite = self._composite or composite_verifier_for_profile(profile_id, clock=self._clock)
+        artifact_issues, candidate = self._artifact_candidate(context, profile_id)
         verification_context = VerificationContext(
             trace_id=context.task_id,
-            verifier_profile_id=self._verifier_profile.profile_id,
+            verifier_profile_id=profile.profile_id,
             registered_tools=tuple(
                 # Registry ordering is supplied by the runner as a safe snapshot.
                 cast(tuple[ToolDefinition, ...], context.metadata["registered_tools"])
@@ -79,13 +91,25 @@ class WorkflowVerifier:
                 for result in context.tool_results.get(step.step_id, ())
             ),
             approvals=context.approvals,
-            allowed_tables=self._allowed_tables,
-            allowed_columns=self._allowed_columns,
-            allowed_query_templates=self._allowed_query_templates,
-            sensitive_fields=self._sensitive_fields,
+            allowed_tables=(
+                profile.allowed_tables if self._verifier_profile is None else self._allowed_tables
+            ),
+            allowed_columns=(
+                profile.allowed_columns if self._verifier_profile is None else self._allowed_columns
+            ),
+            allowed_query_templates=(
+                profile.allowed_query_templates
+                if self._verifier_profile is None
+                else self._allowed_query_templates
+            ),
+            sensitive_fields=(
+                profile.sensitive_fields
+                if self._verifier_profile is None
+                else self._sensitive_fields
+            ),
             readonly_task=True,
         )
-        result = self._composite.verify(
+        result = composite.verify(
             task_contract=context.contract,
             task_plan=context.plan,
             step_results=context.step_results,
@@ -135,6 +159,7 @@ class WorkflowVerifier:
     def _artifact_candidate(
         self,
         context: WorkflowExecutionContext,
+        profile_id: str,
     ) -> tuple[tuple[VerificationIssue, ...], CandidateResult]:
         issues: list[VerificationIssue] = []
         empty = CandidateResult(
@@ -224,7 +249,7 @@ class WorkflowVerifier:
             )
             adapter = (
                 candidate_from_ap_report
-                if self._verifier_profile.profile_id == ACCOUNTS_PAYABLE_VERIFIER_PROFILE_ID
+                if profile_id == ACCOUNTS_PAYABLE_VERIFIER_PROFILE_ID
                 else candidate_from_json_report
             )
             candidate = adapter(
@@ -243,6 +268,14 @@ class WorkflowVerifier:
             )
             return tuple(issues), empty
         return tuple(issues), candidate
+
+    def _profile_id_for(self, context: WorkflowExecutionContext) -> str:
+        if self._verifier_profile is not None:
+            return self._verifier_profile.profile_id
+        return {
+            TaskType.SUPPLIER_QUALITY_ANALYSIS_V1: SUPPLIER_QUALITY_VERIFIER_PROFILE_ID,
+            TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1: ACCOUNTS_PAYABLE_VERIFIER_PROFILE_ID,
+        }[context.contract.task_type]
 
 
 def _artifact_issue(task_id: str, code: str, message: str) -> VerificationIssue:

@@ -236,7 +236,7 @@ class ToolExecutor:
             raise ValueError("attempt must be between 1 and 3")
         started_at = self._clock()
         try:
-            tool = self._registry.get(call.tool_name)
+            tool = self._registry.get_version(call.tool_name, call.tool_version)
         except ToolRuntimeError:
             self._append_audit(
                 ToolAuditRecord(

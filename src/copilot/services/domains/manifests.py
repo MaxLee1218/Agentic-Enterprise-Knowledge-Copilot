@@ -183,12 +183,12 @@ ACCOUNTS_PAYABLE_MANIFEST = DomainCapabilityManifest(
     input_profile="accounts_payable_inputs.v1",
     verifier_profile="accounts_payable_verifier.v1",
     permission_purpose=TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1.value,
-    execution_enabled=False,
+    execution_enabled=True,
 )
 
 
 def builtin_domain_manifest_registry() -> DomainCapabilityManifestRegistry:
-    """Create the built-in registry; AP remains deliberately non-executable in Stage 1."""
+    """Create the built-in registry for both frozen, executable domain profiles."""
     return DomainCapabilityManifestRegistry((SUPPLIER_QUALITY_MANIFEST, ACCOUNTS_PAYABLE_MANIFEST))
 
 

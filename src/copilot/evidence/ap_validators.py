@@ -232,6 +232,19 @@ class APPolicyBindingVerifier:
                     document.source_reference.reference.root.get("bound_rule_ids")
                 )
             }
+            if claim.claim_type is ClaimType.POLICY:
+                if not documents or not set(claim.rule_ids).issubset(covered):
+                    issues.append(
+                        _claim_issue(
+                            "AP_CLAIM_POLICY_BINDING_INVALID",
+                            "Policy claim lacks exact controlled Document rule lineage",
+                            self.name,
+                            task_id,
+                            claim.claim_id,
+                            claim.evidence_ids,
+                        )
+                    )
+                continue
             has_calc = any(
                 contains_source_type(trace, EvidenceType.CALCULATION) for trace in traces
             )

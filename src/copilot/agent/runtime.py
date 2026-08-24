@@ -38,7 +38,6 @@ from copilot.services.observability import NoopObservability, ObservabilityPort
 from copilot.services.workflows.deadlines import tool_attempt_deadline
 from copilot.services.workflows.dependency import DependencyChecker
 from copilot.services.workflows.errors import StepInputError
-from copilot.services.workflows.fixed_plan import SUPPLIER_QUALITY_PLAN_ID
 from copilot.services.workflows.inputs import StepInputBuilder, summarize_payload
 from copilot.services.workflows.models import (
     StepExecutionRecord,
@@ -63,6 +62,7 @@ from copilot.tools.executor import ToolExecutor
 from copilot.tools.registry import ToolRegistry
 
 _REPAIRABLE_VERIFICATION_CODES = {
+    "AP_NUMERIC_CLAIM_MISMATCH",
     "ARTIFACT_CHECKSUM_MISMATCH",
     "ARTIFACT_CITATION_COVERAGE_INCOMPLETE",
     "ARTIFACT_REPORT_MODEL_INVALID",
@@ -454,7 +454,7 @@ class GraphNodeRuntime:
             "create_plan",
             started,
             "plan_created",
-            "Supplier Quality candidate plan created",
+            "Governed domain candidate plan created",
             domain_state=domain_state,
             plan=plan,
             plan_repair_count=repair_count,
@@ -857,6 +857,7 @@ class GraphNodeRuntime:
                 state["contract"],
                 {item.step_id: item for item in state["step_results"]},
                 self._load_evidence(state),
+                state["intake_context"],
             )
         except StepInputError as exc:
             error = self._error(
@@ -1148,12 +1149,7 @@ class GraphNodeRuntime:
                 errors=[error],
             )
         try:
-            manifest = self._domain_manifests.require_execution(state["contract"])
-            if manifest.verifier_profile != "supplier_quality_verifier.v1":
-                raise DomainManifestError(
-                    "DOMAIN_VERIFIER_PROFILE_NOT_IMPLEMENTED",
-                    f"Verifier profile is not implemented: {manifest.verifier_profile}",
-                )
+            self._domain_manifests.require_execution(state["contract"])
         except DomainManifestError as exc:
             error = self._error(
                 state,
@@ -1316,14 +1312,23 @@ class GraphNodeRuntime:
                 cancelled_records.append(record)
         successful = sum(item.status is StepResultStatus.SUCCESS for item in state["step_results"])
         active_artifact = state.get("active_artifact")
+        contract = state.get("contract")
+        task_type = (
+            contract.task_type if contract is not None else state["intake_context"].task_type
+        )
+        domain_label = (
+            "Accounts Payable analysis"
+            if task_type.value == "accounts_payable_analysis.v1"
+            else "Supplier quality analysis"
+        )
         result = TaskResult(
             task_id=state["task_id"],
             final_status=domain_state.state,
             summary=(
-                "Supplier quality analysis completed with verified evidence and report."
+                f"{domain_label} completed with verified evidence and report."
                 if completed
                 else (
-                    f"Supplier quality analysis failed after {successful} successful step(s); "
+                    f"{domain_label} failed after {successful} successful step(s); "
                     "committed evidence is retained."
                 )
             ),
@@ -1616,7 +1621,16 @@ class GraphNodeRuntime:
             evidence=self._load_evidence(state),
             artifacts=[active_artifact] if active_artifact is not None else [],
             retry_counts=dict(state["retry_counts"]),
-            metadata={"registered_tools": tuple(self._registry.list())},
+            metadata={
+                "registered_tools": tuple(
+                    self._registry.get_profile(
+                        step.tool_name,
+                        step.tool_version,
+                        step.contract_profile,
+                    ).definition
+                    for step in state["plan"].steps
+                )
+            },
             verification_result=state["verification_result"],
             approvals=self._approval_repository.list_by_task(
                 state["task_id"],
@@ -1801,7 +1815,9 @@ class GraphNodeRuntime:
                 event_id=self._ids.new_id("AUD"),
                 event=event,
                 task_id=state["task_id"],
-                plan_id=SUPPLIER_QUALITY_PLAN_ID,
+                plan_id=self._domain_manifests.resolve(
+                    state["intake_context"].task_type
+                ).plan_profile,
                 plan_version=(
                     state["plan"].planning_version if state.get("plan") is not None else 0
                 ),

@@ -28,6 +28,28 @@ class APExceptionType(StrEnum):
     OVERPAYMENT = "OVERPAYMENT"
 
 
+class APAnalyticsOperation(StrEnum):
+    """Seven exact deterministic operation identifiers frozen for AP v1."""
+
+    EXACT_DUPLICATE_INVOICE_DETECTION = "ap.exact_duplicate_invoice_detection.v1"
+    INVOICE_PO_VARIANCE_DETECTION = "ap.invoice_po_variance_detection.v1"
+    MISSING_PO_DETECTION = "ap.missing_po_detection.v1"
+    PAYMENT_TERM_COMPLIANCE_DETECTION = "ap.payment_term_compliance_detection.v1"
+    OVERPAYMENT_DETECTION = "ap.overpayment_detection.v1"
+    EXCEPTION_SUMMARY = "ap.exception_summary.v1"
+    SUPPLIER_EXCEPTION_RATE = "ap.supplier_exception_rate.v1"
+
+
+class APDatabaseTemplate(StrEnum):
+    """Five governed read-model identifiers frozen for AP v1."""
+
+    INVOICE_POPULATION = "ap_invoice_population_v1"
+    DUPLICATE_CANDIDATES = "ap_duplicate_invoice_candidates_v1"
+    INVOICE_PO_VARIANCE = "ap_invoice_po_variance_v1"
+    PAYMENT_TERMS = "ap_payment_terms_v1"
+    PAYMENT_AMOUNT = "ap_payment_amount_v1"
+
+
 class TaskStatus(StrEnum):
     """Authoritative lifecycle states from the frozen task state machine."""
 

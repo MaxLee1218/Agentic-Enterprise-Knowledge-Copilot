@@ -31,7 +31,7 @@ def test_settings_load_defaults_and_normalize_paths(
     settings = get_settings()
 
     assert settings.log_level == "INFO"
-    assert settings.max_task_steps == 10
+    assert settings.max_task_steps == 14
     assert settings.rag_timeout_seconds == 45
     assert settings.rag_max_attempts == 3
     assert settings.rag_retry_base_delay_seconds == 0.2

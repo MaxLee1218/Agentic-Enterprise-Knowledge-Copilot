@@ -53,7 +53,7 @@ def test_replan_requires_allowlisted_reason_and_increments_version(tmp_path: Pat
 
         assert outcome.plan.planning_version == 2
         assert outcome.validation.is_valid
-        assert provider.calls[0].context.prompt_version == "replan-v1"
+        assert provider.calls[0].context.prompt_version == "replan-v2"
         assert "E-1" in provider.calls[0].messages[1].content
 
 

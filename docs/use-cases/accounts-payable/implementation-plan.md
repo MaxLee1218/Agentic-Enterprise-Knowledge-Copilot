@@ -183,6 +183,14 @@ inputs; the AP manifest remains disabled and the shared workflow does not invoke
 
 ## Stage 8 — Understanding, Planner and shared Graph integration
 
+**Status:** `COMPLETE — 2026-08-23`
+
+**Acceptance artifact:** [Stage 8 understanding, planner and shared Graph report](stage-8-understanding-planner-and-shared-graph.md)
+
+**Execution boundary:** AP is enabled only through the existing internal Task Service and shared
+Graph. Public API/frontend integration remains disabled until Stage 9; production readiness is not
+claimed.
+
 - **Goal:** run AP Contract through the existing lifecycle.
 - **Scope/work:** AP understanding prompt/schema adapter, manifest-filtered planner, AP Plan rules,
   AP input builder, policy check and fixed offline plan; remove shared-runtime Quality defaults.

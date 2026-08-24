@@ -60,6 +60,7 @@ class OfflineSupplierQualityAuthorizer:
             roles=execution_context.roles,
             is_demo_identity=execution_context.is_demo_identity,
             purpose=execution_context.purpose,
+            scopes=execution_context.scopes,
         )
         if execution_context.approval_required and call.approval_id is None:
             raise ToolAuthorizationError(
@@ -75,6 +76,7 @@ class OfflineSupplierQualityAuthorizer:
         roles: tuple[str, ...],
         is_demo_identity: bool,
         purpose: str,
+        scopes: tuple[str, ...] = (),
     ) -> None:
         """Fail closed if identity, role, tenant, data scope, or approval does not match."""
         if not call.user_id or not call.tenant_id:
@@ -122,6 +124,7 @@ class OfflineSupplierQualityAuthorizer:
                     field_names=field_names,
                     purpose=purpose,
                     is_demo_identity=is_demo_identity,
+                    scopes=scopes,
                 )
             )
             if not data_decision.allowed:

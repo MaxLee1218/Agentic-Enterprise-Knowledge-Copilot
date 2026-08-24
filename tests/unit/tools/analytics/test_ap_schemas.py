@@ -21,7 +21,7 @@ from copilot.tools.registry import ToolRegistry
 from tests.unit.tools.analytics.ap_helpers import analytics_context, evidence_ledger
 
 
-def test_ap_profile_keeps_stable_capability_and_domain_execution_disabled() -> None:
+def test_ap_profile_keeps_stable_capability_after_stage8_execution_enablement() -> None:
     tool = AccountsPayableAnalyticsTool(evidence_ledger())
     registry = ToolRegistry()
     registry.register(tool, contract_profiles=(AP_ANALYTICS_CONTRACT_PROFILE,))
@@ -36,7 +36,7 @@ def test_ap_profile_keeps_stable_capability_and_domain_execution_disabled() -> N
     assert tool.definition.tool_name == "analysis_engine"
     assert tool.definition.tool_version == "2.0.0-deterministic"
     assert AP_ANALYTICS_ENGINE_VERSION == "accounts_payable_analytics.v1"
-    assert ACCOUNTS_PAYABLE_MANIFEST.execution_enabled is False
+    assert ACCOUNTS_PAYABLE_MANIFEST.execution_enabled is True
     assert len(APAnalyticsOperation) == 7
     assert len(APDatabaseTemplate) == 5
     with pytest.raises(ToolNotFoundError):

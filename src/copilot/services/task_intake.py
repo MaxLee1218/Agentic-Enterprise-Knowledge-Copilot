@@ -11,7 +11,7 @@ from typing import TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
-from copilot.contracts import ArtifactType, JsonObject, TaskType
+from copilot.contracts import ArtifactType, JsonObject, MoneyThreshold, TaskType
 from copilot.security import SensitiveDataRegistry
 
 MetadataValue: TypeAlias = JsonValue
@@ -86,6 +86,11 @@ class TrustedCallerContext(BaseModel):
     is_demo_identity: bool = True
     purpose: str = Field(default="supplier_quality_analysis.v1", min_length=1)
     attributes: dict[str, MetadataValue] = Field(default_factory=dict)
+    policy_rule_set_id: str | None = None
+    policy_rule_set_version: str | None = None
+    policy_manifest_checksum: str | None = None
+    policy_materiality: tuple[MoneyThreshold, ...] = ()
+    policy_snapshot_at: datetime | None = None
     policy_requires_approval: bool = False
     policy_forces_read_only: bool = True
 
@@ -118,6 +123,11 @@ class TrustedTaskContext(BaseModel):
     authorized_legal_entity_ids: tuple[str, ...] = ()
     authorized_business_unit_ids: tuple[str, ...] = ()
     authorized_currency_scope: tuple[str, ...] = ()
+    policy_rule_set_id: str | None = None
+    policy_rule_set_version: str | None = None
+    policy_manifest_checksum: str | None = None
+    policy_materiality: tuple[MoneyThreshold, ...] = ()
+    policy_snapshot_at: datetime | None = None
     roles: tuple[str, ...] = ()
     scopes: tuple[str, ...] = ()
     authentication_source: str = Field(default="demo", min_length=1)

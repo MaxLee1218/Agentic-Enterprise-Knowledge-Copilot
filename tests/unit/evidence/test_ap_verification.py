@@ -387,7 +387,7 @@ def test_ap_profile_passes_and_uc1_default_order_is_unchanged(
     ap_fixture: APVerificationFixture,
 ) -> None:
     assert ACCOUNTS_PAYABLE_MANIFEST.verifier_profile == ACCOUNTS_PAYABLE_VERIFIER_PROFILE_ID
-    assert ACCOUNTS_PAYABLE_MANIFEST.execution_enabled is False
+    assert ACCOUNTS_PAYABLE_MANIFEST.execution_enabled is True
     result = composite_verifier_for_profile(ACCOUNTS_PAYABLE_VERIFIER_PROFILE_ID).verify(
         **_arguments(ap_fixture)  # type: ignore[arg-type]
     )
@@ -480,6 +480,42 @@ def test_ap_report_adapter_maps_explicit_claims_without_narrative_parsing(
     assert canonical_ratio.as_tuple().exponent == -8
     assert percent_candidate.numeric_claims[0].unit == "ratio"
     assert percent_candidate.numeric_claims[0].precision == 8
+
+
+def test_ap_report_adapter_marks_empty_population_sections_as_valid_empty_results(
+    ap_fixture: APVerificationFixture,
+) -> None:
+    report: dict[str, JsonValue] = {
+        section: {"present": True}
+        for section in ap_fixture.contract.expected_output.required_sections
+    }
+    for section in (
+        "duplicate_invoice_findings",
+        "po_compliance_findings",
+        "payment_findings",
+        "supplier_summary",
+    ):
+        report[section] = []
+    report["data_overview"] = {"empty_result": True}
+    report["evidence"] = {"claims": []}
+
+    candidate = candidate_from_ap_report(
+        task_contract=ap_fixture.contract,
+        report_step_id="S-AP-REPORT",
+        report=report,
+        evidence=ap_fixture.ledger.list(TASK_ID, tenant_id=TENANT_ID),
+    )
+
+    by_id = {item.deliverable_id: item for item in candidate.deliverables}
+    assert all(
+        by_id[section].empty_result
+        for section in (
+            "duplicate_invoice_findings",
+            "po_compliance_findings",
+            "payment_findings",
+            "supplier_summary",
+        )
+    )
 
 
 @pytest.mark.parametrize(

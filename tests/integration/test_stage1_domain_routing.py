@@ -1,4 +1,4 @@
-"""Stage 1 Graph routing must reject AP before any business tool invocation."""
+"""Cross-domain prebuilt Plans must fail before any business tool invocation."""
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -9,7 +9,7 @@ from tests.unit.domain.helpers import make_plan
 from tests.workflow_helpers import build_test_container
 
 
-def test_prebuilt_ap_contract_fails_at_disabled_manifest_without_tool_calls(
+def test_prebuilt_ap_contract_rejects_quality_plan_without_tool_calls(
     tmp_path: Path,
 ) -> None:
     now = datetime.now(UTC)
@@ -43,7 +43,7 @@ def test_prebuilt_ap_contract_fails_at_disabled_manifest_without_tool_calls(
         state = container.engine.get_state(contract.task_id, contract.constraints.tenant_id)
 
         assert execution.final_state.state is TaskStatus.FAILED
-        assert any(error.error_code == "DOMAIN_EXECUTION_NOT_ENABLED" for error in state["errors"])
+        assert any(error.error_code == "PLAN_INVALID" for error in state["errors"])
         assert container.tool_audit.list(tenant_id=contract.constraints.tenant_id) == ()
         assert (
             container.repository.tool_results_for(

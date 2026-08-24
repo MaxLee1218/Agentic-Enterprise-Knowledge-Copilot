@@ -119,4 +119,4 @@ def test_prompt_injection_is_data_and_cannot_expand_scope(tmp_path: Path) -> Non
 
         assert execution.final_state.state is TaskStatus.FAILED
         assert container.tool_audit.list(tenant_id="TENANT-DEMO") == ()
-        assert provider.calls[0].context.prompt_version == "task-understanding-v1"
+        assert provider.calls[0].context.prompt_version == "task-understanding-v2"

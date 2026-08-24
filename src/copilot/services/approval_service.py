@@ -595,7 +595,9 @@ class ApprovalService:
         if not command.reason or not command.reason.strip():
             raise ApprovalArgumentsInvalidError("EDIT requires a reason")
         try:
-            definition = self._registry.get(pending.tool_name).definition
+            definition = self._registry.get_version(
+                pending.tool_name, pending.tool_version
+            ).definition
         except ToolRuntimeError as exc:
             raise ApprovalStateConflictError("Registered approval tool is unavailable") from exc
         if (

@@ -4,6 +4,8 @@ from copilot.contracts.approvals import ApprovalRequest
 from copilot.contracts.artifacts import Artifact
 from copilot.contracts.base import ContractModel, ImmutableContractModel, JsonObject
 from copilot.contracts.enums import (
+    APAnalyticsOperation,
+    APDatabaseTemplate,
     APExceptionType,
     ApprovalResolutionAction,
     ApprovalStatus,
@@ -134,6 +136,8 @@ from copilot.contracts.verification import (
 
 __all__ = [
     "ACCOUNTS_PAYABLE_CONTRACT_PROFILES",
+    "APAnalyticsOperation",
+    "APDatabaseTemplate",
     "APReportClaimV1",
     "APExceptionType",
     "APPolicyDocumentFamily",

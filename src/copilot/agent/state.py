@@ -276,15 +276,25 @@ def initial_graph_state(
             authorized_legal_entity_ids=(ap_scope.legal_entity_ids if ap_scope else ()),
             authorized_business_unit_ids=(ap_scope.business_unit_ids if ap_scope else ()),
             authorized_currency_scope=(ap_scope.currency_scope if ap_scope else ()),
+            policy_rule_set_id=(ap_scope.policy_rule_set_id if ap_scope else None),
+            policy_rule_set_version=(ap_scope.policy_rule_set_version if ap_scope else None),
+            policy_manifest_checksum=(ap_scope.policy_manifest_checksum if ap_scope else None),
+            policy_materiality=(ap_scope.effective_materiality if ap_scope else ()),
+            policy_snapshot_at=(ap_scope.snapshot_at if ap_scope else None),
             roles=(
                 ("quality_analyst",)
                 if contract.task_type is TaskType.SUPPLIER_QUALITY_ANALYSIS_V1
-                else ()
+                else ("finance_analyst",)
             ),
             scopes=(
                 ("task:execute", "data:quality.v1")
                 if contract.task_type is TaskType.SUPPLIER_QUALITY_ANALYSIS_V1
-                else ("task:execute",)
+                else (
+                    "task:execute",
+                    "finance:ap.detail",
+                    "finance:ap.artifact:download",
+                    "artifact.write",
+                )
             ),
             authentication_source="legacy_internal_adapter",
             authenticated=True,

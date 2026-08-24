@@ -1,4 +1,4 @@
-"""Dependency composition for the deterministic Supplier Quality workflow."""
+"""Dependency composition for the shared governed domain workflow."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from copilot.agent.runtime import GraphNodeRuntime
 from copilot.agent.state import checkpoint_serializer
 from copilot.bootstrap.knowledge import build_http_knowledge_client
 from copilot.config import PROJECT_ROOT, Settings
+from copilot.contracts import ACCOUNTS_PAYABLE_CONTRACT_PROFILES, CapabilityName
 from copilot.contracts.validators import utc_now
 from copilot.evidence.ledger import InMemoryEvidenceLedger
 from copilot.evidence.workflow import WorkflowVerifier
@@ -52,7 +53,6 @@ from copilot.security import OutputGuard, PromptInjectionDetector, SensitiveData
 from copilot.services.approval_service import ApprovalGateService, ApprovalService
 from copilot.services.artifact_service import ArtifactService
 from copilot.services.domains import builtin_domain_manifest_registry
-from copilot.services.domains.manifests import SUPPLIER_QUALITY_MANIFEST
 from copilot.services.health import ReadinessService
 from copilot.services.llm import LLMGenerationOptions, LLMProvider
 from copilot.services.task_intake import IntakeLimits
@@ -65,12 +65,17 @@ from copilot.services.workflows.retry import WorkflowRetryPolicy
 from copilot.services.workflows.service import SupplierQualityWorkflowService
 from copilot.services.workflows.state_machine import TaskStateMachine
 from copilot.services.workflows.validation import PlanValidator
-from copilot.tools.analytics import AnalyticsTool
+from copilot.tools.analytics import AccountsPayableAnalyticsTool, AnalyticsTool
 from copilot.tools.cancellation import InvocationCancellationRegistry
 from copilot.tools.database import DatabaseConnection, DatabaseTool
 from copilot.tools.database.schema_registry import SchemaRegistry
 from copilot.tools.executor import ToolExecutor
-from copilot.tools.knowledge import HttpKnowledgeClient, KnowledgeTool
+from copilot.tools.knowledge import (
+    AccountsPayablePolicyTool,
+    HttpKnowledgeClient,
+    KnowledgeTool,
+    load_ap_policy_bundle,
+)
 from copilot.tools.mock_supplier_quality import (
     MockAnalyticsTool,
     MockBehavior,
@@ -79,7 +84,7 @@ from copilot.tools.mock_supplier_quality import (
     MockReportTool,
 )
 from copilot.tools.registry import ToolCancellationMode, ToolRegistry
-from copilot.tools.reporting import ReportTool
+from copilot.tools.reporting import AccountsPayableReportTool, ReportTool
 
 
 @dataclass(slots=True)
@@ -103,6 +108,10 @@ class WorkflowContainer:
     database_tool: MockDatabaseTool | DatabaseTool
     analytics_tool: MockAnalyticsTool | AnalyticsTool
     report_tool: MockReportTool | ReportTool
+    ap_knowledge_tool: AccountsPayablePolicyTool
+    ap_database_tool: DatabaseTool
+    ap_analytics_tool: AccountsPayableAnalyticsTool
+    ap_report_tool: AccountsPayableReportTool
     graph_runtime: GraphNodeRuntime
     engine: LangGraphWorkflowEngine
     planning_service: LLMPlanningService | None = None
@@ -122,6 +131,7 @@ class WorkflowContainer:
             self.owned_llm_provider.close()
         if isinstance(self.database_tool, DatabaseTool):
             self.database_tool.close()
+        self.ap_database_tool.close()
         self.evidence.close()
         self.artifacts.close()
         self.repository.close()
@@ -302,11 +312,50 @@ def build_workflow_container(
             clock=clock,
             behavior=report_behavior,
         )
+    ap_policy_bundle = load_ap_policy_bundle(settings.ap_policy_bundle_dir)
+    ap_knowledge_tool = AccountsPayablePolicyTool(ap_policy_bundle)
+    ap_database_tool = DatabaseTool.accounts_payable(
+        DatabaseConnection(
+            settings.database_url,
+            read_only=True,
+            base_directory=PROJECT_ROOT,
+        ),
+        statement_timeout_seconds=settings.database_statement_timeout_seconds,
+        data_access_policy=data_access_policy,
+    )
+    ap_analytics_tool = AccountsPayableAnalyticsTool(evidence)
+    ap_report_tool = AccountsPayableReportTool(
+        evidence_reader=evidence,
+        artifact_store=artifacts,
+        ids=identifier_factory,
+        clock=clock,
+        output_guard=output_guard,
+    )
     registry = ToolRegistry()
     registry.register(knowledge_tool, cancellation_mode=ToolCancellationMode.NON_CANCELLABLE)
     registry.register(database_tool, cancellation_mode=ToolCancellationMode.NON_CANCELLABLE)
     registry.register(analytics_tool, cancellation_mode=ToolCancellationMode.COOPERATIVE)
     registry.register(report_tool, cancellation_mode=ToolCancellationMode.NON_CANCELLABLE)
+    registry.register_profile(
+        ap_knowledge_tool,
+        contract_profiles=(ACCOUNTS_PAYABLE_CONTRACT_PROFILES[CapabilityName.KNOWLEDGE_SEARCH],),
+        cancellation_mode=ToolCancellationMode.NON_CANCELLABLE,
+    )
+    registry.register_profile(
+        ap_database_tool,
+        contract_profiles=(ACCOUNTS_PAYABLE_CONTRACT_PROFILES[CapabilityName.DATABASE_QUERY],),
+        cancellation_mode=ToolCancellationMode.NON_CANCELLABLE,
+    )
+    registry.register_profile(
+        ap_analytics_tool,
+        contract_profiles=(ACCOUNTS_PAYABLE_CONTRACT_PROFILES[CapabilityName.ANALYSIS_ENGINE],),
+        cancellation_mode=ToolCancellationMode.COOPERATIVE,
+    )
+    registry.register_profile(
+        ap_report_tool,
+        contract_profiles=(ACCOUNTS_PAYABLE_CONTRACT_PROFILES[CapabilityName.REPORT_GENERATOR],),
+        cancellation_mode=ToolCancellationMode.NON_CANCELLABLE,
+    )
     domain_manifests = builtin_domain_manifest_registry()
     approval_gate = ApprovalGateService(
         repository=approval_repository,
@@ -389,7 +438,13 @@ def build_workflow_container(
         registry=registry,
         plan_validator=plan_validator,
         dependency_checker=DependencyChecker(),
-        input_builder=StepInputBuilder(domain_manifests),
+        input_builder=StepInputBuilder(
+            domain_manifests,
+            ap_policy_collection_id=ap_policy_bundle.corpus.collection_id,
+            ap_policy_rule_manifest=ap_policy_bundle.rule_manifest,
+            ap_policy_snapshot_id=ap_knowledge_tool.index_snapshot_id,
+            ap_database_row_limit=settings.max_database_rows,
+        ),
         retry_policy=WorkflowRetryPolicy(
             max_retries=settings.workflow_max_retries,
             retry_delay_seconds=settings.workflow_retry_delay_seconds,
@@ -401,7 +456,7 @@ def build_workflow_container(
             allowed_columns=schema_registry.list_columns(),
             sensitive_fields=schema_registry.list_sensitive_columns(),
             allowed_query_templates=schema_registry.list_templates(),
-            verifier_profile_id=SUPPLIER_QUALITY_MANIFEST.verifier_profile,
+            verifier_profile_id=None,
             clock=clock,
         ),
         evidence_reader=evidence,
@@ -561,6 +616,10 @@ def build_workflow_container(
         database_tool=database_tool,
         analytics_tool=analytics_tool,
         report_tool=report_tool,
+        ap_knowledge_tool=ap_knowledge_tool,
+        ap_database_tool=ap_database_tool,
+        ap_analytics_tool=ap_analytics_tool,
+        ap_report_tool=ap_report_tool,
         graph_runtime=runtime,
         engine=engine,
         planning_service=planning_service,

@@ -150,6 +150,8 @@ class ToolRegistry:
             validate_namespace(namespace) for namespace in allowed_namespaces
         )
         self._entries: dict[str, RegisteredTool] = {}
+        self._version_entries: dict[tuple[str, str], RegisteredTool] = {}
+        self._profile_entries: dict[tuple[str, str, str], RegisteredTool] = {}
         self._generation = 0
         self._lock = RLock()
 
@@ -205,6 +207,44 @@ class ToolRegistry:
             self._generation += 1
             prepared = _with_generation(prepared, self._generation)
             self._entries[prepared.canonical_name] = prepared
+            self._index_entry(prepared)
+            return prepared
+
+    def register_profile(
+        self,
+        tool: Tool,
+        *,
+        contract_profiles: Collection[str],
+        namespace: str = "local",
+        origin: ToolOrigin | None = None,
+        provenance: ToolProvenance | None = None,
+        schema_version: str = "tool-definition.v1",
+        registration_source: RegistrationSource = RegistrationSource.BUILTIN,
+        cancellation_mode: ToolCancellationMode = ToolCancellationMode.NON_CANCELLABLE,
+    ) -> RegisteredTool:
+        """Bind an additional exact version/profile without replacing the stable default."""
+        request = ToolRegistrationRequest(
+            tool=tool,
+            namespace=namespace,
+            origin=origin or ToolOrigin(source_id="copilot", origin_type="local"),
+            provenance=provenance
+            or ToolProvenance(provider="copilot", revision=tool.definition.tool_version),
+            schema_version=schema_version,
+            registration_source=registration_source,
+            cancellation_mode=cancellation_mode,
+            contract_profiles=tuple(contract_profiles),
+        )
+        prepared = self._prepare(request, generation=self.generation + 1)
+        with self._lock:
+            if prepared.canonical_name not in self._entries:
+                raise ToolNotFoundError(
+                    f"Register the stable tool name before adding profile bindings: "
+                    f"{prepared.canonical_name}"
+                )
+            self._assert_index_available(prepared)
+            self._generation += 1
+            prepared = _with_generation(prepared, self._generation)
+            self._index_entry(prepared)
             return prepared
 
     def unregister(self, name: str) -> None:
@@ -214,6 +254,7 @@ class ToolRegistry:
             if name not in self._entries:
                 raise ToolNotFoundError(name)
             del self._entries[name]
+            self._remove_indexes_for_name(name)
             self._generation += 1
 
     def get(self, name: str) -> Tool:
@@ -222,8 +263,13 @@ class ToolRegistry:
 
     def get_profile(self, name: str, tool_version: str, contract_profile: str) -> Tool:
         """Resolve one exact version/profile binding or fail closed."""
-        registration = self.registration(name)
-        definition = registration.tool.definition
+        _validate_canonical_name(name)
+        with self._lock:
+            registration = self._profile_entries.get((name, tool_version, contract_profile))
+        if registration is not None:
+            return registration.tool
+        primary = self.registration(name)
+        definition = primary.tool.definition
         version_matches = definition.tool_version == tool_version
         if tool_version.startswith("legacy-schema-sha256:"):
             legacy_fingerprint = tool_version.removeprefix("legacy-schema-sha256:")
@@ -234,9 +280,31 @@ class ToolRegistry:
                 legacy_fingerprint,
                 contract_profile,
             )
-        if not version_matches or contract_profile not in registration.contract_profiles:
+        if not version_matches or contract_profile not in primary.contract_profiles:
             raise ToolNotFoundError(f"{name}@{tool_version}#{contract_profile}")
-        return registration.tool
+        return primary.tool
+
+    def get_version(self, name: str, tool_version: str) -> Tool:
+        """Resolve the unique adapter bound to an exact stable name and version."""
+        _validate_canonical_name(name)
+        with self._lock:
+            try:
+                return self._version_entries[(name, tool_version)].tool
+            except KeyError as exc:
+                raise ToolNotFoundError(f"{name}@{tool_version}") from exc
+
+    def profile_registration(self, name: str, contract_profile: str) -> RegisteredTool:
+        """Resolve the single governed registration advertised for one profile."""
+        _validate_canonical_name(name)
+        with self._lock:
+            matches = [
+                entry
+                for (bound_name, _version, profile), entry in self._profile_entries.items()
+                if bound_name == name and profile == contract_profile
+            ]
+        if len(matches) != 1:
+            raise ToolNotFoundError(f"{name}#{contract_profile}")
+        return matches[0]
 
     def registration(self, name: str) -> RegisteredTool:
         """Return one immutable registration snapshot."""
@@ -290,6 +358,9 @@ class ToolRegistry:
             committed = tuple(_with_generation(entry, self._generation) for entry in prepared)
             next_entries.update((entry.canonical_name, entry) for entry in committed)
             self._entries = next_entries
+            self._remove_indexes_for_namespace(namespace)
+            for entry in committed:
+                self._index_entry(entry)
             return committed
 
     def revoke_namespace(self, namespace: str, *, expected_generation: int | None = None) -> int:
@@ -303,8 +374,46 @@ class ToolRegistry:
                 return 0
             for name in names:
                 del self._entries[name]
+            self._remove_indexes_for_namespace(namespace)
             self._generation += 1
             return len(names)
+
+    def _assert_index_available(self, entry: RegisteredTool) -> None:
+        version_key = (entry.canonical_name, entry.tool.definition.tool_version)
+        existing_version = self._version_entries.get(version_key)
+        if existing_version is not None and existing_version.tool is not entry.tool:
+            raise ToolAlreadyExistsError(f"{entry.canonical_name}@{version_key[1]}")
+        for profile in entry.contract_profiles:
+            key = (*version_key, profile)
+            if key in self._profile_entries:
+                raise ToolAlreadyExistsError(f"{entry.canonical_name}@{version_key[1]}#{profile}")
+
+    def _index_entry(self, entry: RegisteredTool) -> None:
+        self._assert_index_available(entry)
+        version_key = (entry.canonical_name, entry.tool.definition.tool_version)
+        self._version_entries[version_key] = entry
+        for profile in entry.contract_profiles:
+            self._profile_entries[(*version_key, profile)] = entry
+
+    def _remove_indexes_for_name(self, name: str) -> None:
+        self._version_entries = {
+            key: entry for key, entry in self._version_entries.items() if key[0] != name
+        }
+        self._profile_entries = {
+            key: entry for key, entry in self._profile_entries.items() if key[0] != name
+        }
+
+    def _remove_indexes_for_namespace(self, namespace: str) -> None:
+        self._version_entries = {
+            key: entry
+            for key, entry in self._version_entries.items()
+            if entry.namespace != namespace
+        }
+        self._profile_entries = {
+            key: entry
+            for key, entry in self._profile_entries.items()
+            if entry.namespace != namespace
+        }
 
     def _prepare(self, request: ToolRegistrationRequest, *, generation: int) -> RegisteredTool:
         definition = request.tool.definition
