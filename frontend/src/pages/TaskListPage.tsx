@@ -4,6 +4,7 @@ import type { TaskStatus } from "../api/types";
 import { EmptyState, ErrorPanel, LoadingState } from "../components/PageState";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
+import { TaskTypeBadge } from "../components/TaskTypeBadge";
 import { useTaskList } from "../features/tasks/queries";
 import { formatDate, shorten } from "../utils/format";
 import { taskStatuses } from "../utils/status";
@@ -78,7 +79,7 @@ export function TaskListPage() {
       {tasks.data && tasks.data.items.length === 0 && (
         <EmptyState
           title="No tasks found"
-          message="Run a bounded supplier quality task or change the status filter."
+          message="Run a bounded enterprise analysis task or change the status filter."
         />
       )}
       {tasks.data && tasks.data.items.length > 0 && (
@@ -96,6 +97,7 @@ export function TaskListPage() {
                 <tr>
                   <th>Task</th>
                   <th>Request summary</th>
+                  <th>Use case</th>
                   <th>Status</th>
                   <th>Created</th>
                   <th>Artifacts</th>
@@ -113,6 +115,9 @@ export function TaskListPage() {
                       </Link>
                     </td>
                     <td className="task-summary-cell">{task.task_summary}</td>
+                    <td>
+                      <TaskTypeBadge taskType={task.task_type} />
+                    </td>
                     <td>
                       <StatusBadge status={task.status} />
                     </td>

@@ -9,12 +9,14 @@ from copilot.contracts import CapabilityName
 
 
 class Permission(StrEnum):
-    """Actions governed by the current Supplier Quality application boundary."""
+    """Actions governed by the currently executable use-case boundaries."""
 
+    SUBMIT_TASK = "submit_task"
     EXECUTE_TOOL = "execute_tool"
     READ_TASK = "read_task"
     READ_EVIDENCE = "read_evidence"
     READ_ARTIFACT = "read_artifact"
+    DOWNLOAD_ARTIFACT = "download_artifact"
     GENERATE_REPORT = "generate_report"
     APPROVE_ACTION = "approve_action"
     CANCEL_TASK = "cancel_task"
@@ -31,6 +33,7 @@ class AuthorizationRequest:
     tool_name: str = ""
     task_id: str = ""
     purpose: str = "supplier_quality_analysis.v1"
+    scopes: tuple[str, ...] = ()
     is_demo_identity: bool = False
 
 
@@ -50,10 +53,12 @@ _FROZEN_TOOLS = frozenset(item.value for item in CapabilityName)
 _ROLE_PERMISSIONS = {
     "quality_analyst": frozenset(
         {
+            Permission.SUBMIT_TASK,
             Permission.EXECUTE_TOOL,
             Permission.READ_TASK,
             Permission.READ_EVIDENCE,
             Permission.READ_ARTIFACT,
+            Permission.DOWNLOAD_ARTIFACT,
             Permission.GENERATE_REPORT,
             Permission.CANCEL_TASK,
         }
@@ -61,10 +66,12 @@ _ROLE_PERMISSIONS = {
     "quality_data_approver": frozenset(Permission),
     "finance_analyst": frozenset(
         {
+            Permission.SUBMIT_TASK,
             Permission.EXECUTE_TOOL,
             Permission.READ_TASK,
             Permission.READ_EVIDENCE,
             Permission.READ_ARTIFACT,
+            Permission.DOWNLOAD_ARTIFACT,
             Permission.GENERATE_REPORT,
             Permission.CANCEL_TASK,
         }
@@ -75,6 +82,7 @@ _ROLE_PERMISSIONS = {
             Permission.READ_TASK,
             Permission.READ_EVIDENCE,
             Permission.READ_ARTIFACT,
+            Permission.DOWNLOAD_ARTIFACT,
         }
     ),
 }
@@ -128,7 +136,8 @@ class PermissionMatrix:
                 "Requested purpose is outside the governed task profiles",
                 request.action,
             )
-        if any(role not in _PURPOSE_ROLES[request.purpose] for role in roles):
+        purpose_roles = tuple(role for role in roles if role in _PURPOSE_ROLES[request.purpose])
+        if not purpose_roles:
             return _deny(
                 "UNKNOWN_ROLE",
                 "Caller role is not authorized for the selected purpose",
@@ -142,24 +151,34 @@ class PermissionMatrix:
                     request.action,
                 )
             if request.tool_name == CapabilityName.REPORT_GENERATOR.value and not any(
-                Permission.GENERATE_REPORT in _ROLE_PERMISSIONS[role] for role in roles
+                Permission.GENERATE_REPORT in _ROLE_PERMISSIONS[role] for role in purpose_roles
             ):
                 return _deny(
                     "TOOL_NOT_ALLOWED", "Report generation is not permitted", request.action
                 )
-        if not any(request.action in _ROLE_PERMISSIONS[role] for role in roles):
+        if not any(request.action in _ROLE_PERMISSIONS[role] for role in purpose_roles):
             code = (
                 "APPROVAL_PERMISSION_DENIED"
                 if request.action is Permission.APPROVE_ACTION
                 else "PERMISSION_DENIED"
             )
             return _deny(code, "Caller lacks the required permission", request.action)
+        if (
+            request.action is Permission.DOWNLOAD_ARTIFACT
+            and request.purpose == "accounts_payable_analysis.v1"
+            and "finance:ap.artifact:download" not in request.scopes
+        ):
+            return _deny(
+                "ARTIFACT_DOWNLOAD_SCOPE_REQUIRED",
+                "Accounts Payable Artifact download requires an explicit scope",
+                request.action,
+            )
         return PolicyDecision(
             allowed=True,
             reason_code="ALLOWED",
             reason="Permission is explicitly allowed by the demo role matrix",
             required_permissions=(request.action,),
-            matched_rules=tuple(f"role:{role}" for role in roles),
+            matched_rules=tuple(f"role:{role}" for role in purpose_roles),
         )
 
 

@@ -290,7 +290,12 @@ class DataAccessPolicy:
 
     def evaluate(self, request: DataAccessRequest) -> PolicyDecision:
         """Authorize all referenced objects, not merely the projected output columns."""
-        roles = request.roles or (("quality_analyst",) if request.is_demo_identity else ())
+        demo_role = (
+            "finance_analyst"
+            if request.purpose == "accounts_payable_analysis.v1"
+            else "quality_analyst"
+        )
+        roles = request.roles or ((demo_role,) if request.is_demo_identity else ())
         if not roles or any(role not in _ROLE_TABLES for role in roles):
             return _decision(False, "UNKNOWN_ROLE", "Data-access role is not recognized")
         if request.purpose not in {
@@ -302,15 +307,20 @@ class DataAccessPolicy:
                 "V1_1_CAPABILITY_NOT_ALLOWED",
                 "Data-access purpose is outside the frozen scenario",
             )
-        if request.purpose == "supplier_quality_analysis.v1" and any(
-            role not in {"quality_analyst", "quality_data_approver"} for role in roles
-        ):
-            return _decision(False, "UNKNOWN_ROLE", "Role is not authorized for this purpose")
+        purpose_roles: tuple[str, ...]
+        if request.purpose == "supplier_quality_analysis.v1":
+            purpose_roles = tuple(
+                role for role in roles if role in {"quality_analyst", "quality_data_approver"}
+            )
+            if not purpose_roles:
+                return _decision(False, "UNKNOWN_ROLE", "Role is not authorized for this purpose")
         if request.purpose == "accounts_payable_analysis.v1":
-            if any(
-                role not in {"finance_analyst", "finance_approver", "finance_auditor"}
+            purpose_roles = tuple(
+                role
                 for role in roles
-            ):
+                if role in {"finance_analyst", "finance_approver", "finance_auditor"}
+            )
+            if not purpose_roles:
                 return _decision(False, "UNKNOWN_ROLE", "Role is not authorized for this purpose")
             if "finance:ap.detail" not in request.scopes:
                 return _decision(
@@ -318,10 +328,10 @@ class DataAccessPolicy:
                     "AP_DETAIL_SCOPE_REQUIRED",
                     "Detailed Accounts Payable data requires finance:ap.detail",
                 )
-        allowed_tables = set().union(*(_ROLE_TABLES[role] for role in roles))
+        allowed_tables = set().union(*(_ROLE_TABLES[role] for role in purpose_roles))
         if not set(request.table_names).issubset(allowed_tables):
             return _decision(False, "TABLE_NOT_ALLOWED", "Query references an unauthorized table")
-        allowed_fields = set().union(*(_ROLE_FIELDS[role] for role in roles))
+        allowed_fields = set().union(*(_ROLE_FIELDS[role] for role in purpose_roles))
         if not set(request.field_names).issubset(allowed_fields):
             return _decision(False, "FIELD_NOT_ALLOWED", "Query references an unauthorized field")
         matched_rule = (

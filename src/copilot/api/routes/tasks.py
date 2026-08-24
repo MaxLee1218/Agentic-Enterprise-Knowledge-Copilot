@@ -83,6 +83,7 @@ def submit_task(
         execution = service.submit(
             NaturalLanguageTaskCommand(
                 task=submission.task,
+                task_type=submission.task_type,
                 output_format=submission.output_format,
                 max_steps=submission.max_steps,
                 read_only=submission.read_only,

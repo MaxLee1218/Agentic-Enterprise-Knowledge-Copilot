@@ -8,7 +8,7 @@ from pathlib import Path
 from threading import RLock
 from typing import Any, cast
 
-from sqlalchemy import JSON, delete, func, select, update
+from sqlalchemy import JSON, delete, func, or_, select, update
 from sqlalchemy import cast as sql_cast
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
@@ -39,6 +39,17 @@ from copilot.persistence.models import (
     WorkflowVerificationHistoryRow,
 )
 from copilot.services.workflows.models import StepExecutionRecord, TaskStateEvent
+
+
+def _task_type_for_listing(request: TaskRequest, contract: TaskContract | None) -> str:
+    if contract is not None:
+        return contract.task_type.value
+    intake = request.metadata.root.get("intake")
+    if isinstance(intake, dict):
+        value = intake.get("task_type")
+        if isinstance(value, str) and value:
+            return value
+    return "supplier_quality_analysis.v1"
 
 
 class WorkflowRepository:
@@ -497,11 +508,13 @@ class WorkflowRepository:
         *,
         tenant_id: str,
         user_id: str,
+        assigned_task_ids: tuple[str, ...] = (),
+        allowed_task_types: tuple[str, ...] = (),
         status: str | None,
         limit: int,
         offset: int,
     ) -> tuple[tuple[str, ...], int]:
-        """List one owner's tenant-scoped task IDs newest-first with bounded pagination."""
+        """List tenant-scoped owned or explicitly assigned tasks with bounded pagination."""
         if not tenant_id or not user_id:
             raise ValueError("tenant_id and user_id are required")
         if limit < 1 or limit > 100 or offset < 0:
@@ -512,7 +525,15 @@ class WorkflowRepository:
                     (task_id, request.created_at)
                     for task_id, request in self._requests.items()
                     if self._tenants.get(task_id) == tenant_id
-                    and request.user_id == user_id
+                    and (request.user_id == user_id or task_id in assigned_task_ids)
+                    and (
+                        not allowed_task_types
+                        or _task_type_for_listing(
+                            request,
+                            self._contracts.get(task_id),
+                        )
+                        in allowed_task_types
+                    )
                     and (status is None or self._states[task_id].state.value == status)
                 ]
                 matching.sort(key=lambda item: (item[1], item[0]), reverse=True)
@@ -525,16 +546,36 @@ class WorkflowRepository:
                 request_user_id = func.json_extract(WorkflowTaskRow.request_json, "$.user_id")
                 task_status = func.json_extract(WorkflowTaskRow.state_json, "$.state")
                 created_at = func.json_extract(WorkflowTaskRow.request_json, "$.created_at")
+                contract_task_type = func.json_extract(WorkflowTaskRow.contract_json, "$.task_type")
+                intake_task_type = func.json_extract(
+                    WorkflowTaskRow.request_json, "$.metadata.intake.task_type"
+                )
             else:
                 request_json = sql_cast(WorkflowTaskRow.request_json, JSON)
                 state_json = sql_cast(WorkflowTaskRow.state_json, JSON)
+                contract_json = sql_cast(WorkflowTaskRow.contract_json, JSON)
                 request_user_id = request_json["user_id"].as_string()
                 task_status = state_json["state"].as_string()
                 created_at = request_json["created_at"].as_string()
+                contract_task_type = contract_json["task_type"].as_string()
+                intake_task_type = request_json["metadata"]["intake"]["task_type"].as_string()
+            access_condition = request_user_id == user_id
+            if assigned_task_ids:
+                access_condition = or_(
+                    access_condition,
+                    WorkflowTaskRow.task_id.in_(assigned_task_ids),
+                )
             conditions = [
                 WorkflowTaskRow.tenant_id == tenant_id,
-                request_user_id == user_id,
+                access_condition,
             ]
+            if allowed_task_types:
+                persisted_task_type = func.coalesce(
+                    contract_task_type,
+                    intake_task_type,
+                    "supplier_quality_analysis.v1",
+                )
+                conditions.append(persisted_task_type.in_(allowed_task_types))
             if status is not None:
                 conditions.append(task_status == status)
             with self._database.session() as session:

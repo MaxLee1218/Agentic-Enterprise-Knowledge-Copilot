@@ -24,3 +24,4 @@ export type TaskCreateResponse =
 export type TaskErrorPayload = components["schemas"]["TaskErrorResponse"];
 export type TaskList = components["schemas"]["TaskListResponse"];
 export type TaskStatus = components["schemas"]["TaskStatus"];
+export type TaskType = components["schemas"]["TaskType"];

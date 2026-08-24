@@ -35,6 +35,16 @@ export const waitingTask: Task = {
   artifact_count: 0,
 };
 
+export const accountsPayableTask: Task = {
+  ...task,
+  task_id: "T-AP-TEST-001",
+  task_type: "accounts_payable_analysis.v1",
+  task_summary:
+    "Analyze Accounts Payable exceptions from 2026-04-01 to 2026-06-30.",
+  step_count: 14,
+  artifact_count: 1,
+};
+
 export const createdTask: TaskCreateResponse = {
   task_id: task.task_id,
   trace_id: task.trace_id,
@@ -151,6 +161,19 @@ export const artifacts: Artifact[] = [
     checksum: "sha256:json-checksum",
     size_bytes: 2_400,
     created_at: "2026-08-13T08:00:05Z",
+  },
+];
+
+export const accountsPayableArtifacts: Artifact[] = [
+  {
+    artifact_id: "A-AP-JSON-01",
+    task_id: accountsPayableTask.task_id,
+    format: "JSON",
+    filename: "accounts-payable-report.json",
+    media_type: "application/json",
+    checksum: "sha256:ap-json-checksum",
+    size_bytes: 4_096,
+    created_at: "2026-08-23T08:00:05Z",
   },
 ];
 

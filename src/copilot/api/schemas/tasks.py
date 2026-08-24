@@ -30,6 +30,7 @@ class NaturalLanguageTaskSubmission(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     task: str = Field(min_length=1)
+    task_type: TaskType | None = None
     output_format: TaskOutputFormat | None = None
     max_steps: int | None = Field(default=None, ge=1)
     read_only: bool | None = None

@@ -39,6 +39,37 @@ def _headers(*, secret: str = SECRET, tenant_id: str = "TENANT-A") -> dict[str, 
     return values
 
 
+def _ap_headers(*, secret: str = SECRET) -> dict[str, str]:
+    values = {
+        "x-copilot-user-id": "U-FINANCE",
+        "x-copilot-tenant-id": "TENANT-A",
+        "x-copilot-roles": "finance_analyst,finance_auditor",
+        "x-copilot-scopes": (
+            "task:execute,data:accounts_payable.v1,data:accounts-payable-policy-v1,"
+            "finance:ap.detail,finance:ap.artifact:download"
+        ),
+        "x-copilot-supplier-ids": "SUP-001",
+        "x-copilot-legal-entity-ids": "LE-001",
+        "x-copilot-business-unit-ids": "BU-001,BU-002",
+        "x-copilot-currency-scope": "USD,CNY",
+        "x-copilot-assigned-task-ids": "T-ASSIGNED-001",
+        "x-copilot-allowed-task-types": "accounts_payable_analysis.v1",
+        "x-copilot-purpose": "accounts_payable_analysis.v1",
+        "x-copilot-policy-rule-set-id": "accounts-payable-v1",
+        "x-copilot-policy-rule-set-version": "ap_rules.2026.1",
+        "x-copilot-policy-manifest-checksum": "sha256:manifest",
+        "x-copilot-policy-materiality": "USD=1000,CNY=5000",
+        "x-copilot-policy-snapshot-at": "2026-07-01T00:00:00Z",
+        "x-copilot-policy-requires-approval": "false",
+        "x-copilot-identity-timestamp": "1000",
+    }
+    canonical = TrustedHeaderIdentityProvider.canonical_assertion(values)
+    values["x-copilot-identity-signature"] = hmac.new(
+        secret.encode(), canonical.encode(), hashlib.sha256
+    ).hexdigest()
+    return values
+
+
 def test_development_demo_is_explicit_and_production_demo_is_rejected() -> None:
     provider = DemoIdentityProvider(Settings(app_env="development", database_url="sqlite:///x"))
     identity = provider.resolve(IdentityRequest(headers={}, source="test"))
@@ -72,6 +103,28 @@ def test_signed_identity_preserves_authority_and_rejects_missing_tampered_or_sta
     stale_provider = TrustedHeaderIdentityProvider(SECRET, max_age_seconds=30, clock=lambda: 2000)
     with pytest.raises(IdentityResolutionError, match="validity"):
         stale_provider.resolve(IdentityRequest(headers=_headers(), source="api"))
+
+
+def test_signed_finance_identity_carries_all_server_owned_ap_dimensions() -> None:
+    provider = TrustedHeaderIdentityProvider(SECRET, clock=lambda: 1000)
+    identity = provider.resolve(IdentityRequest(headers=_ap_headers(), source="api"))
+
+    assert identity.purpose == "accounts_payable_analysis.v1"
+    assert tuple(item.value for item in identity.allowed_task_types) == (
+        "accounts_payable_analysis.v1",
+    )
+    assert identity.legal_entity_ids == ("LE-001",)
+    assert identity.business_unit_ids == ("BU-001", "BU-002")
+    assert identity.currency_scope == ("USD", "CNY")
+    assert identity.assigned_task_ids == ("T-ASSIGNED-001",)
+    assert identity.policy_rule_set_version == "ap_rules.2026.1"
+    assert tuple(item.currency for item in identity.policy_materiality) == ("USD", "CNY")
+    assert identity.policy_snapshot_at is not None
+
+    tampered = _ap_headers()
+    tampered["x-copilot-legal-entity-ids"] = "LE-OTHER"
+    with pytest.raises(IdentityResolutionError, match="signature"):
+        provider.resolve(IdentityRequest(headers=tampered, source="api"))
 
 
 def test_api_requires_signed_identity_and_propagates_it_to_the_task_context(

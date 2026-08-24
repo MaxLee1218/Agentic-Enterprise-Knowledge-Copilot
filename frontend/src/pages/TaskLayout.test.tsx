@@ -4,10 +4,21 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { waitingTask } from "../test/fixtures";
+import { accountsPayableTask } from "../test/fixtures";
 import { renderApp } from "../test/render";
 import { server } from "../test/server";
 
 describe("task lifecycle controls", () => {
+  it("shows the task-type badge for Accounts Payable tasks", async () => {
+    server.use(
+      http.get("*/api/v1/tasks/:taskId", () =>
+        HttpResponse.json(accountsPayableTask),
+      ),
+    );
+    renderApp(`/tasks/${accountsPayableTask.task_id}`);
+    expect(await screen.findByText("Accounts Payable")).toBeVisible();
+  });
+
   it("requires confirmation and renders the authoritative cancelled state", async () => {
     const user = userEvent.setup();
     let currentTask = waitingTask;

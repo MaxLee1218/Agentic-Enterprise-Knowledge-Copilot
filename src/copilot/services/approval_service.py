@@ -222,7 +222,11 @@ class ApprovalGateService:
                 event_id=self._ids.new_id("AUD"),
                 event=event,
                 task_id=approval.task_id,
-                plan_id=SUPPLIER_QUALITY_PLAN_ID,
+                plan_id=(
+                    "accounts-payable-analysis"
+                    if _approval_purpose(approval) == "accounts_payable_analysis.v1"
+                    else SUPPLIER_QUALITY_PLAN_ID
+                ),
                 plan_version=approval.planning_version,
                 timestamp=self._clock(),
                 tenant_id=approval.tenant_id,
@@ -504,6 +508,7 @@ class ApprovalService:
         *,
         trace_id: str,
     ) -> None:
+        purpose = _approval_purpose(approval)
         decision = self._permission_matrix.evaluate(
             AuthorizationRequest(
                 action=Permission.APPROVE_ACTION,
@@ -511,15 +516,17 @@ class ApprovalService:
                 resource_type="approval",
                 resource_name=approval.approval_id,
                 task_id=approval.task_id,
-                purpose=caller.purpose,
+                purpose=purpose,
+                scopes=caller.scopes,
                 is_demo_identity=caller.is_demo_identity,
             )
         )
-        if not decision.allowed:
+        task_type_allowed = purpose in {task_type.value for task_type in caller.allowed_task_types}
+        if not task_type_allowed or not decision.allowed:
             error = ApprovalPermissionDeniedError("Caller lacks approval permission")
             self._append_audit(
                 approval,
-                decision.reason_code,
+                decision.reason_code if task_type_allowed else "APPROVAL_PERMISSION_DENIED",
                 trace_id=trace_id,
                 caller=caller,
                 error=error,
@@ -754,6 +761,14 @@ def _approval_error_type(error: ApprovalServiceError) -> str:
     ):
         return "BUSINESS"
     return "TECHNICAL"
+
+
+def _approval_purpose(approval: ApprovalRequest) -> str:
+    return (
+        "accounts_payable_analysis.v1"
+        if approval.required_role == "finance_approver"
+        else "supplier_quality_analysis.v1"
+    )
 
 
 __all__ = [

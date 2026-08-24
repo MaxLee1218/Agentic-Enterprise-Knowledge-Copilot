@@ -34,6 +34,57 @@ export function ReportPage() {
 
   return (
     <section aria-labelledby="artifact-title">
+      {task.task_type === "accounts_payable_analysis.v1" && (
+        <div
+          className="panel ap-report-summary"
+          aria-labelledby="ap-report-summary-title"
+        >
+          <div>
+            <p className="eyebrow">Accounts Payable deliverable</p>
+            <h2 id="ap-report-summary-title">Verified report summary</h2>
+            <p>
+              This read-only internal analysis exposes only governed Artifact
+              metadata here. Invoice findings and amounts remain inside the
+              authorized report.
+            </p>
+          </div>
+          <MetadataList
+            compact
+            items={[
+              {
+                label: "Published Artifacts",
+                value: String(artifacts.data.artifacts.length),
+              },
+              {
+                label: "Formats",
+                value: Array.from(
+                  new Set(
+                    artifacts.data.artifacts.map((artifact) => artifact.format),
+                  ),
+                ).join(", "),
+              },
+              {
+                label: "Verified size",
+                value: formatBytes(
+                  artifacts.data.artifacts.reduce(
+                    (total, artifact) => total + artifact.size_bytes,
+                    0,
+                  ),
+                ),
+              },
+              {
+                label: "Latest generated",
+                value: formatDate(
+                  artifacts.data.artifacts
+                    .map((artifact) => artifact.created_at)
+                    .sort()
+                    .at(-1) ?? null,
+                ),
+              },
+            ]}
+          />
+        </div>
+      )}
       <div className="section-intro">
         <div>
           <p className="eyebrow">Deliverables</p>

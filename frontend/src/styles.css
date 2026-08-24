@@ -454,6 +454,30 @@ tbody tr:hover {
   color: var(--danger);
 }
 
+.task-type-badge {
+  display: inline-flex;
+  min-height: 25px;
+  align-items: center;
+  padding: 4px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.task-type-badge--supplier {
+  border-color: #b7d6c6;
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.task-type-badge--accounts {
+  border-color: #b8cde1;
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
 .form-panel {
   max-width: 960px;
   padding: clamp(24px, 4vw, 40px);
@@ -717,6 +741,18 @@ tbody tr:hover {
   justify-content: space-between;
   gap: 30px;
   margin: 8px 0 20px;
+}
+.ap-report-summary {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(340px, 1.3fr);
+  gap: 28px;
+  margin-bottom: 24px;
+  padding: 22px;
+}
+.ap-report-summary p:last-child {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.55;
 }
 .section-intro > p {
   max-width: 600px;

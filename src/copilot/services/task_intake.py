@@ -56,6 +56,7 @@ class NaturalLanguageTaskCommand(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     task: str
+    task_type: TaskType | None = None
     output_format: TaskOutputFormat | None = None
     max_steps: int | None = Field(default=None, ge=1)
     read_only: bool | None = None
@@ -78,6 +79,7 @@ class TrustedCallerContext(BaseModel):
     legal_entity_ids: tuple[str, ...] = ()
     business_unit_ids: tuple[str, ...] = ()
     currency_scope: tuple[str, ...] = ()
+    assigned_task_ids: tuple[str, ...] = ()
     allowed_task_types: tuple[TaskType, ...] = (TaskType.SUPPLIER_QUALITY_ANALYSIS_V1,)
     roles: tuple[str, ...] = ()
     scopes: tuple[str, ...] = ()

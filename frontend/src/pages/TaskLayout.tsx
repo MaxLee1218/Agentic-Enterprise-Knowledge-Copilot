@@ -8,6 +8,7 @@ import { MetadataList } from "../components/MetadataList";
 import { ErrorPanel, LoadingState } from "../components/PageState";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
+import { TaskTypeBadge } from "../components/TaskTypeBadge";
 import {
   refreshRelatedOnStatusChange,
   useCancelTask,
@@ -78,6 +79,7 @@ export function TaskLayout() {
         description="Authoritative lifecycle, execution, Evidence, approval, and Artifact state."
         actions={
           <div className="button-row">
+            <TaskTypeBadge taskType={task.task_type} />
             <StatusBadge status={task.status} />
             {canCancel && (
               <button

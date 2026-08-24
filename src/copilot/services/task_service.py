@@ -42,6 +42,7 @@ from copilot.services.observability import (
 from copilot.services.task_intake import (
     IntakeLimits,
     NaturalLanguageTaskCommand,
+    RequestSource,
     TrustedCallerContext,
     TrustedTaskContext,
     merge_execution_constraints,
@@ -87,6 +88,8 @@ class TaskManagementRepository(Protocol):
         *,
         tenant_id: str,
         user_id: str,
+        assigned_task_ids: tuple[str, ...],
+        allowed_task_types: tuple[str, ...],
         status: str | None,
         limit: int,
         offset: int,
@@ -262,6 +265,24 @@ class NaturalLanguageTaskService:
         caller: TrustedCallerContext,
     ) -> tuple[TaskRequest, TrustedTaskContext]:
         """Validate an intake without executing it; useful for thin CLI dry-runs and tests."""
+        task_type = command.task_type or TaskType(caller.purpose)
+        if task_type not in caller.allowed_task_types:
+            raise TaskPermissionDeniedError("TASK-TYPE")
+        if command.source is not RequestSource.INTERNAL:
+            submission_decision = self._permission_matrix.evaluate(
+                AuthorizationRequest(
+                    action=Permission.SUBMIT_TASK,
+                    roles=caller.roles,
+                    resource_type="task_collection",
+                    purpose=task_type.value,
+                    scopes=caller.scopes,
+                    is_demo_identity=caller.is_demo_identity,
+                )
+            )
+            if not submission_decision.allowed:
+                raise TaskPermissionDeniedError("TASK-COLLECTION")
+        if not caller.authenticated:
+            raise TaskPermissionDeniedError("TASK-UNAUTHENTICATED")
         task_text = validate_task_text(
             command.task,
             max_length=self._limits.max_task_text_length,
@@ -302,6 +323,7 @@ class NaturalLanguageTaskService:
             "effective_max_steps": effective.max_steps,
             "effective_read_only": effective.read_only,
             "effective_require_approval": effective.require_approval,
+            "task_type": task_type.value,
         }
         request_metadata["security"] = {
             "finding_count": len(injection_scan.findings),
@@ -321,7 +343,6 @@ class NaturalLanguageTaskService:
             created_at=now,
             metadata=JsonObject(request_metadata),
         )
-        task_type = TaskType(caller.purpose)
         context = TrustedTaskContext(
             task_id=task_id,
             trace_id=trace_id,
@@ -343,7 +364,7 @@ class NaturalLanguageTaskService:
             authentication_source=caller.authentication_source,
             authenticated=caller.authenticated,
             is_demo_identity=caller.is_demo_identity,
-            purpose=caller.purpose,
+            purpose=task_type.value,
             task_type=task_type,
             output_format=(
                 command.output_format.artifact_type_for(task_type)
@@ -388,6 +409,7 @@ class NaturalLanguageTaskService:
                 roles=caller.roles,
                 resource_type="task_collection",
                 purpose=caller.purpose,
+                scopes=caller.scopes,
                 is_demo_identity=caller.is_demo_identity,
             )
         )
@@ -397,6 +419,8 @@ class NaturalLanguageTaskService:
         task_ids, total = repository.list_task_ids(
             tenant_id=caller.tenant_id,
             user_id=caller.user_id,
+            assigned_task_ids=caller.assigned_task_ids,
+            allowed_task_types=tuple(item.value for item in caller.allowed_task_types),
             status=status.value if status is not None else None,
             limit=limit,
             offset=offset,
@@ -421,7 +445,7 @@ class NaturalLanguageTaskService:
         trace_id: str = "",
     ) -> tuple[TaskStepView, ...]:
         """Combine plan steps with persisted results without exposing tool inputs."""
-        _request, _state, _contract, plan = self._load_authorized(
+        _request, _state, contract, plan = self._load_authorized(
             task_id, caller, trace_id=trace_id, permission=Permission.READ_TASK
         )
         if plan is None:
@@ -444,7 +468,7 @@ class NaturalLanguageTaskService:
                 TaskStepView(
                     step_id=step.step_id,
                     tool_name=step.tool_name,
-                    purpose=_STEP_PURPOSES[step.step_type.value],
+                    purpose=_step_purpose(contract, step.step_type.value),
                     status=result.status.value if result is not None else "PENDING",
                     depends_on=step.dependency,
                     attempt_count=execution.attempt_count if execution is not None else 0,
@@ -577,6 +601,7 @@ class NaturalLanguageTaskService:
         except KeyError as exc:
             raise TaskNotFoundError(task_id) from exc
         contract = repository.contract_for(task_id, tenant_id=caller.tenant_id)
+        task_type = _task_type_for_access(request, contract)
         decision = self._permission_matrix.evaluate(
             AuthorizationRequest(
                 action=permission,
@@ -584,11 +609,22 @@ class NaturalLanguageTaskService:
                 resource_type="task",
                 resource_name=task_id,
                 task_id=task_id,
-                purpose=caller.purpose,
+                purpose=task_type.value,
+                scopes=caller.scopes,
                 is_demo_identity=caller.is_demo_identity,
             )
         )
-        if request.user_id != caller.user_id or not decision.allowed:
+        assigned = task_id in caller.assigned_task_ids
+        assignment_grants_access = assigned and permission in {
+            Permission.READ_TASK,
+            Permission.READ_EVIDENCE,
+            Permission.READ_ARTIFACT,
+        }
+        if (
+            task_type not in caller.allowed_task_types
+            or (request.user_id != caller.user_id and not assignment_grants_access)
+            or not decision.allowed
+        ):
             self._audit(
                 "permission_denied",
                 task_id,
@@ -695,7 +731,7 @@ class NaturalLanguageTaskService:
                 event_id=self._ids.new_id("AUD"),
                 event=event,
                 task_id=task_id,
-                plan_id="supplier-quality-analysis",
+                plan_id=_plan_id(plan, caller.purpose),
                 plan_version=plan.planning_version if plan is not None else 0,
                 timestamp=self._clock(),
                 tenant_id=caller.tenant_id,
@@ -726,7 +762,11 @@ class NaturalLanguageTaskService:
                 event_id=self._ids.new_id("AUD"),
                 event="prompt_injection_finding",
                 task_id=context.task_id,
-                plan_id="supplier-quality-analysis",
+                plan_id=(
+                    "accounts-payable-analysis"
+                    if context.task_type is TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1
+                    else "supplier-quality-analysis"
+                ),
                 plan_version=0,
                 timestamp=self._clock(),
                 tenant_id=context.tenant_id,
@@ -754,11 +794,50 @@ class NaturalLanguageTaskService:
 _TERMINAL_STATES = {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
 
 _STEP_PURPOSES = {
-    "KNOWLEDGE_SEARCH": "Retrieve approved supplier-quality policy evidence.",
-    "DATABASE_QUERY": "Query approved supplier-quality data using a read-only template.",
-    "ANALYSIS": "Calculate deterministic supplier-quality metrics.",
-    "REPORT_GENERATION": "Generate the governed internal quality-analysis report.",
+    TaskType.SUPPLIER_QUALITY_ANALYSIS_V1: {
+        "KNOWLEDGE_SEARCH": "Retrieve approved supplier-quality policy evidence.",
+        "DATABASE_QUERY": "Query approved supplier-quality data using a read-only template.",
+        "ANALYSIS": "Calculate deterministic supplier-quality metrics.",
+        "REPORT_GENERATION": "Generate the governed internal quality-analysis report.",
+    },
+    TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1: {
+        "KNOWLEDGE_SEARCH": "Retrieve controlled Accounts Payable policy evidence.",
+        "DATABASE_QUERY": "Query an approved Accounts Payable read model.",
+        "ANALYSIS": "Detect or aggregate deterministic invoice exceptions.",
+        "REPORT_GENERATION": "Generate the governed internal Accounts Payable report.",
+    },
 }
+
+
+def _step_purpose(contract: TaskContract | None, step_type: str) -> str:
+    task_type = (
+        contract.task_type if contract is not None else TaskType.SUPPLIER_QUALITY_ANALYSIS_V1
+    )
+    return _STEP_PURPOSES[task_type][step_type]
+
+
+def _task_type_for_access(request: TaskRequest, contract: TaskContract | None) -> TaskType:
+    if contract is not None:
+        return contract.task_type
+    intake = request.metadata.root.get("intake")
+    if isinstance(intake, dict):
+        value = intake.get("task_type")
+        if isinstance(value, str):
+            try:
+                return TaskType(value)
+            except ValueError:
+                pass
+    return TaskType.SUPPLIER_QUALITY_ANALYSIS_V1
+
+
+def _plan_id(plan: TaskPlan | None, purpose: str) -> str:
+    if plan is not None and any(
+        step.contract_profile.startswith("accounts_payable_") for step in plan.steps
+    ):
+        return "accounts-payable-analysis"
+    if purpose == TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1.value:
+        return "accounts-payable-analysis"
+    return "supplier-quality-analysis"
 
 
 def _trace_id(request: TaskRequest) -> str:

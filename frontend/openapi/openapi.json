@@ -452,6 +452,16 @@
             "minLength": 1,
             "title": "Task",
             "type": "string"
+          },
+          "task_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskType"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [

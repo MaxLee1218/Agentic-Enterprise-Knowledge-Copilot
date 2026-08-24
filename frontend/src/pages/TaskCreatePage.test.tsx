@@ -19,7 +19,7 @@ describe("task creation", () => {
 
   it("submits supported fields and redirects to task detail", async () => {
     const user = userEvent.setup();
-    const requestBody = vi.fn();
+    const requestBody = vi.fn<(body: unknown) => void>();
     server.use(
       http.post("*/api/v1/tasks", async ({ request }) => {
         requestBody(await request.json());
@@ -36,6 +36,43 @@ describe("task creation", () => {
     expect(requestBody).toHaveBeenCalledWith(
       expect.objectContaining({ output_format: "pdf" }),
     );
+  });
+
+  it("submits the AP selector without exposing trusted finance scope", async () => {
+    const user = userEvent.setup();
+    const requestBody = vi.fn<(body: unknown) => void>();
+    server.use(
+      http.post("*/api/v1/tasks", async ({ request }) => {
+        requestBody(await request.json());
+        return HttpResponse.json(createdTask, { status: 201 });
+      }),
+    );
+    renderApp("/tasks/new");
+    await user.selectOptions(
+      screen.getByLabelText("Use case"),
+      "accounts_payable_analysis.v1",
+    );
+    expect(
+      screen.getByText(/Include an explicit inclusive date range/),
+    ).toBeVisible();
+    await user.type(
+      screen.getByLabelText("What do you want the Agent to do?"),
+      "Analyze AP exceptions from 2026-04-01 to 2026-06-30.",
+    );
+    await user.click(screen.getByRole("button", { name: "Run task" }));
+
+    expect(requestBody).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task_type: "accounts_payable_analysis.v1",
+        output_format: "pdf",
+      }),
+    );
+    const submitted = requestBody.mock.calls.at(0)?.at(0);
+    expect(submitted).toBeDefined();
+    expect(submitted).not.toHaveProperty("tenant_id");
+    expect(submitted).not.toHaveProperty("roles");
+    expect(submitted).not.toHaveProperty("legal_entity_ids");
+    expect(submitted).not.toHaveProperty("tools");
   });
 
   it("renders the uniform server validation error", async () => {

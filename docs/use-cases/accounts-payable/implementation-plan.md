@@ -208,6 +208,13 @@ claimed.
 
 ## Stage 9 — Permission, API and frontend integration
 
+**Status:** `COMPLETE — 2026-08-24`
+
+**Acceptance artifact:** [Stage 9 permission, Task API and console integration report](stage-9-permission-api-and-frontend.md)
+
+**Release boundary:** Stage 9 exposes AP only through the governed shared Task resources and
+console. Stages 10–12 remain incomplete, so production readiness is not claimed.
+
 - **Goal:** expose UC2 through existing Task resources and console.
 - **Scope/work:** finance role/purpose/data profiles; extend public enums; task selector/badge,
   generic copy and AP summary; regenerate OpenAPI types.

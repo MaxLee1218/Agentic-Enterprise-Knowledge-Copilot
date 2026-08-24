@@ -416,6 +416,7 @@ export interface components {
             session_id?: string | null;
             /** Task */
             task: string;
+            task_type?: components["schemas"]["TaskType"] | null;
         };
         /**
          * PublicStepStatus

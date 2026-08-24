@@ -66,6 +66,7 @@ def test_openapi_exposes_no_task_contract_or_plan_input_fields(tmp_path: Path) -
         assert request_schema["required"] == ["task"]
         assert properties == {
             "task",
+            "task_type",
             "output_format",
             "max_steps",
             "read_only",
@@ -76,6 +77,11 @@ def test_openapi_exposes_no_task_contract_or_plan_input_fields(tmp_path: Path) -
         assert not properties.intersection(
             {"goal", "entities", "time_range", "deliverables", "steps", "tool", "arguments"}
         )
+        task_type_schema = schema["components"]["schemas"]["TaskType"]
+        assert task_type_schema["enum"] == [
+            "supplier_quality_analysis.v1",
+            "accounts_payable_analysis.v1",
+        ]
         approval_path = "/v1/tasks/{task_id}/approvals/{approval_id}"
         assert approval_path in schema["paths"]
         assert set(schema["paths"][approval_path]) == {"get", "post"}

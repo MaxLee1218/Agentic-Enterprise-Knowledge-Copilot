@@ -3,6 +3,111 @@ import { expect, test } from "@playwright/test";
 const taskText =
   "Analyze supplier quality for Q2 2026, compare with Q1, check the approved quality policy, and generate a PDF report.";
 
+test("Accounts Payable selector, badge, and safe report summary share the existing console", async ({
+  page,
+}) => {
+  const apTask = {
+    task_id: "T-AP-E2E-001",
+    trace_id: "TRACE-AP-E2E-001",
+    status: "COMPLETED",
+    task_type: "accounts_payable_analysis.v1",
+    created_at: "2026-08-23T08:00:00Z",
+    started_at: "2026-08-23T08:00:00Z",
+    completed_at: "2026-08-23T08:00:05Z",
+    cancelled_at: null,
+    current_step: null,
+    task_summary: "Analyze Accounts Payable exceptions for Q2 2026.",
+    pending_approval_id: null,
+    step_count: 14,
+    evidence_count: 20,
+    artifact_count: 1,
+    error_summary: null,
+  };
+  await page.route("**/api/v1/tasks", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    const body: unknown = route.request().postDataJSON();
+    expect(body).toMatchObject({
+      task_type: "accounts_payable_analysis.v1",
+    });
+    expect(body).not.toHaveProperty("tenant_id");
+    expect(body).not.toHaveProperty("roles");
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        task_id: apTask.task_id,
+        trace_id: apTask.trace_id,
+        status: apTask.status,
+        created_at: apTask.created_at,
+        started_at: apTask.started_at,
+        completed_at: apTask.completed_at,
+        summary: apTask.task_summary,
+        artifacts: [],
+        errors: [],
+        missing_information: [],
+        clarification_questions: [],
+        pending_approval_id: null,
+      }),
+    });
+  });
+  await page.route(`**/api/v1/tasks/${apTask.task_id}`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(apTask),
+    }),
+  );
+  await page.route(`**/api/v1/tasks/${apTask.task_id}/steps`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ task_id: apTask.task_id, steps: [] }),
+    }),
+  );
+  await page.route(`**/api/v1/tasks/${apTask.task_id}/artifacts`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        task_id: apTask.task_id,
+        artifacts: [
+          {
+            artifact_id: "A-AP-E2E-001",
+            task_id: apTask.task_id,
+            format: "JSON",
+            filename: "accounts-payable-report.json",
+            media_type: "application/json",
+            checksum: "sha256:ap-e2e",
+            size_bytes: 4096,
+            created_at: apTask.completed_at,
+          },
+        ],
+      }),
+    }),
+  );
+
+  await page.goto("/tasks/new");
+  await page
+    .getByLabel("Use case")
+    .selectOption("accounts_payable_analysis.v1");
+  await page
+    .getByLabel("What do you want the Agent to do?")
+    .fill("Analyze Accounts Payable exceptions from 2026-04-01 to 2026-06-30.");
+  await page.getByRole("button", { name: "Run task" }).click();
+
+  await expect(
+    page.getByText("Accounts Payable", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: /Report/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Verified report summary" }),
+  ).toBeVisible();
+  await expect(page.getByText("4.00 KB").first()).toBeVisible();
+});
+
 test("real API task completes with traceable Evidence and a downloadable Artifact", async ({
   page,
 }) => {

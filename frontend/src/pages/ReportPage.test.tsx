@@ -4,6 +4,10 @@ import { describe, expect, it } from "vitest";
 
 import { renderApp } from "../test/render";
 import { server } from "../test/server";
+import {
+  accountsPayableArtifacts,
+  accountsPayableTask,
+} from "../test/fixtures";
 
 describe("Artifact flow", () => {
   it("renders PDF and JSON metadata with guarded download links", async () => {
@@ -31,5 +35,26 @@ describe("Artifact flow", () => {
     expect(
       await screen.findByText("No verified Artifact available"),
     ).toBeVisible();
+  });
+
+  it("renders an AP summary from safe Artifact metadata only", async () => {
+    server.use(
+      http.get("*/api/v1/tasks/:taskId", () =>
+        HttpResponse.json(accountsPayableTask),
+      ),
+      http.get("*/api/v1/tasks/:taskId/artifacts", () =>
+        HttpResponse.json({
+          task_id: accountsPayableTask.task_id,
+          artifacts: accountsPayableArtifacts,
+        }),
+      ),
+    );
+    renderApp(`/tasks/${accountsPayableTask.task_id}/report`);
+    expect(
+      await screen.findByRole("heading", { name: "Verified report summary" }),
+    ).toBeVisible();
+    expect(screen.getAllByText("4.00 KB")).toHaveLength(2);
+    expect(screen.queryByText(/invoice_number/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/gross_amount/)).not.toBeInTheDocument();
   });
 });

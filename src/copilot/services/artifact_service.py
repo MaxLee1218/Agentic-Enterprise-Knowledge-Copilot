@@ -114,12 +114,18 @@ class ArtifactService:
         trace_id: str = "",
     ) -> tuple[TaskArtifactView, ...]:
         """Return authorized Artifact metadata in stable order without locations."""
-        self._authorize_read(task_id, caller, trace_id=trace_id)
         try:
             task = self._tasks.get_task(task_id, caller, trace_id=trace_id)
         except RuntimeError:
             self._audit_denied(task_id, caller, trace_id)
             raise
+        self._authorize_read(
+            task_id,
+            caller,
+            purpose=task.task_type or caller.purpose,
+            action=Permission.READ_ARTIFACT,
+            trace_id=trace_id,
+        )
         artifacts = self._repository.list_by_task(task_id, tenant_id=caller.tenant_id)
         published = getattr(self._tasks, "is_artifact_published", None)
         if callable(published):
@@ -144,12 +150,18 @@ class ArtifactService:
         trace_id: str = "",
     ) -> ArtifactDownload:
         """Return a stream descriptor after task ownership and path containment checks."""
-        self._authorize_read(task_id, caller, trace_id=trace_id)
         try:
             task = self._tasks.get_task(task_id, caller, trace_id=trace_id)
         except RuntimeError:
             self._audit_denied(task_id, caller, trace_id, artifact_id=artifact_id)
             raise
+        self._authorize_read(
+            task_id,
+            caller,
+            purpose=task.task_type or caller.purpose,
+            action=Permission.DOWNLOAD_ARTIFACT,
+            trace_id=trace_id,
+        )
         try:
             artifact = self._repository.get_by_id(
                 artifact_id,
@@ -208,15 +220,18 @@ class ArtifactService:
         task_id: str,
         caller: TrustedCallerContext,
         *,
+        purpose: str,
+        action: Permission,
         trace_id: str,
     ) -> None:
         decision = self._permission_matrix.evaluate(
             AuthorizationRequest(
-                action=Permission.READ_ARTIFACT,
+                action=action,
                 roles=caller.roles,
                 resource_type="artifact",
                 task_id=task_id,
-                purpose=caller.purpose,
+                purpose=purpose,
+                scopes=caller.scopes,
                 is_demo_identity=caller.is_demo_identity,
             )
         )
@@ -239,7 +254,7 @@ class ArtifactService:
                 event_id=self._ids.new_id("AUD"),
                 event="artifact_read_denied",
                 task_id=task_id,
-                plan_id="supplier-quality-analysis",
+                plan_id=_task_plan_id(caller.purpose),
                 plan_version=0,
                 timestamp=self._clock(),
                 tenant_id=caller.tenant_id,
@@ -275,7 +290,7 @@ class ArtifactService:
                 event_id=self._ids.new_id("AUD"),
                 event=event,
                 task_id=task.task_id,
-                plan_id="supplier-quality-analysis",
+                plan_id=_task_plan_id(task.task_type or caller.purpose),
                 plan_version=0,
                 timestamp=self._clock(),
                 tenant_id=caller.tenant_id,
@@ -316,6 +331,14 @@ def _artifact_view(artifact: Artifact) -> TaskArtifactView:
         checksum=artifact.checksum,
         size_bytes=artifact.size_bytes,
         created_at=artifact.created_at,
+    )
+
+
+def _task_plan_id(purpose: str) -> str:
+    return (
+        "accounts-payable-analysis"
+        if purpose == "accounts_payable_analysis.v1"
+        else "supplier-quality-analysis"
     )
 
 

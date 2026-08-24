@@ -6,8 +6,13 @@ import hashlib
 import hmac
 import time
 from collections.abc import Callable, Mapping
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
+
+from pydantic import ValidationError
 
 from copilot.config import Settings
+from copilot.contracts import MoneyThreshold, TaskType
 from copilot.services.identity import IdentityRequest, IdentityResolutionError
 from copilot.services.task_intake import TrustedCallerContext
 
@@ -16,9 +21,41 @@ _TENANT = "x-copilot-tenant-id"
 _ROLES = "x-copilot-roles"
 _SCOPES = "x-copilot-scopes"
 _SUPPLIERS = "x-copilot-supplier-ids"
+_LEGAL_ENTITIES = "x-copilot-legal-entity-ids"
+_BUSINESS_UNITS = "x-copilot-business-unit-ids"
+_CURRENCIES = "x-copilot-currency-scope"
+_ASSIGNED_TASKS = "x-copilot-assigned-task-ids"
+_ALLOWED_TASK_TYPES = "x-copilot-allowed-task-types"
 _PURPOSE = "x-copilot-purpose"
+_POLICY_RULE_SET_ID = "x-copilot-policy-rule-set-id"
+_POLICY_RULE_SET_VERSION = "x-copilot-policy-rule-set-version"
+_POLICY_MANIFEST_CHECKSUM = "x-copilot-policy-manifest-checksum"
+_POLICY_MATERIALITY = "x-copilot-policy-materiality"
+_POLICY_SNAPSHOT_AT = "x-copilot-policy-snapshot-at"
+_POLICY_REQUIRES_APPROVAL = "x-copilot-policy-requires-approval"
 _TIMESTAMP = "x-copilot-identity-timestamp"
 _SIGNATURE = "x-copilot-identity-signature"
+
+_SIGNED_HEADERS = (
+    _USER,
+    _TENANT,
+    _ROLES,
+    _SCOPES,
+    _SUPPLIERS,
+    _LEGAL_ENTITIES,
+    _BUSINESS_UNITS,
+    _CURRENCIES,
+    _ASSIGNED_TASKS,
+    _ALLOWED_TASK_TYPES,
+    _PURPOSE,
+    _POLICY_RULE_SET_ID,
+    _POLICY_RULE_SET_VERSION,
+    _POLICY_MANIFEST_CHECKSUM,
+    _POLICY_MATERIALITY,
+    _POLICY_SNAPSHOT_AT,
+    _POLICY_REQUIRES_APPROVAL,
+    _TIMESTAMP,
+)
 
 
 class DemoIdentityProvider:
@@ -98,29 +135,47 @@ class TrustedHeaderIdentityProvider:
         )
         if not data_scope:
             raise IdentityResolutionError("At least one authenticated data scope is required")
-        return TrustedCallerContext(
-            user_id=headers[_USER],
-            tenant_id=headers[_TENANT],
-            data_scope=data_scope,
-            supplier_ids=_csv(headers.get(_SUPPLIERS, "")),
-            roles=roles,
-            scopes=scopes,
-            authentication_source=f"trusted_gateway_hmac:{request.source}",
-            authenticated=True,
-            is_demo_identity=False,
-            purpose=headers[_PURPOSE],
-            policy_forces_read_only=self._force_read_only,
-            policy_requires_approval=self._require_approval,
+        purpose = _task_type(headers[_PURPOSE])
+        allowed_task_types = tuple(
+            _task_type(value)
+            for value in (_csv(headers.get(_ALLOWED_TASK_TYPES, "")) or (purpose.value,))
         )
+        try:
+            return TrustedCallerContext(
+                user_id=headers[_USER],
+                tenant_id=headers[_TENANT],
+                data_scope=data_scope,
+                supplier_ids=_csv(headers.get(_SUPPLIERS, "")),
+                legal_entity_ids=_csv(headers.get(_LEGAL_ENTITIES, "")),
+                business_unit_ids=_csv(headers.get(_BUSINESS_UNITS, "")),
+                currency_scope=_csv(headers.get(_CURRENCIES, "")),
+                assigned_task_ids=_csv(headers.get(_ASSIGNED_TASKS, "")),
+                allowed_task_types=allowed_task_types,
+                roles=roles,
+                scopes=scopes,
+                authentication_source=f"trusted_gateway_hmac:{request.source}",
+                authenticated=True,
+                is_demo_identity=False,
+                purpose=purpose.value,
+                policy_rule_set_id=headers.get(_POLICY_RULE_SET_ID) or None,
+                policy_rule_set_version=headers.get(_POLICY_RULE_SET_VERSION) or None,
+                policy_manifest_checksum=headers.get(_POLICY_MANIFEST_CHECKSUM) or None,
+                policy_materiality=_money_thresholds(headers.get(_POLICY_MATERIALITY, "")),
+                policy_snapshot_at=_optional_datetime(headers.get(_POLICY_SNAPSHOT_AT, "")),
+                policy_forces_read_only=self._force_read_only,
+                policy_requires_approval=(
+                    self._require_approval
+                    or _optional_bool(headers.get(_POLICY_REQUIRES_APPROVAL, ""))
+                ),
+            )
+        except ValidationError as exc:
+            raise IdentityResolutionError("Identity assertion contains invalid authority") from exc
 
     @staticmethod
     def canonical_assertion(headers: Mapping[str, str]) -> str:
         """Return the exact signed representation, excluding the signature itself."""
         normalized = {key.lower(): value.strip() for key, value in headers.items()}
-        return "\n".join(
-            f"{name}:{normalized.get(name, '')}"
-            for name in (_USER, _TENANT, _ROLES, _SCOPES, _SUPPLIERS, _PURPOSE, _TIMESTAMP)
-        )
+        return "\n".join(f"{name}:{normalized.get(name, '')}" for name in _SIGNED_HEADERS)
 
 
 def build_identity_provider(
@@ -140,6 +195,49 @@ def build_identity_provider(
 
 def _csv(value: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(item.strip() for item in value.split(",") if item.strip()))
+
+
+def _task_type(value: str) -> TaskType:
+    try:
+        return TaskType(value)
+    except ValueError as exc:
+        raise IdentityResolutionError("Identity assertion task type is invalid") from exc
+
+
+def _money_thresholds(value: str) -> tuple[MoneyThreshold, ...]:
+    if not value.strip():
+        return ()
+    thresholds: list[MoneyThreshold] = []
+    try:
+        for item in _csv(value):
+            currency, amount = item.split("=", maxsplit=1)
+            thresholds.append(
+                MoneyThreshold(currency=currency.strip(), amount=Decimal(amount.strip()))
+            )
+    except (InvalidOperation, ValidationError, ValueError) as exc:
+        raise IdentityResolutionError("Identity policy materiality is invalid") from exc
+    return tuple(thresholds)
+
+
+def _optional_datetime(value: str) -> datetime | None:
+    if not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise IdentityResolutionError("Identity policy snapshot timestamp is invalid") from exc
+    if parsed.tzinfo is None:
+        raise IdentityResolutionError("Identity policy snapshot timestamp must include a timezone")
+    return parsed
+
+
+def _optional_bool(value: str) -> bool:
+    if not value.strip():
+        return False
+    normalized = value.strip().lower()
+    if normalized not in {"true", "false"}:
+        raise IdentityResolutionError("Identity approval flag is invalid")
+    return normalized == "true"
 
 
 __all__ = [
