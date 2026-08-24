@@ -8,7 +8,9 @@ from collections.abc import Sequence
 from pathlib import Path
 
 if __package__ in {None, ""}:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    project_root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(project_root))
+    sys.path.insert(0, str(project_root / "src"))
 
 from evaluation.baseline import baseline_from_run, write_baseline
 from evaluation.config import DEFAULT_DATASET, EvaluationConfig

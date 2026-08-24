@@ -69,6 +69,14 @@ def render_markdown(run: EvaluationRunResult) -> str:
             "estimated_total_cost",
         ),
     )
+    limitations = "; ".join(run.known_limitations) or (
+        "Mock results measure offline behavior, not production model or enterprise-data quality."
+    )
+    dataset_filename = (
+        "accounts_payable_v1.jsonl"
+        if run.dataset_id == "accounts_payable"
+        else "supplier_quality_v1.jsonl"
+    )
     return f"""# Agent Evaluation Report
 
 ## Run Metadata
@@ -77,8 +85,15 @@ def render_markdown(run: EvaluationRunResult) -> str:
 - Mode: `{run.mode}`
 - Seed: `{run.seed}`
 - Git commit: `{run.git_commit}`
+- Source hash: `{run.source_hash}`
+- Git working tree dirty: `{str(run.git_dirty).lower()}`
+- Provider/model: `{run.provider}` / `{run.model}`
 - Started: `{run.started_at.isoformat()}`
 - Duration: `{run.duration_ms} ms`
+- Prompt versions: `{", ".join(run.prompt_versions) or "not available"}`
+- Profile versions: `{", ".join(run.profile_versions) or "not available"}`
+- Rule versions: `{", ".join(run.rule_versions) or "not available"}`
+- Report versions: `{", ".join(run.report_versions) or "not available"}`
 
 ## Dataset
 
@@ -134,14 +149,15 @@ def render_markdown(run: EvaluationRunResult) -> str:
 
 ## Known Limitations
 
-- Mock results measure offline behavior, not production model or enterprise-data quality.
+- {limitations}
 - Machine-dependent latency is informational and excluded from the default hard regression gate.
 - Cost is an estimate only when provider usage and a versioned pricing configuration are present.
 
 ## Reproduction Command
 
 ```bash
-python evaluation/run_eval.py --mode {run.mode} --seed {run.seed}
+python evaluation/run_eval.py --dataset evaluation/datasets/{dataset_filename} \
+  --mode {run.mode} --seed {run.seed}
 ```
 """
 

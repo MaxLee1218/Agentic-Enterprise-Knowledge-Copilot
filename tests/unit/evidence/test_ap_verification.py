@@ -518,6 +518,33 @@ def test_ap_report_adapter_marks_empty_population_sections_as_valid_empty_result
     )
 
 
+def test_ap_report_adapter_accepts_individually_empty_finding_sections(
+    ap_fixture: APVerificationFixture,
+) -> None:
+    report: dict[str, JsonValue] = {
+        section: {"present": True}
+        for section in ap_fixture.contract.expected_output.required_sections
+    }
+    report["duplicate_invoice_findings"] = []
+    report["payment_findings"] = []
+    report["data_overview"] = {"empty_result": False}
+    report["evidence"] = {"claims": []}
+
+    candidate = candidate_from_ap_report(
+        task_contract=ap_fixture.contract,
+        report_step_id="S-AP-REPORT",
+        report=report,
+        evidence=ap_fixture.ledger.list(TASK_ID, tenant_id=TENANT_ID),
+    )
+
+    by_id = {item.deliverable_id: item for item in candidate.deliverables}
+    assert by_id["duplicate_invoice_findings"].empty_result
+    assert by_id["payment_findings"].empty_result
+    assert not by_id["po_compliance_findings"].empty_result
+    assert not by_id["data_overview"].empty_result
+    assert not by_id["exception_summary"].empty_result
+
+
 @pytest.mark.parametrize(
     ("candidate_update", "expected_code"),
     [

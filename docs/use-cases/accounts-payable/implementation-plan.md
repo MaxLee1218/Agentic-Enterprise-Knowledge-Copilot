@@ -231,6 +231,13 @@ console. Stages 10–12 remain incomplete, so production readiness is not claime
 
 ## Stage 10 — AP evaluation and security gates
 
+**Status:** `COMPLETE — 2026-08-24`
+**Acceptance artifact:** [Stage 10 AP evaluation and security gates](stage-10-evaluation-and-security-gates.md)
+
+**Release boundary:** deterministic synthetic evaluation is accepted. Stage 11 local enterprise
+topology and Stage 12 release/operations gates remain incomplete; production readiness is not
+claimed.
+
 - **Goal:** quantify correctness and attacks independently of UC1.
 - **Scope/work:** AP dataset/fixtures/harness adapters/evaluators/baseline; threat cases and
   performance fixture.

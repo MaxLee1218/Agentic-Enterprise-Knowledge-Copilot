@@ -14,11 +14,13 @@ from copilot.contracts import (
     Artifact,
     EvidenceItem,
     EvidenceType,
+    MoneyThreshold,
     StepResult,
     TaskContract,
     TaskError,
     TaskPlan,
     TaskStatus,
+    TaskType,
     ToolCall,
     ToolResult,
     VerificationResult,
@@ -81,6 +83,7 @@ class FailureCategory(StrEnum):
 
 class TaskInputSpec(EvaluationModel):
     raw_input: str = Field(min_length=1)
+    task_type: TaskType = TaskType.SUPPLIER_QUALITY_ANALYSIS_V1
     output_format: Literal["pdf", "json"] | None = None
     read_only: bool = True
     require_approval: bool = False
@@ -94,10 +97,19 @@ class ActorContext(EvaluationModel):
     tenant_id: str = Field(min_length=1)
     data_scope: tuple[str, ...] = ("supplier_quality",)
     supplier_ids: tuple[str, ...] = ()
+    legal_entity_ids: tuple[str, ...] = ()
+    business_unit_ids: tuple[str, ...] = ()
+    currency_scope: tuple[str, ...] = ()
+    scopes: tuple[str, ...] = ()
     allowed_tools: tuple[str, ...] = ()
     allowed_tables: tuple[str, ...] = ()
     allowed_fields: tuple[str, ...] = ()
     approval_permissions: tuple[str, ...] = ()
+    policy_rule_set_id: str | None = None
+    policy_rule_set_version: str | None = None
+    policy_manifest_checksum: str | None = None
+    policy_materiality: tuple[MoneyThreshold, ...] = ()
+    policy_snapshot_at: datetime | None = None
 
 
 class ExecutionConfigSpec(EvaluationModel):
@@ -210,6 +222,58 @@ class ExpectedRecovery(EvaluationModel):
     max_replan_count: int | None = Field(default=None, ge=0)
 
 
+class ExpectedAPExceptionRecord(EvaluationModel):
+    """Independent label for one typed AP exception in the synthetic oracle."""
+
+    invoice_record_key: str
+    exception_type: str
+    observed_values: dict[str, JsonValue] = Field(default_factory=dict)
+    threshold_values: dict[str, JsonValue] = Field(default_factory=dict)
+    status: str | None = None
+    rule_id: str | None = None
+    rule_version: str | None = None
+
+
+class ExpectedAPExclusionRecord(EvaluationModel):
+    """Independent label for one reason-coded AP exclusion."""
+
+    invoice_record_key: str
+    reason_code: str
+
+
+class ExpectedAPSummaryAssertion(EvaluationModel):
+    """Exact assertion over one AP summary metric, including currency dimensions."""
+
+    metric_name: str
+    expected_value: JsonValue
+    currency: str | None = None
+
+
+class ExpectedAPOracle(EvaluationModel):
+    """Dataset-owned AP oracle that is never sent to the Agent or production tools."""
+
+    exception_records: tuple[ExpectedAPExceptionRecord, ...] = ()
+    normal_eligible_record_keys: tuple[str, ...] = ()
+    exclusions: tuple[ExpectedAPExclusionRecord, ...] = ()
+    summary_assertions: tuple[ExpectedAPSummaryAssertion, ...] = ()
+    rule_set_version: str | None = None
+    manifest_checksum: str | None = None
+
+    @model_validator(mode="after")
+    def validate_unique_labels(self) -> ExpectedAPOracle:
+        exceptions = tuple(
+            (item.invoice_record_key, item.exception_type) for item in self.exception_records
+        )
+        exclusions = tuple((item.invoice_record_key, item.reason_code) for item in self.exclusions)
+        if len(set(exceptions)) != len(exceptions):
+            raise ValueError("AP exception oracle labels must be unique")
+        if len(set(exclusions)) != len(exclusions):
+            raise ValueError("AP exclusion oracle labels must be unique")
+        if len(set(self.normal_eligible_record_keys)) != len(self.normal_eligible_record_keys):
+            raise ValueError("AP normal eligible record labels must be unique")
+        return self
+
+
 class EvaluationCase(EvaluationModel):
     schema_version: str = "evaluation-case.v1"
     case_id: str = Field(min_length=1, pattern=r"^[a-z0-9][a-z0-9-]*$")
@@ -230,6 +294,11 @@ class EvaluationCase(EvaluationModel):
         "validation",
         "plan_repair",
         "registry",
+        "business_exception",
+        "boundary",
+        "policy",
+        "planning",
+        "recovery",
     ]
     tags: tuple[str, ...]
     language: str = "en-US"
@@ -248,6 +317,7 @@ class EvaluationCase(EvaluationModel):
     expected_numbers: tuple[ExpectedNumericAssertion, ...] = ()
     expected_safety: ExpectedSafety = Field(default_factory=ExpectedSafety)
     expected_recovery: ExpectedRecovery = Field(default_factory=ExpectedRecovery)
+    expected_ap: ExpectedAPOracle | None = None
 
     @field_validator("tags")
     @classmethod
@@ -359,6 +429,8 @@ class EvaluationBaseline(EvaluationModel):
     seed: int
     agent_version: str
     git_commit: str
+    source_hash: str | None = None
+    git_dirty: bool = False
     metrics: dict[str, BaselineMetric]
     case_outcomes: dict[str, str]
     known_failures: tuple[str, ...] = ()
@@ -388,6 +460,8 @@ class EvaluationRunResult(EvaluationModel):
     seed: int
     mode: Literal["mock", "live"]
     git_commit: str
+    source_hash: str
+    git_dirty: bool
     python_version: str
     platform: str
     agent_version: str
@@ -407,7 +481,13 @@ class EvaluationRunResult(EvaluationModel):
     failure_summary: dict[str, int]
     baseline_comparison: BaselineComparison = Field(default_factory=BaselineComparison)
     gate_result: GateResult
+    configuration: dict[str, JsonValue] = Field(default_factory=dict)
     warnings: tuple[str, ...] = ()
+    prompt_versions: tuple[str, ...] = ()
+    profile_versions: tuple[str, ...] = ()
+    rule_versions: tuple[str, ...] = ()
+    report_versions: tuple[str, ...] = ()
+    known_limitations: tuple[str, ...] = ()
 
 
 __all__ = [
@@ -420,6 +500,10 @@ __all__ = [
     "EvaluationCaseResult",
     "EvaluationCaseStatus",
     "EvaluationRunResult",
+    "ExpectedAPExceptionRecord",
+    "ExpectedAPExclusionRecord",
+    "ExpectedAPOracle",
+    "ExpectedAPSummaryAssertion",
     "ExpectedNumericAssertion",
     "FailureCategory",
     "GateResult",

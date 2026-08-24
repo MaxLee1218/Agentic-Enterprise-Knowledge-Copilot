@@ -8,7 +8,8 @@ from pathlib import Path
 
 from pydantic import JsonValue
 
-from copilot.security.redaction import redact_for_logging
+from copilot.security.redaction import redact_for_logging, redact_text
+from copilot.security.sensitive_data import SensitiveDataRegistry
 from evaluation.contracts import EvaluationCase, EvaluationRunResult
 from evaluation.reporting.markdown_reporter import render_markdown
 
@@ -40,6 +41,26 @@ def write_reports(
                 "config_hash": run.config_hash,
                 "fixture_hash": run.fixture_hash,
                 "seed": run.seed,
+                "git_commit": run.git_commit,
+                "source_hash": run.source_hash,
+                "git_dirty": run.git_dirty,
+                "provider": run.provider,
+                "model": run.model,
+                "configuration": run.configuration,
+                "started_at": run.started_at.isoformat(),
+                "completed_at": run.completed_at.isoformat(),
+                "prompt_versions": run.prompt_versions,
+                "profile_versions": run.profile_versions,
+                "rule_versions": run.rule_versions,
+                "report_versions": run.report_versions,
+                "metric_definitions": {
+                    item.metric_name: {
+                        "direction": item.direction.value,
+                        "unit": item.unit,
+                    }
+                    for item in run.metrics
+                },
+                "known_limitations": run.known_limitations,
             }
         ),
     )
@@ -128,8 +149,39 @@ def write_reports(
 
 
 def redact(value: object) -> object:
-    """Recursively redact secret-shaped keys and bearer-like values."""
+    """Redact report payloads without treating metric category names as credentials."""
+    if isinstance(value, dict | list | tuple | str | int | float | bool) or value is None:
+        return _redact_report_json(value, parent_key=None, registry=SensitiveDataRegistry())
     return redact_for_logging(value)
+
+
+def _redact_report_json(
+    value: object,
+    *,
+    parent_key: str | None,
+    registry: SensitiveDataRegistry,
+) -> object:
+    if isinstance(value, str):
+        return redact_text(value)
+    if isinstance(value, dict):
+        cleaned: dict[str, object] = {}
+        for raw_key, child in value.items():
+            key = str(raw_key)
+            is_metric_category = parent_key == "category_metrics"
+            if not is_metric_category and registry.policy_for(key) is not None:
+                cleaned[key] = "[REDACTED]"
+            else:
+                cleaned[key] = _redact_report_json(
+                    child,
+                    parent_key=key,
+                    registry=registry,
+                )
+        return cleaned
+    if isinstance(value, list | tuple):
+        return [
+            _redact_report_json(child, parent_key=parent_key, registry=registry) for child in value
+        ]
+    return value
 
 
 def _security_finding_codes(

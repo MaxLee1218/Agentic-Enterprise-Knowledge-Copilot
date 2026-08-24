@@ -62,6 +62,19 @@ class EvaluationConfig(EvaluationModel):
 
 DEFAULT_DATASET = Path(__file__).resolve().parent / "datasets" / "supplier_quality_v1.jsonl"
 DEFAULT_BASELINE = Path(__file__).resolve().parent / "baselines" / "supplier_quality_v1.json"
+ACCOUNTS_PAYABLE_DATASET = (
+    Path(__file__).resolve().parent / "datasets" / "accounts_payable_v1.jsonl"
+)
+ACCOUNTS_PAYABLE_BASELINE = (
+    Path(__file__).resolve().parent / "baselines" / "accounts_payable_v1.json"
+)
 
 
-__all__ = ["DEFAULT_BASELINE", "DEFAULT_DATASET", "EvaluationConfig", "PricingConfig"]
+__all__ = [
+    "ACCOUNTS_PAYABLE_BASELINE",
+    "ACCOUNTS_PAYABLE_DATASET",
+    "DEFAULT_BASELINE",
+    "DEFAULT_DATASET",
+    "EvaluationConfig",
+    "PricingConfig",
+]

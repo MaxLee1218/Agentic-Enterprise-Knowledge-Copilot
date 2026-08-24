@@ -1,5 +1,6 @@
 """Deterministic evaluator registry."""
 
+from evaluation.evaluators.accounts_payable import AccountsPayableEvaluator
 from evaluation.evaluators.efficiency import EfficiencyEvaluator
 from evaluation.evaluators.grounding import GroundingEvaluator
 from evaluation.evaluators.numeric_accuracy import NumericAccuracyEvaluator
@@ -12,6 +13,7 @@ from evaluation.evaluators.tool_selection import ToolSelectionEvaluator
 from evaluation.evaluators.usage_cost import UsageCostEvaluator
 
 __all__ = [
+    "AccountsPayableEvaluator",
     "EfficiencyEvaluator",
     "GroundingEvaluator",
     "NumericAccuracyEvaluator",

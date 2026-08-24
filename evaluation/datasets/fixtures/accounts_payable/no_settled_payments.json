@@ -1,0 +1,5 @@
+{
+  "ap_fixture": "no_settled_payments",
+  "random_seed": 42,
+  "synthetic_only": true
+}

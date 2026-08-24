@@ -472,6 +472,9 @@ def build_workflow_container(
         approval_policy=approval_policy,
         max_task_steps=settings.max_task_steps,
         max_replan_count=settings.max_replan_count,
+        max_execution_attempts=(
+            settings.max_task_steps + settings.workflow_max_retries + settings.max_replan_count
+        ),
         max_plan_repair_attempts=settings.max_plan_repair_attempts,
         planning_service=planning_service,
         permission_matrix=permission_matrix,

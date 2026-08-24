@@ -102,6 +102,7 @@ class GraphNodeRuntime:
         approval_policy: SupplierQualityApprovalPolicy,
         max_task_steps: int,
         max_replan_count: int,
+        max_execution_attempts: int | None = None,
         max_plan_repair_attempts: int = 2,
         planning_service: PlanningService | None = None,
         permission_matrix: PermissionMatrix | None = None,
@@ -124,6 +125,7 @@ class GraphNodeRuntime:
         self._clock = clock
         self._sleeper = sleeper
         self._max_task_steps = max_task_steps
+        self._max_execution_attempts = max_execution_attempts or max_task_steps
         self._max_replan_count = max_replan_count
         self._max_plan_repairs = max_plan_repair_attempts
         self._planning_service = planning_service
@@ -731,7 +733,7 @@ class GraphNodeRuntime:
                 domain_state=domain_state,
                 errors=[error],
             )
-        remaining_steps = self._max_task_steps - state["executed_step_count"]
+        remaining_steps = self._execution_step_limit(state) - state["executed_step_count"]
         self._emit(state, "REPLAN_STARTED", status=f"ATTEMPT_{state['replan_count'] + 1}")
         try:
             outcome = self._planning_service.replan(
@@ -1379,7 +1381,7 @@ class GraphNodeRuntime:
                 state, domain_state, "RETRY_READY", "Retry remains within task budget"
             )
         step = self._current_step(state)
-        if state["executed_step_count"] >= self._max_task_steps:
+        if state["executed_step_count"] >= self._execution_step_limit(state):
             error = self._error(
                 state,
                 "MAX_TASK_STEPS_EXCEEDED",
@@ -1710,6 +1712,12 @@ class GraphNodeRuntime:
                 "Maximum replan count was exceeded",
             )
         return None
+
+    def _execution_step_limit(self, state: AgentGraphState) -> int:
+        """Keep the Supplier limit exact while reserving bounded AP report-replan capacity."""
+        if state["contract"].task_type.value == "accounts_payable_analysis.v1":
+            return self._max_execution_attempts
+        return self._max_task_steps
 
     def _guard_node(
         self,

@@ -86,6 +86,16 @@ def ap_step_id(task_id: str, suffix: str) -> str:
     return f"{task_id}:{suffix}"
 
 
+def ap_report_step_id(task_id: str, planning_version: int) -> str:
+    """Version only regenerated report work while preserving completed AP source steps."""
+    suffix = (
+        GENERATE_AP_REPORT
+        if planning_version == ACCOUNTS_PAYABLE_PLAN_VERSION
+        else f"{GENERATE_AP_REPORT}-v{planning_version}"
+    )
+    return ap_step_id(task_id, suffix)
+
+
 def selected_ap_detection_bindings(
     constraints: AccountsPayableConstraintsV1,
 ) -> tuple[APDetectionPlanBinding, ...]:
@@ -277,5 +287,6 @@ __all__ = [
     "ap_analytics_operation_for_step",
     "ap_database_template_for_step",
     "ap_step_id",
+    "ap_report_step_id",
     "selected_ap_detection_bindings",
 ]

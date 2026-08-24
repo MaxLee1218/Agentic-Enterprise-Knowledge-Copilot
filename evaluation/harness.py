@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import json
 import random
-from collections.abc import Sequence
-from datetime import UTC, datetime
+import re
+from collections.abc import Callable, Sequence
+from datetime import UTC, date, datetime
 from pathlib import Path
 from time import perf_counter
-from typing import TypeVar, cast
+from typing import Protocol, TypeVar, cast
 
 from pydantic import BaseModel, JsonValue
+from sqlalchemy import delete, update
 
 from copilot.agent.graph import WorkflowInterrupted
 from copilot.bootstrap.container import WorkflowContainer, build_workflow_container
@@ -20,6 +22,7 @@ from copilot.contracts import (
     Artifact,
     JsonObject,
     TaskPlan,
+    TaskType,
 )
 from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.persistence.identifiers import SequentialIdentifierFactory
@@ -45,6 +48,11 @@ from copilot.services.task_intake import (
     TrustedCallerContext,
 )
 from copilot.services.workflows.models import WorkflowExecution
+from copilot.tools.base import ToolExecutionContext, ToolExecutionOutput
+from copilot.tools.database import DatabaseConnection
+from copilot.tools.database.ap_seed import seed_accounts_payable_demo_database
+from copilot.tools.database.models import Invoice, Payment, PurchaseOrder
+from copilot.tools.exceptions import ToolExecutionError
 from copilot.tools.mock_supplier_quality import MockBehavior, MockFailureKind
 from evaluation.contracts import (
     CapturedExecution,
@@ -57,12 +65,22 @@ TModel = TypeVar("TModel", bound=BaseModel)
 _FIXED_NOW = datetime(2026, 8, 3, 0, 0, tzinfo=UTC)
 
 
+class _FaultInjectableTool(Protocol):
+    execute: Callable[[JsonObject, ToolExecutionContext], ToolExecutionOutput]
+
+
 class RecordingEvaluationLLM(LLMProvider):
     """Offline provider wrapper with deterministic usage and bounded plan fault injection."""
 
-    def __init__(self, *, plan_fault: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        plan_fault: str | None = None,
+        task_type: TaskType = TaskType.SUPPLIER_QUALITY_ANALYSIS_V1,
+    ) -> None:
         self._delegate = OfflineMockLLM()
         self._plan_fault = plan_fault
+        self._task_type = task_type
         self.records: list[LLMUsageRecord] = []
 
     def generate_structured(
@@ -80,22 +98,43 @@ class RecordingEvaluationLLM(LLMProvider):
             options=options,
         )
         if output_schema is TaskPlan and context.node_name == "create_plan":
-            if self._plan_fault == "cycle":
-                raise LLMSchemaValidationError(
-                    "LLM output failed TaskPlan DAG validation: cyclic dependency"
-                )
-            if self._plan_fault in {"unregistered_tool", "database_write"}:
+            if self._plan_fault in {
+                "cycle",
+                "missing_database_step",
+                "missing_detection_dependency",
+                "summary_missing_input",
+            }:
+                raise LLMSchemaValidationError("LLM output failed TaskPlan dependency validation")
+            if self._plan_fault in {"unregistered_tool", "database_write", "wrong_tool"}:
                 plan = cast(TaskPlan, result.parsed_output)
-                invalid_step = plan.steps[0].model_copy(update={"tool_name": self._plan_fault})
+                invalid_name = (
+                    "unregistered_tool" if self._plan_fault == "wrong_tool" else self._plan_fault
+                )
+                invalid_step = plan.steps[0].model_copy(update={"tool_name": invalid_name})
                 invalid_plan = plan.model_copy(update={"steps": (invalid_step, *plan.steps[1:])})
                 result = result.model_copy(update={"parsed_output": invalid_plan})
+            elif self._plan_fault in {
+                "unsupported_operation_profile",
+                "supplier_template",
+            }:
+                result = result.model_copy(
+                    update={
+                        "parsed_output": self._mutate_plan(
+                            cast(TaskPlan, result.parsed_output), self._plan_fault
+                        )
+                    }
+                )
         usage = LLMUsage(input_tokens=120, output_tokens=80, total_tokens=200)
         result = result.model_copy(update={"usage": usage})
         self.records.append(
             LLMUsageRecord(
                 node_name=context.node_name,
                 provider=result.provider,
-                model="offline-supplier-quality-eval-v1",
+                model=(
+                    "offline-accounts-payable-eval-v1"
+                    if self._task_type is TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1
+                    else "offline-supplier-quality-eval-v1"
+                ),
                 input_tokens=usage.input_tokens,
                 output_tokens=usage.output_tokens,
                 total_tokens=usage.total_tokens,
@@ -103,6 +142,38 @@ class RecordingEvaluationLLM(LLMProvider):
             )
         )
         return result
+
+    @staticmethod
+    def _mutate_plan(plan: TaskPlan, fault: str) -> TaskPlan:
+        steps = list(plan.steps)
+        if fault == "missing_database_step":
+            steps = [
+                item
+                for item in steps
+                if not (
+                    item.tool_name == "database_query"
+                    and item.step_id.endswith("ap-invoice-population")
+                )
+            ]
+        elif fault in {"missing_detection_dependency", "summary_missing_input"}:
+            suffix = (
+                "detect-exact-duplicate-invoices"
+                if fault == "missing_detection_dependency"
+                else "aggregate-ap-exception-summary"
+            )
+            index = next(i for i, item in enumerate(steps) if item.step_id.endswith(suffix))
+            steps[index] = steps[index].model_copy(update={"dependency": ()})
+        elif fault == "unsupported_operation_profile":
+            index = next(i for i, item in enumerate(steps) if item.tool_name == "analysis_engine")
+            steps[index] = steps[index].model_copy(
+                update={"contract_profile": "accounts_payable_analytics.v999"}
+            )
+        elif fault == "supplier_template":
+            index = next(i for i, item in enumerate(steps) if item.tool_name == "report_generator")
+            steps[index] = steps[index].model_copy(
+                update={"contract_profile": "supplier_quality_report.v1"}
+            )
+        return plan.model_copy(update={"steps": tuple(steps)})
 
 
 class EvaluationHarness:
@@ -121,24 +192,25 @@ class EvaluationHarness:
         execution: WorkflowExecution | None = None
         interrupted = False
         harness_error: str | None = None
-        provider = RecordingEvaluationLLM(plan_fault=self._plan_fault(case))
+        provider = RecordingEvaluationLLM(
+            plan_fault=self._plan_fault(case),
+            task_type=case.task_input.task_type,
+        )
         fixtures = self._load_fixtures(case)
         settings = self._settings(case, work_directory)
+        ids = SequentialIdentifierFactory()
         container: WorkflowContainer | None = None
         try:
-            container = build_workflow_container(
-                settings,
-                ids=SequentialIdentifierFactory(),
-                clock=lambda: _FIXED_NOW,
-                sleeper=lambda _seconds: None,
-                knowledge_behavior=self._knowledge_behavior(case, fixtures),
-                database_behavior=self._database_behavior(case, fixtures),
-                report_behavior=self._report_behavior(case, fixtures),
-                llm_provider=provider,
-            )
+            if self._is_accounts_payable(case):
+                seed_accounts_payable_demo_database(settings.database_url, random_seed=self._seed)
+                self._prepare_ap_fixture(settings.database_url, fixtures)
+            container = self._build_container(settings, case, fixtures, provider, ids)
+            if self._is_accounts_payable(case):
+                self._install_ap_faults(container, case)
             caller = self._caller(case)
             command = NaturalLanguageTaskCommand(
                 task=case.task_input.raw_input,
+                task_type=case.task_input.task_type,
                 output_format=(
                     TaskOutputFormat(case.task_input.output_format)
                     if case.task_input.output_format is not None
@@ -159,6 +231,13 @@ class EvaluationHarness:
                 action = case.execution_config.approval_action
                 if action and action != "pause" and exc.approval_id:
                     try:
+                        if "restart_resume" in case.tags:
+                            container.close()
+                            container = self._build_container(
+                                settings, case, fixtures, provider, ids
+                            )
+                            if self._is_accounts_payable(case):
+                                self._install_ap_faults(container, case)
                         resolution = self._resolve_approval(
                             container,
                             case,
@@ -203,6 +282,25 @@ class EvaluationHarness:
             )
         finally:
             container.close()
+
+    @staticmethod
+    def _build_container(
+        settings: Settings,
+        case: EvaluationCase,
+        fixtures: tuple[dict[str, object], ...],
+        provider: RecordingEvaluationLLM,
+        ids: SequentialIdentifierFactory,
+    ) -> WorkflowContainer:
+        return build_workflow_container(
+            settings,
+            ids=ids,
+            clock=lambda: _FIXED_NOW,
+            sleeper=lambda _seconds: None,
+            knowledge_behavior=EvaluationHarness._knowledge_behavior(case, fixtures),
+            database_behavior=EvaluationHarness._database_behavior(case, fixtures),
+            report_behavior=EvaluationHarness._report_behavior(case, fixtures),
+            llm_provider=provider,
+        )
 
     def _capture(
         self,
@@ -254,7 +352,12 @@ class EvaluationHarness:
                 else ()
             )
         )
-        retries = sum(max(result.attempt - 1, 0) for result in tool_results)
+        final_attempt_by_step: dict[str, int] = {}
+        for result in tool_results:
+            final_attempt_by_step[result.step_id] = max(
+                final_attempt_by_step.get(result.step_id, 0), result.attempt
+            )
+        retries = sum(max(attempt - 1, 0) for attempt in final_attempt_by_step.values())
         trace_id = (
             execution.trace_id if execution is not None else (state["trace_id"] if state else None)
         )
@@ -340,14 +443,20 @@ class EvaluationHarness:
         )
         if task_id is None or not artifacts:
             return "NO_ARTIFACT"
+        is_ap = case.task_input.task_type is TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1
         attacker = TrustedCallerContext(
             user_id="U-EVAL-OTHER",
             tenant_id=case.actor_context.tenant_id,
             data_scope=case.actor_context.data_scope,
-            roles=("quality_analyst",),
+            legal_entity_ids=case.actor_context.legal_entity_ids,
+            business_unit_ids=case.actor_context.business_unit_ids,
+            currency_scope=case.actor_context.currency_scope,
+            allowed_task_types=(case.task_input.task_type,),
+            roles=(("finance_analyst",) if is_ap else ("quality_analyst",)),
+            scopes=case.actor_context.scopes,
             authentication_source="evaluation_fixture",
             is_demo_identity=False,
-            purpose="supplier_quality_analysis.v1",
+            purpose=case.task_input.task_type.value,
         )
         try:
             container.artifact_service.get_task_artifact(
@@ -405,10 +514,20 @@ class EvaluationHarness:
             tenant_id=actor.tenant_id,
             data_scope=actor.data_scope,
             supplier_ids=actor.supplier_ids,
+            legal_entity_ids=actor.legal_entity_ids,
+            business_unit_ids=actor.business_unit_ids,
+            currency_scope=actor.currency_scope,
+            allowed_task_types=(case.task_input.task_type,),
             roles=roles,
+            scopes=actor.scopes,
             authentication_source="evaluation_fixture",
             is_demo_identity=True,
-            purpose="supplier_quality_analysis.v1",
+            purpose=case.task_input.task_type.value,
+            policy_rule_set_id=actor.policy_rule_set_id,
+            policy_rule_set_version=actor.policy_rule_set_version,
+            policy_manifest_checksum=actor.policy_manifest_checksum,
+            policy_materiality=actor.policy_materiality,
+            policy_snapshot_at=actor.policy_snapshot_at,
             policy_requires_approval=case.task_input.require_approval,
             policy_forces_read_only=True,
         )
@@ -417,15 +536,137 @@ class EvaluationHarness:
     def _settings(case: EvaluationCase, work_directory: Path) -> Settings:
         work_directory.mkdir(parents=True, exist_ok=True)
         plan_fault = any(item.target == "planner" for item in case.fault_injection)
+        is_ap = case.task_input.task_type is TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1
         return Settings(
             app_env="test",
-            database_url="sqlite:///unused-evaluation.db",
+            database_url=(
+                f"sqlite:///{work_directory / 'accounts-payable-business.db'}"
+                if is_ap
+                else "sqlite:///unused-evaluation.db"
+            ),
+            database_provider="mock",
+            persistence_database_url=(
+                f"sqlite:///{work_directory / 'runtime.db'}" if is_ap else None
+            ),
             artifact_dir=work_directory / "artifacts",
             checkpoint_database_path=work_directory / "workflow.db",
+            checkpoint_enabled=True,
             workflow_retry_delay_seconds=0,
+            max_task_steps=14,
+            max_database_rows=50_000,
+            max_evidence_items=250 if is_ap else 500,
+            report_max_size_bytes=25 * 1024 * 1024,
             max_plan_repair_attempts=0 if plan_fault else 2,
             max_total_execution_seconds=case.execution_config.timeout_seconds,
+            log_level="ERROR",
+            observability_enabled=False,
+            metrics_enabled=False,
+            trace_enabled=False,
         )
+
+    @staticmethod
+    def _is_accounts_payable(case: EvaluationCase) -> bool:
+        return case.task_input.task_type is TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1
+
+    @staticmethod
+    def _install_ap_faults(container: WorkflowContainer, case: EvaluationCase) -> None:
+        targets = {
+            "knowledge_search": (container.ap_knowledge_tool, "KNOWLEDGE_UNAVAILABLE"),
+            "database_query": (container.ap_database_tool, "DATABASE_UNAVAILABLE"),
+            "analysis_engine": (container.ap_analytics_tool, "ANALYSIS_ENGINE_FAILURE"),
+            "report_generator": (container.ap_report_tool, "REPORT_GENERATION_FAILURE"),
+        }
+        for fault in case.fault_injection:
+            binding = targets.get(fault.target)
+            if binding is None:
+                continue
+            untyped_tool, default_code = binding
+            tool = cast(_FaultInjectableTool, untyped_tool)
+            original = tool.execute
+            attempts = [0]
+            original_artifact_bytes: list[bytes] = []
+
+            def execute_with_fault(
+                arguments: JsonObject,
+                context: ToolExecutionContext,
+                *,
+                original: Callable[
+                    [JsonObject, ToolExecutionContext], ToolExecutionOutput
+                ] = original,
+                fault: FaultInjectionSpec = fault,
+                default_code: str = default_code,
+                attempts: list[int] = attempts,
+                original_artifact_bytes: list[bytes] = original_artifact_bytes,
+            ) -> ToolExecutionOutput:
+                attempts[0] += 1
+                if fault.failure_type == "report_numeric_mismatch":
+                    result = original(arguments, context)
+                    output = getattr(result, "output", None)
+                    root = getattr(output, "root", {})
+                    artifact_id = root.get("artifact_id") if isinstance(root, dict) else None
+                    tenant_id = context.tenant_id
+                    if isinstance(artifact_id, str):
+                        artifact = container.artifacts.get(artifact_id, tenant_id=tenant_id)
+                        path = container.artifacts.path_for(artifact)
+                        if attempts[0] == 1:
+                            content = path.read_bytes()
+                            original_artifact_bytes.append(content)
+                            corrupt = re.sub(
+                                rb'("exception_invoice_count"\s*:\s*)\d',
+                                lambda match: match.group(1) + b"9",
+                                content,
+                                count=1,
+                            )
+                            path.write_bytes(corrupt)
+                        elif original_artifact_bytes:
+                            path.write_bytes(original_artifact_bytes[0])
+                    return result
+                should_fail = not fault.fail_on_attempts or attempts[0] in fault.fail_on_attempts
+                if should_fail:
+                    raise ToolExecutionError(
+                        error_code=fault.error_code or default_code,
+                        message="Synthetic deterministic AP evaluation fault",
+                        recoverable=fault.transient,
+                    )
+                return original(arguments, context)
+
+            tool.execute = execute_with_fault
+
+    @staticmethod
+    def _prepare_ap_fixture(database_url: str, fixtures: tuple[dict[str, object], ...]) -> None:
+        profiles = {str(item.get("ap_fixture")) for item in fixtures}
+        selected = profiles & {
+            "clean_quarter",
+            "multiple_exceptions",
+            "no_invoices",
+            "no_settled_payments",
+        }
+        if not selected:
+            return
+        if len(selected) != 1:
+            raise ValueError("Only one AP data-shape fixture may be selected per case")
+        profile = next(iter(selected))
+        connection = DatabaseConnection(database_url, read_only=False)
+        try:
+            with connection.session() as session:
+                if profile == "clean_quarter":
+                    session.execute(delete(Payment).where(Payment.invoice_id != 20001))
+                    session.execute(delete(Invoice).where(Invoice.id != 20001))
+                    session.execute(delete(PurchaseOrder).where(PurchaseOrder.id != 10001))
+                elif profile == "no_invoices":
+                    session.execute(delete(Payment))
+                    session.execute(delete(Invoice))
+                    session.execute(delete(PurchaseOrder))
+                elif profile == "no_settled_payments":
+                    session.execute(update(Payment).values(status="REVERSED"))
+                else:
+                    session.execute(
+                        update(Payment)
+                        .where(Payment.id == 40009)
+                        .values(payment_date=date(2026, 7, 13))
+                    )
+        finally:
+            connection.dispose()
 
     def _load_fixtures(self, case: EvaluationCase) -> tuple[dict[str, object], ...]:
         fixtures: list[dict[str, object]] = []

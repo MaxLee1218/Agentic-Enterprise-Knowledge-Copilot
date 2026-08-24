@@ -301,7 +301,9 @@ class StepInputBuilder:
             raise StepInputError("AP report lacks the exception-summary result")
         detail_access = (
             "DETAIL"
-            if trusted_context is not None and "finance:ap.detail" in trusted_context.scopes
+            if trusted_context is not None
+            and "finance:ap.detail" in trusted_context.scopes
+            and "finance:ap.aggregate" not in trusted_context.scopes
             else "AGGREGATE"
         )
         artifact_type = contract.expected_output.artifact_type

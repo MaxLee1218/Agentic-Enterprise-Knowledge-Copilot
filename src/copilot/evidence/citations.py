@@ -163,13 +163,22 @@ def candidate_from_ap_report(
         "payment_findings",
         "supplier_summary",
     }
+    typed_collection_sections = {
+        "duplicate_invoice_findings",
+        "po_compliance_findings",
+        "payment_findings",
+        "supplier_summary",
+    }
     deliverables = tuple(
         DeliverableRecord(
             deliverable_id=section,
             producing_step_id=report_step_id,
             content=report[section],
             evidence_ids=cited_ids,
-            empty_result=empty_result and section in empty_sections,
+            empty_result=(
+                (empty_result and section in empty_sections)
+                or (section in typed_collection_sections and _empty_ap_collection(report[section]))
+            ),
         )
         for section in task_contract.expected_output.required_sections
         if section in report
@@ -219,6 +228,11 @@ def candidate_from_ap_report(
         numeric_claims=tuple(numeric_claims),
         output_fields=tuple(sorted(_field_names(report))),
     )
+
+
+def _empty_ap_collection(value: object) -> bool:
+    """Treat an empty typed AP subsection as evidenced zero findings, not missing content."""
+    return isinstance(value, (list, tuple)) and not value
 
 
 def _cited_ids(report: JsonMapping) -> tuple[str, ...]:

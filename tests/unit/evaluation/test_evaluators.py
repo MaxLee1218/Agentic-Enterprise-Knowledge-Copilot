@@ -2,8 +2,10 @@
 
 from pathlib import Path
 
-from evaluation.config import DEFAULT_DATASET
+from evaluation.config import ACCOUNTS_PAYABLE_DATASET, DEFAULT_DATASET
+from evaluation.contracts import MetricStatus
 from evaluation.dataset_loader import load_dataset
+from evaluation.evaluators.accounts_payable import AccountsPayableEvaluator
 from evaluation.evaluators.numeric_accuracy import NumericAccuracyEvaluator
 from evaluation.evaluators.safety import SafetyEvaluator
 from evaluation.evaluators.task_success import TaskSuccessEvaluator
@@ -93,3 +95,27 @@ def test_stage15_security_rates_cover_injection_secret_artifact_and_error_probes
         metrics["missing_audit_event_rate"].value == 0
         for metrics in (prompt, secret, artifact, unsafe)
     )
+
+
+def test_ap_precision_is_not_available_without_both_positive_and_negative_labels(
+    tmp_path: Path,
+) -> None:
+    dataset = load_dataset(ACCOUNTS_PAYABLE_DATASET, case_ids=("ap-mixed-quarter-json",))
+    case = dataset.cases[0]
+    assert case.expected_ap is not None
+    without_negatives = case.model_copy(
+        update={
+            "expected_ap": case.expected_ap.model_copy(update={"normal_eligible_record_keys": ()})
+        }
+    )
+    execution = EvaluationHarness(dataset_directory=dataset.path.parent).execute(case, tmp_path)
+
+    metrics = {
+        metric.metric_name: metric
+        for metric in AccountsPayableEvaluator().evaluate(without_negatives, execution)
+    }
+
+    assert metrics["duplicate_detection_precision"].status is MetricStatus.NOT_AVAILABLE
+    assert metrics["duplicate_detection_recall"].status is MetricStatus.NOT_AVAILABLE
+    assert metrics["exception_detection_precision"].status is MetricStatus.NOT_AVAILABLE
+    assert metrics["exception_detection_recall"].status is MetricStatus.NOT_AVAILABLE

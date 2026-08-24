@@ -457,8 +457,11 @@ class OfflineMockLLM:
             (population.step_id, *detection_ids),
             retry_analysis,
         )
+        report_suffix = (
+            f"{GENERATE_AP_REPORT}-v{version}" if node_name == "replan" else GENERATE_AP_REPORT
+        )
         report = step(
-            GENERATE_AP_REPORT,
+            report_suffix,
             "report_generator",
             StepType.REPORT_GENERATION,
             (knowledge.step_id, summary.step_id, supplier_rate.step_id),

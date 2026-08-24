@@ -1,0 +1,8 @@
+{
+  "ap_fixture": "accounts-payable-v1",
+  "dataset_checksum": "sha256:e920b4b13403831b0c4e7150edea452736f5c278cb2ed272b98c25da66b02f91",
+  "profile_version": "ap-demo-dataset.v1",
+  "random_seed": 42,
+  "schema_version": "accounts_payable.v1",
+  "synthetic_only": true
+}

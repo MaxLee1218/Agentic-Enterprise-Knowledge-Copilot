@@ -1,8 +1,10 @@
 """Full offline evaluation through the production Task Service and LangGraph."""
 
+from pathlib import Path
+
 from copilot.contracts import TaskStatus
-from evaluation.config import DEFAULT_DATASET, EvaluationConfig
-from evaluation.contracts import EvaluationRunResult
+from evaluation.config import ACCOUNTS_PAYABLE_DATASET, DEFAULT_DATASET, EvaluationConfig
+from evaluation.contracts import EvaluationRunResult, MetricStatus
 from evaluation.dataset_loader import load_dataset
 from evaluation.runner import EvaluationRunner
 
@@ -52,6 +54,62 @@ def test_deterministic_fields_repeat_across_runs(tmp_path) -> None:  # type: ign
 
     assert _normalize(first) == _normalize(second)
     assert first.gate_result == second.gate_result
+
+
+def test_complete_accounts_payable_dataset_passes_frozen_stage10_gates(
+    tmp_path: Path,
+) -> None:
+    dataset = load_dataset(ACCOUNTS_PAYABLE_DATASET)
+
+    run = EvaluationRunner(EvaluationConfig(output_dir=tmp_path)).run(dataset)
+
+    assert run.total_cases == 25
+    assert run.passed_cases == 25
+    assert run.failed_cases == run.errored_cases == 0
+    assert run.gate_result.passed, run.gate_result.reasons
+    metrics = {metric.metric_name: metric for metric in run.metrics}
+    for name in (
+        "duplicate_detection_precision",
+        "duplicate_detection_recall",
+        "exception_detection_precision",
+        "exception_detection_recall",
+        "po_variance_accuracy",
+        "payment_term_accuracy",
+        "exception_amount_accuracy",
+        "exclusion_accuracy",
+        "policy_binding_accuracy",
+        "evidence_coverage",
+        "citation_correctness",
+    ):
+        assert metrics[name].status is MetricStatus.PASS
+        assert metrics[name].value == 1
+    for name in (
+        "false_positive_rate",
+        "false_negative_rate",
+        "unauthorized_tool_execution_rate",
+        "unauthorized_table_access_rate",
+        "unauthorized_field_access_rate",
+        "sensitive_data_leakage_rate",
+        "secret_leakage_rate",
+        "prompt_injection_success_rate",
+        "artifact_authorization_failure_rate",
+    ):
+        assert metrics[name].value == 0
+    assert metrics["ap_performance_input_rows"].value == 50_000
+    assert metrics["ap_analytics_latency_p95_ms"].status is MetricStatus.PASS
+    assert run.provider == "mock"
+    assert run.model == "offline-accounts-payable-eval-v1"
+    assert run.rule_versions == ("ap_rules.2026.1",)
+
+
+def test_accounts_payable_oracle_metrics_repeat_for_the_same_seed(tmp_path: Path) -> None:
+    dataset = load_dataset(ACCOUNTS_PAYABLE_DATASET, case_ids=("ap-mixed-quarter-json",))
+    runner = EvaluationRunner(EvaluationConfig(output_dir=tmp_path, seed=42))
+
+    first = runner.run(dataset)
+    second = runner.run(dataset)
+
+    assert _normalize(first) == _normalize(second)
 
 
 def _normalize(run: EvaluationRunResult) -> object:

@@ -1,0 +1,7 @@
+{
+  "ap_fixture": "multiple_exceptions",
+  "changed_payment_record_key": "40009",
+  "payment_date": "2026-07-13",
+  "random_seed": 42,
+  "synthetic_only": true
+}

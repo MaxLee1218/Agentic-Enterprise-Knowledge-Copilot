@@ -1,7 +1,9 @@
 # Evaluation dataset authoring
 
-`supplier_quality_v1.jsonl` is a versioned, sanitized offline dataset. Each non-blank line is one
-strict `EvaluationCase`, and every case can run independently.
+`supplier_quality_v1.jsonl` and `accounts_payable_v1.jsonl` are separate versioned, sanitized
+offline datasets. Each non-blank line is one strict `EvaluationCase`, and every case can run
+independently. The Supplier Quality dataset remains the default; AP must be selected explicitly
+and has its own compatible baseline.
 
 ## Version and identifiers
 
@@ -32,11 +34,20 @@ Oracle values are evaluator-only. Never copy `expected_*`, fixture answers, forb
 numeric assertions into `TaskRequest`, LLM messages, ToolCall arguments, or Graph state. The loader
 test for `agent_task_payload()` enforces the public subset.
 
+The AP dataset is fixed at ID `accounts_payable`, version `1.0.0`, and seed 42. Its synthetic
+fixtures declare their seed/profile metadata and cover normal, business-exception, boundary,
+policy, authorization, security, planning and recovery inventory. AP precision and recall are
+available only when at least one oracle supplies both positive and negative eligible labels; the
+loader rejects an AP dataset that cannot satisfy that rule.
+
 ## Validate and run
 
 ```bash
 python evaluation/run_eval.py --case normal-q2-analysis
 python evaluation/run_eval.py --tag security
+python evaluation/run_eval.py --dataset evaluation/datasets/accounts_payable_v1.jsonl
+python evaluation/run_eval.py --dataset evaluation/datasets/accounts_payable_v1.jsonl \
+  --baseline evaluation/baselines/accounts_payable_v1.json --fail-on-regression
 pytest tests/unit/evaluation tests/contract/evaluation
 ```
 

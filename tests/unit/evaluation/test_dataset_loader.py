@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from evaluation.config import DEFAULT_DATASET
+from evaluation.config import ACCOUNTS_PAYABLE_DATASET, DEFAULT_DATASET
 from evaluation.dataset_loader import DatasetValidationError, agent_task_payload, load_dataset
 
 
@@ -26,6 +26,7 @@ def test_oracle_fields_never_enter_agent_task_payload() -> None:
 
     assert set(payload) == {
         "task",
+        "task_type",
         "output_format",
         "read_only",
         "require_approval",
@@ -34,6 +35,49 @@ def test_oracle_fields_never_enter_agent_task_payload() -> None:
     }
     assert "expected_outcome" not in payload
     assert "expected_numbers" not in payload
+
+
+def test_accounts_payable_dataset_is_independent_complete_and_oracle_isolated() -> None:
+    dataset = load_dataset(ACCOUNTS_PAYABLE_DATASET)
+
+    assert dataset.dataset_id == "accounts_payable"
+    assert dataset.dataset_version == "1.0.0"
+    assert len(dataset.cases) == dataset.total_case_count == 25
+    assert dataset.path != DEFAULT_DATASET
+    assert {case.category for case in dataset.cases} == {
+        "normal",
+        "business_exception",
+        "boundary",
+        "policy",
+        "authorization",
+        "security",
+        "planning",
+        "recovery",
+    }
+    assert all(
+        case.task_input.task_type.value == "accounts_payable_analysis.v1" for case in dataset.cases
+    )
+    assert any(
+        case.expected_ap is not None
+        and case.expected_ap.exception_records
+        and case.expected_ap.normal_eligible_record_keys
+        for case in dataset.cases
+    )
+
+    oracle_case = next(case for case in dataset.cases if case.expected_ap is not None)
+    payload = agent_task_payload(oracle_case)
+    assert "expected_ap" not in payload
+    assert "fixture_refs" not in payload
+    assert "fault_injection" not in payload
+
+
+def test_accounts_payable_dataset_rejects_incomplete_case_inventory(tmp_path: Path) -> None:
+    first_line = ACCOUNTS_PAYABLE_DATASET.read_text(encoding="utf-8").splitlines()[0]
+    dataset = tmp_path / "incomplete-ap.jsonl"
+    dataset.write_text(first_line + "\n", encoding="utf-8")
+
+    with pytest.raises(DatasetValidationError, match="case inventory is incomplete"):
+        load_dataset(dataset)
 
 
 def test_duplicate_case_id_is_rejected(tmp_path: Path) -> None:

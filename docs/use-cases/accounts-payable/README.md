@@ -1,17 +1,18 @@
 # Accounts Payable Invoice Compliance & Exception Investigation v1
 
-**Design status:** `FROZEN — STAGE 9 PERMISSION, TASK API AND CONSOLE INTEGRATION COMPLETE`
+**Design status:** `FROZEN — STAGE 10 EVALUATION AND SECURITY GATES COMPLETE`
 **Task type:** `accounts_payable_analysis.v1`  
 **Design version:** `1.0`  
 **Date:** 2026-08-24
 
 This directory is the frozen implementation authority for Use Case 2. It does not alter the
 frozen Supplier Quality Analysis v1.1 baseline in `docs/design/`.
-Stages 1 through 9 implement the AP contracts/routing, isolated synthetic data, controlled policy,
+Stages 1 through 10 implement the AP contracts/routing, isolated synthetic data, controlled policy,
 read-only query, deterministic analytics, independent verification and JSON/PDF reporting
-foundations, governed execution through the existing Task Service and shared Graph, and exposure
-through the existing permission-scoped Task API and console. Stage 9 does not create a finance API,
-delegate authority to the browser, or establish production readiness.
+foundations, governed execution through the existing Task Service and shared Graph, exposure
+through the existing permission-scoped Task API and console, and an independent synthetic AP
+evaluation/security baseline. Stage 10 does not use live production data or models and does not
+establish production readiness.
 
 ## Business outcome
 
@@ -63,6 +64,7 @@ invoice, PO, payment, supplier, bank account, or external system.
 | [Stage 7 AP report model and JSON/PDF report](stage-7-ap-report-model-and-renderers.md) | Implemented strong AP report model, deterministic JSON/PDF renderers, governed parser and atomic Artifact profile |
 | [Stage 8 understanding, planner and shared Graph](stage-8-understanding-planner-and-shared-graph.md) | Implemented trusted AP understanding, exact 14-step Plan profile, policy/approval/input wiring and shared-Graph execution |
 | [Stage 9 permission, Task API and console integration](stage-9-permission-api-and-frontend.md) | Implemented finance authorization profiles, trusted AP scope, existing Task resource integration, public enum expansion, console selector/badges/safe summary and regenerated contracts |
+| [Stage 10 AP evaluation and security gates](stage-10-evaluation-and-security-gates.md) | Implemented independent AP dataset/oracles, deterministic metrics, attack and recovery cases, 50,000-row performance gate, baseline and versioned report |
 
 ## Terminology authority
 
@@ -100,8 +102,9 @@ STAGE 6: COMPLETE — AP EVIDENCE AND VERIFIER PROFILE; WORKFLOW STILL DISABLED
 STAGE 7: COMPLETE — AP REPORT MODEL AND JSON/PDF PROFILE; WORKFLOW STILL DISABLED
 STAGE 8: COMPLETE — INTERNAL TASK SERVICE AND SHARED GRAPH EXECUTION
 STAGE 9: COMPLETE — PERMISSION-SCOPED PUBLIC TASK API AND CONSOLE INTEGRATION
+STAGE 10: COMPLETE — INDEPENDENT SYNTHETIC EVALUATION AND SECURITY GATES
 UC2 TOOL EXECUTION: ENABLED THROUGH THE GOVERNED SHARED TASK WORKFLOW
-STAGE 10–12: NOT COMPLETE — EVALUATION, LOCAL ENTERPRISE E2E AND RELEASE GATES OUTSTANDING
+STAGE 11–12: NOT COMPLETE — LOCAL ENTERPRISE E2E AND RELEASE/OPERATIONS GATES OUTSTANDING
 PRODUCTION READINESS: NOT CLAIMED
 ```
 

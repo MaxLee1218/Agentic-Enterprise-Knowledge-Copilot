@@ -12,6 +12,7 @@ from copilot.services.workflows.accounts_payable_plan import (
     AGGREGATE_EXCEPTION_SUMMARY,
     AGGREGATE_SUPPLIER_RATE,
     AccountsPayableAnalysisPlanFactory,
+    ap_report_step_id,
 )
 from copilot.services.workflows.validation import PlanValidator
 from tests.unit.domain.ap_helpers import make_ap_contract
@@ -163,6 +164,8 @@ def test_ap_replan_preserves_the_profile_and_increments_version(tmp_path: Path) 
 
         assert outcome.validation.is_valid
         assert outcome.plan.planning_version == 2
-        assert tuple(step.step_id for step in outcome.plan.steps) == tuple(
-            step.step_id for step in current.steps
+        assert tuple(step.step_id for step in outcome.plan.steps[:-1]) == tuple(
+            step.step_id for step in current.steps[:-1]
         )
+        assert outcome.plan.steps[-1].step_id == ap_report_step_id(contract.task_id, 2)
+        assert outcome.plan.steps[-1].step_id != current.steps[-1].step_id

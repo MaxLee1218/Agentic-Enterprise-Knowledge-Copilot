@@ -18,8 +18,8 @@ from copilot.services.workflows.accounts_payable_plan import (
     AGGREGATE_EXCEPTION_SUMMARY,
     AGGREGATE_SUPPLIER_RATE,
     AP_POPULATION_SUFFIX,
-    GENERATE_AP_REPORT,
     RETRIEVE_AP_POLICY,
+    ap_report_step_id,
     ap_step_id,
     selected_ap_detection_bindings,
 )
@@ -228,7 +228,7 @@ class PlanValidator:
             ap_step_id(task_id, AP_POPULATION_SUFFIX),
             ap_step_id(task_id, AGGREGATE_EXCEPTION_SUMMARY),
             ap_step_id(task_id, AGGREGATE_SUPPLIER_RATE),
-            ap_step_id(task_id, GENERATE_AP_REPORT),
+            ap_report_step_id(task_id, plan.planning_version),
             *(ap_step_id(task_id, binding.database_suffix) for binding in selected),
             *(ap_step_id(task_id, binding.analysis_suffix) for binding in selected),
         }
@@ -275,7 +275,7 @@ class PlanValidator:
                         field="dependency",
                     )
                 )
-        report_id = ap_step_id(task_id, GENERATE_AP_REPORT)
+        report_id = ap_report_step_id(task_id, plan.planning_version)
         expected_report_dependencies = {
             ap_step_id(task_id, RETRIEVE_AP_POLICY),
             ap_step_id(task_id, AGGREGATE_EXCEPTION_SUMMARY),

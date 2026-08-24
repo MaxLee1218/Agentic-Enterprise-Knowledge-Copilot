@@ -1,0 +1,5 @@
+{
+  "ap_fixture": "no_invoices",
+  "random_seed": 42,
+  "synthetic_only": true
+}

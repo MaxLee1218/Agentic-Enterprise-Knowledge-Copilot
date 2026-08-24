@@ -46,9 +46,14 @@ def compare_baseline(
     missing: list[str] = []
     for name, reference in baseline.metrics.items():
         actual = current.get(name)
-        if actual is None or actual.value is None:
+        if actual is None:
             missing.append(name)
             if name in config.hard_gate_metrics:
+                regressions.append(f"Required metric is unavailable: {name}")
+            continue
+        if actual.value is None:
+            missing.append(name)
+            if reference.value is not None and name in config.hard_gate_metrics:
                 regressions.append(f"Required metric is unavailable: {name}")
             continue
         if reference.value is None or reference.direction is MetricDirection.INFORMATIONAL:
@@ -87,6 +92,8 @@ def baseline_from_run(run: EvaluationRunResult) -> EvaluationBaseline:
         seed=run.seed,
         agent_version=run.agent_version,
         git_commit=run.git_commit,
+        source_hash=run.source_hash,
+        git_dirty=run.git_dirty,
         metrics={
             metric.metric_name: BaselineMetric(
                 value=metric.value,

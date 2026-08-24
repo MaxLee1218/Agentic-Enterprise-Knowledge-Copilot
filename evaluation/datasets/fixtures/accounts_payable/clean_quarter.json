@@ -1,0 +1,6 @@
+{
+  "ap_fixture": "clean_quarter",
+  "kept_invoice_record_keys": ["20001"],
+  "random_seed": 42,
+  "synthetic_only": true
+}

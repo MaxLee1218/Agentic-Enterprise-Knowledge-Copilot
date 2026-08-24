@@ -1,6 +1,6 @@
 """Version and stable-name contract tests for evaluation artifacts."""
 
-from evaluation.config import DEFAULT_DATASET
+from evaluation.config import ACCOUNTS_PAYABLE_DATASET, DEFAULT_DATASET
 from evaluation.contracts import EvaluationCase, EvaluationRunResult, MetricResult
 from evaluation.dataset_loader import load_dataset
 
@@ -29,3 +29,14 @@ def test_dataset_uses_stable_evaluator_tool_and_status_names() -> None:
     for case in dataset.cases:
         assert set(case.expected_tools.required_tools).issubset(registered)
         assert case.expected_outcome.allowed_terminal_statuses
+
+
+def test_accounts_payable_dataset_contract_is_versioned_and_profile_bound() -> None:
+    dataset = load_dataset(ACCOUNTS_PAYABLE_DATASET)
+
+    assert dataset.dataset_id == "accounts_payable"
+    assert dataset.dataset_version == "1.0.0"
+    assert all(case.schema_version == "evaluation-case.v1" for case in dataset.cases)
+    assert all(
+        case.task_input.task_type.value == "accounts_payable_analysis.v1" for case in dataset.cases
+    )
