@@ -101,3 +101,8 @@ What becomes easier or harder, including operational and migration effects?
 | [ADR-009](ADR-009-multi-domain-capability-manifests.md) | Accepted | 2026-08-22 | Use versioned domain capability manifests and historical tool-profile binding for multiple vertical slices |
 | [ADR-010](ADR-010-version-bound-policy-rules.md) | Accepted | 2026-08-22 | Bind deterministic finance rules to exact controlled policy document versions and checksums |
 | [ADR-011](ADR-011-accounts-payable-business-data-model.md) | Accepted | 2026-08-22 | Add a narrow tenant-scoped AP business schema while reusing suppliers and preserving database separation |
+| [ADR-012](ADR-012-async-task-submission-model.md) | Accepted | 2026-08-25 | Make the future task submission contract acceptance-only with separate runtime state |
+| [ADR-013](ADR-013-queue-delivery-dispatch-model.md) | Accepted | 2026-08-25 | Use a minimal at-least-once Queue envelope and transactional dispatch outbox |
+| [ADR-014](ADR-014-worker-lease-fencing.md) | Accepted | 2026-08-25 | Extend the database lease with heartbeat, expiry, takeover, and monotonic fencing |
+| [ADR-015](ADR-015-checkpoint-recovery-authority.md) | Accepted | 2026-08-25 | Keep Task DB authoritative and require fail-closed checkpoint recovery reconciliation |
+| [ADR-016](ADR-016-runtime-graph-retry-ownership.md) | Accepted | 2026-08-25 | Separate Queue/runtime recovery from Graph and Tool business retry ownership |

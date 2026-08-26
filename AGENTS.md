@@ -54,6 +54,25 @@ These documents are the sole implementation authority for the Supplier Quality A
 
 If an implementation request conflicts with the frozen design, stop before implementing the conflicting behavior and report the conflict. A change to the frozen baseline requires an explicit design change: update every affected design document, resolve cross-document conflicts, version the baseline, obtain approval, and only then modify production code. Do not treat the existence of scaffold files as authorization to begin or expand implementation.
 
+### 1.2 Frozen Async Runtime Architecture
+
+The future asynchronous Task runtime architecture is frozen by:
+
+- `docs/async-runtime-architecture.md`
+- `docs/adr/ADR-012-async-task-submission-model.md`
+- `docs/adr/ADR-013-queue-delivery-dispatch-model.md`
+- `docs/adr/ADR-014-worker-lease-fencing.md`
+- `docs/adr/ADR-015-checkpoint-recovery-authority.md`
+- `docs/adr/ADR-016-runtime-graph-retry-ownership.md`
+
+Any Queue, dispatcher, Worker, lease/heartbeat/fencing, cancellation polling, recovery scanner,
+retry, async API, or frontend polling implementation must follow those decisions and the staged
+gates in the architecture document. Queue, Worker memory, and LangGraph checkpoint are never Task
+authority. Do not introduce a second lease system; extend the existing `workflow_leases` mechanism.
+Do not switch current production API behavior or claim background execution, automatic recovery,
+horizontal scaling, or production readiness until the required persistence, PostgreSQL
+concurrency, adapter, Worker, backpressure, and failure-testing stages pass.
+
 ## 2. Product Vision
 
 The product must behave as an enterprise knowledge worker, not as a generic chatbot.

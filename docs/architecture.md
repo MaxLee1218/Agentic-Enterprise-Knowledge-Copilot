@@ -386,7 +386,52 @@ checks for an already committed result before repeating work. Compensation means
 cleaning an uncommitted artifact and recording the outcome; it never rewrites immutable evidence
 or audit history.
 
-## 6. Extension Rules
+## 6. Frozen Future Async Runtime Boundary
+
+The architecture and contracts for a future asynchronous Task runtime are frozen in
+[`async-runtime-architecture.md`](async-runtime-architecture.md) and ADR-012 through ADR-016. This
+is a future hosting boundary, not an implemented Queue or Worker.
+
+The target calling direction is:
+
+```text
+API
+  -> authenticate + validate
+  -> one PostgreSQL transaction: Task + submission idempotency + PENDING dispatch
+  -> 202 Accepted
+
+Outbox dispatcher -> broker-neutral TaskQueue -> Worker runtime host
+  -> reload authoritative tenant/task/trusted context
+  -> atomic database lease + execution generation + fencing token
+  -> existing NaturalLanguageTaskService / LangGraph / Registry / Executor
+  -> fenced persistence + release + ACK
+```
+
+`TaskStatus` remains the business lifecycle. Runtime READY/LEASED/WAITING_RETRY/SUSPENDED/FINISHED
+and dispatch state are separate contracts. The Copilot persistence database remains authoritative;
+Queue messages are dispatch notifications, Workers are consumers, and LangGraph checkpoints are
+continuation state. Broker receipt, ACK, process memory, and checkpoint content never grant
+execution ownership.
+
+The async transaction boundary extends the existing Task consistency boundary. Initial Task and
+dispatch intent must commit together through a transactional outbox. Every later authoritative
+mutation must validate tenant, current Task/generation, an unexpired database lease, and its
+monotonic fencing token. The existing `workflow_leases` table is extended rather than replaced.
+`WAITING_APPROVAL` persists its approval and checkpoint, releases the lease, and occupies no
+Worker.
+
+Application-owned future ports live in `copilot.services.async_runtime`; provider-neutral values
+live in `copilot.contracts.async_runtime`. A broker adapter, dispatcher loop, Worker entry point,
+and recovery scanner are future interface/infrastructure implementations composed only from
+`copilot.bootstrap`. They may not contain business logic or bypass Policy, Approval, Registry,
+Executor, Evidence, Audit, Artifact, or Verification.
+
+The current synchronous `POST /v1/tasks` remains implemented as documented in
+[`task-lifecycle.md`](task-lifecycle.md). No code path may claim background execution until the
+persistence, real PostgreSQL concurrency, Queue, Worker, API, frontend, scanner, backpressure, and
+failure-testing rollout stages pass.
+
+## 7. Extension Rules
 
 ### Adding a tool
 
@@ -433,3 +478,9 @@ before implementation.
 - [Domain contracts](domain-contracts.md)
 - [Deterministic Supplier Quality workflow](deterministic-workflow.md)
 - [Repository-wide contributor rules](../AGENTS.md)
+- [Async runtime architecture and contract freeze](async-runtime-architecture.md)
+- [ADR-012: Asynchronous Task Submission Model](adr/ADR-012-async-task-submission-model.md)
+- [ADR-013: Queue Delivery and Transactional Dispatch](adr/ADR-013-queue-delivery-dispatch-model.md)
+- [ADR-014: Worker Lease, Heartbeat, and Fencing](adr/ADR-014-worker-lease-fencing.md)
+- [ADR-015: Checkpoint and Recovery Authority](adr/ADR-015-checkpoint-recovery-authority.md)
+- [ADR-016: Runtime and Graph Retry Ownership](adr/ADR-016-runtime-graph-retry-ownership.md)

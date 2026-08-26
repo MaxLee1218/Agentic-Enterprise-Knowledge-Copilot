@@ -256,6 +256,42 @@ share that task identifier but remain separate persistence mechanisms. A complet
 pending approval must remain queryable; graph recovery must load the matching checkpoint. If they
 disagree, stop retries and investigate rather than synthesizing new state.
 
+The implemented system has no automatic recovery scanner or background Worker takeover. Ordinary
+`engine.resume` is a lower-level controlled primitive; approval resolution is a separate
+checkpoint-resume path. Do not report either as deployed automatic crash recovery.
+
+## Future async runtime operations boundary
+
+The future operational contract is frozen in
+[`async-runtime-architecture.md`](async-runtime-architecture.md), but no Queue, dispatcher,
+Worker daemon, heartbeat loop, or scanner is currently operated. The initial validated defaults
+for the future implementation are a 15-second heartbeat, 60-second lease TTL, takeover at
+`database_now >= expires_at`, and three runtime recovery attempts. They are configurable
+operational values and do not change Tool retry budgets.
+
+When that runtime is implemented, operators must distinguish:
+
+- PENDING/RETRY_SCHEDULED dispatch publication failure;
+- duplicate broker delivery with a healthy lease (normal no-op);
+- expired execution lease eligible for fenced takeover;
+- unresolved `WAITING_APPROVAL` (not recovery eligible);
+- due `WAITING_RETRY` runtime failure;
+- fail-closed checkpoint mismatch;
+- poison Task whose runtime recovery budget is exhausted.
+
+The RecoveryScanner may scan only READY/orphaned dispatch, expired lease, due runtime retry, and
+orphan outbox candidates. It must exclude terminal Tasks, unresolved approval waits, and valid
+leases. Operators must not manually delete lease or checkpoint rows to force progress. A lost
+heartbeat because PostgreSQL is unavailable means the Worker has no safe commit authority; it
+must stop committing and wait for database recovery/takeover.
+
+Required operational views/alerts after implementation are Queue depth/oldest age, active Workers
+and leases, acquire conflicts, lease expirations, recoveries/failures, runtime retries, Queue wait,
+active execution, approval wait, total wall-clock duration, and cancellation latency. Heartbeat
+success is a bounded metric rather than a per-beat audit/log stream. Runtime logs contain IDs and
+safe error codes, never credentials, Queue authorization payloads, prompts, rows, or Artifact
+bytes.
+
 ## Common maintenance
 
 ```bash

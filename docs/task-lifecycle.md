@@ -93,3 +93,37 @@ the cancellation audit/result records. Repeating cancellation on `CANCELLED` is 
 `COMPLETED` and `FAILED` return `TASK_NOT_CANCELLABLE` with HTTP 409. Cancellation is cooperative:
 an already-running non-interruptible external call may finish, but its late result cannot move the
 terminal task or authorize downstream steps.
+
+## Frozen future asynchronous hosting contract
+
+The current synchronous behavior above remains active. The future async migration is frozen but
+not implemented: after Stages B through E in
+[`async-runtime-architecture.md`](async-runtime-architecture.md), `POST /v1/tasks` will always
+return `202 Accepted` immediately after a Task and initial dispatch commit atomically. It will not
+run understanding, planning, LangGraph, tools, verification, or Artifact generation in the HTTP
+request thread.
+
+The business state machine in this document remains unchanged. A separate runtime projection is
+used only for execution hosting:
+
+| Task/condition | Runtime projection | Worker lease |
+|---|---|---|
+| accepted and dispatchable | `READY` | none |
+| actively hosted | `LEASED` | exactly one unexpired database lease |
+| runtime recovery delayed | `WAITING_RETRY` | none |
+| `WAITING_APPROVAL` | `SUSPENDED` | none |
+| `COMPLETED` / `FAILED` / `CANCELLED` | `FINISHED` | none |
+
+At-least-once Queue delivery does not add `QUEUED` to `TaskStatus`. A Worker reloads Task DB state,
+reconciles the tenant/task checkpoint, and acquires the atomic lease before entering the existing
+workflow. A monotonic fencing token is checked on authoritative commits. Duplicate/stale delivery
+therefore becomes an acknowledged no-op rather than a second Task execution.
+
+Approval resolution persists one immutable decision and creates a new dispatch; it no longer
+executes the resumed Graph in the approval request thread after the async cutover. Reject, expiry,
+revoke, and cancellation create no executable resume dispatch. Durable cancellation remains the
+Task DB source of truth, while cooperative signals only reduce observation latency.
+
+See ADR-012 through ADR-016 for the accepted submission, dispatch, lease, recovery, and retry
+decisions. This section does not claim that a Queue, Worker, heartbeat, scanner, or async API is
+currently deployed.

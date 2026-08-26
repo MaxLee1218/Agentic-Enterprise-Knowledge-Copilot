@@ -285,6 +285,9 @@ recovery-point objective, encryption/access review, or Artifact/policy/RAG check
 - Artifact content uses one filesystem/volume rather than object storage.
 - Audit is durable but not cryptographically tamper-proof.
 - No distributed task queue or guaranteed forced cancellation of an in-flight external call.
+- The future async runtime architecture is frozen in `docs/async-runtime-architecture.md`, but its
+  outbox migration, Queue adapter, Worker, heartbeat/fencing implementation, recovery scanner,
+  backpressure, and failure/soak evidence are not deployed by this guide.
 - No automatic cross-resource transaction for PostgreSQL, RAG, business DB, and Artifact storage.
 - Retention and legal-hold periods remain deployment-owned; the application does not yet perform
   an automatic coordinated purge across Task, Evidence, Audit, checkpoints, Artifacts, policy and
