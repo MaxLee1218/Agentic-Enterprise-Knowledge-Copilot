@@ -31,6 +31,7 @@ from copilot.contracts import (
 from copilot.contracts.errors import DomainError
 from copilot.contracts.validators import utc_now
 from copilot.persistence.database import PersistenceDatabase, coerce_database
+from copilot.persistence.fencing import assert_fenced_session
 from copilot.persistence.models import WorkflowEvidenceRow
 from copilot.security import (
     ContentSourceType,
@@ -584,6 +585,13 @@ class InMemoryEvidenceLedger:
         if self._database is None:
             return
         with self._database.session() as session:
+            created = tuple(result.evidence for result in results if result.created)
+            if created:
+                assert_fenced_session(
+                    session,
+                    tenant_id=tenant_id,
+                    task_id=created[0].task_id,
+                )
             for result in results:
                 if result.created:
                     item = result.evidence

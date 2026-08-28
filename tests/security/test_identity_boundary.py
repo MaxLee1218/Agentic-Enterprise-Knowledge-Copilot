@@ -17,6 +17,7 @@ from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.persistence.identifiers import SequentialIdentifierFactory
 from copilot.security.identity import DemoIdentityProvider, TrustedHeaderIdentityProvider
 from copilot.services.identity import IdentityRequest, IdentityResolutionError
+from tests.async_runtime_helpers import execute_accepted_task
 from tests.workflow_helpers import fixed_clock
 
 SECRET = "stage17-identity-signing-secret-value"
@@ -167,6 +168,7 @@ def test_api_requires_signed_identity_and_propagates_it_to_the_task_context(
     settings = Settings(
         app_env="test",
         database_url="sqlite:///unused-identity-api.db",
+        persistence_database_url=f"sqlite:///{root / 'runtime.db'}",
         artifact_dir=root / "artifacts",
         checkpoint_database_path=root / "checkpoints.db",
         checkpoint_enabled=False,
@@ -184,6 +186,7 @@ def test_api_requires_signed_identity_and_propagates_it_to_the_task_context(
     client = TestClient(
         create_app(
             task_service=container.task_service,
+            task_submission_service=container.task_submission_service,
             settings=settings,
             observability=container.observability,
             identity_provider=provider,
@@ -201,8 +204,9 @@ def test_api_requires_signed_identity_and_propagates_it_to_the_task_context(
                 json={"task": "Analyze Q2 2026 supplier quality and generate a JSON report."},
             )
         assert missing.status_code == 401
-        assert accepted.status_code == 201
+        assert accepted.status_code == 202
         task_id = accepted.json()["task_id"]
+        execute_accepted_task(container, task_id, tenant_id="TENANT-A")
         state = container.engine.get_state(task_id, "TENANT-A")
         context = state["intake_context"]
         assert context.user_id == "U-AUTHENTICATED"

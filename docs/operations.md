@@ -9,7 +9,8 @@ Commands assume the repository root and Docker Compose unless noted otherwise. P
 
 | Service | Responsibility | Durable state |
 |---|---|---|
-| `copilot-api` | API, agent graph, tools, verification | None outside dependencies |
+| `copilot-api` | Acceptance-only API and task queries | None outside dependencies |
+| `copilot-worker` | Queue dispatch/receive, recovery, existing Graph/Tools/verification | None outside dependencies |
 | `migrate` | Alembic plus official checkpoint setup | Exits after success |
 | `rag-health` | Real Copilot Knowledge-client startup probe | Exits after success |
 | `postgres` | Copilot internal state and checkpoints | `postgres-data` volume |
@@ -27,7 +28,7 @@ docker compose config
 docker compose up -d postgres
 docker compose run --rm migrate
 docker compose up -d enterprise-rag-engine
-docker compose up -d copilot-api
+docker compose up -d copilot-api copilot-worker
 docker compose ps
 curl -fsS http://127.0.0.1:8000/health/live
 curl -fsS http://127.0.0.1:8000/health/ready
@@ -39,17 +40,16 @@ incident or first deployment.
 ## Shutdown
 
 ```bash
+docker compose stop -t 30 copilot-worker
 docker compose stop copilot-api
 docker compose down
 ```
 
-Uvicorn handles SIGTERM and the FastAPI lifespan closes the checkpoint connection, repository
-engine/pool, HTTP/model/database clients, and other application resources. Shutdown first signals
-all active tool cancellation tokens. Cooperatively cancellable work stops at a checkpoint;
-non-cancellable synchronous work remains `CANCELLATION_REQUESTED`, is allowed to drain within the
-platform grace period, and its late output is discarded. `docker compose down` preserves named volumes. Do
-not add `--volumes` unless the target is an explicitly disposable development environment and the
-data loss is intended.
+Uvicorn handles API SIGTERM and closes its dependencies. Worker SIGTERM stops new Queue claims,
+drains active slots for the configured grace, and then signals cooperative Tool cancellation;
+lease expiry/fencing rejects late commits. `docker compose down` preserves named volumes. Do not
+add `--volumes` unless the target is an explicitly disposable development environment and the data
+loss is intended.
 
 ## Health checks
 
@@ -68,6 +68,7 @@ historical read endpoints remain useful.
 
 ```bash
 docker compose logs --since=15m copilot-api
+docker compose logs --since=15m copilot-worker
 docker compose logs --since=15m migrate postgres enterprise-rag-engine
 docker compose logs -f --tail=200 copilot-api
 ```
@@ -97,10 +98,11 @@ Never switch production to `IDENTITY_PROVIDER=demo` as an availability workaroun
 
 ## Cancellation inspection
 
-Task cancellation signals every active invocation registered for that task and revokes pending
-approvals. `CANCELLED` at the task boundary means no result can be committed. For synchronous
-Knowledge, Database, or Report work, the underlying thread may still be draining while its token is
-`CANCELLATION_REQUESTED`; do not report forced interruption. Correlate task Audit with
+Task cancellation durably finalizes the Task, deletes its execution lease, and revokes pending
+approvals. The Worker heartbeat accelerates the process-local Tool token when authority is lost.
+`CANCELLED` at the task boundary means no late result can be committed. A Knowledge, Database, or
+Report thread may still drain until its adapter timeout; do not report forced interruption.
+Correlate task Audit with
 `tool_call_id`, trace, adapter timeout, and shutdown time. Repeated cancellation is idempotent and a
 completed task cannot be relabelled cancelled.
 
@@ -256,20 +258,20 @@ share that task identifier but remain separate persistence mechanisms. A complet
 pending approval must remain queryable; graph recovery must load the matching checkpoint. If they
 disagree, stop retries and investigate rather than synthesizing new state.
 
-The implemented system has no automatic recovery scanner or background Worker takeover. Ordinary
-`engine.resume` is a lower-level controlled primitive; approval resolution is a separate
-checkpoint-resume path. Do not report either as deployed automatic crash recovery.
+The asynchronous runtime has an automatic bounded recovery scanner embedded in each independent
+Worker. It reloads authoritative Task/runtime/dispatch state, excludes terminal and unresolved
+approval Tasks, and uses PostgreSQL skip locking so multiple scanners do not recover the same row.
+It re-arms the same dispatch and generation after an expired lease or due runtime retry; it never
+creates a replacement business Task. After three runtime recoveries it fails closed.
 
-## Future async runtime operations boundary
+## Async runtime operations boundary
 
-The future operational contract is frozen in
-[`async-runtime-architecture.md`](async-runtime-architecture.md), but no Queue, dispatcher,
-Worker daemon, heartbeat loop, or scanner is currently operated. The initial validated defaults
-for the future implementation are a 15-second heartbeat, 60-second lease TTL, takeover at
-`database_now >= expires_at`, and three runtime recovery attempts. They are configurable
-operational values and do not change Tool retry budgets.
+The operational contract in [`async-runtime-architecture.md`](async-runtime-architecture.md) is
+implemented with PostgreSQL Queue v1. Defaults are a 15-second heartbeat, 60-second lease TTL,
+takeover at `database_now >= expires_at`, and three runtime recovery attempts. They are
+configurable operational values and do not change Tool retry budgets.
 
-When that runtime is implemented, operators must distinguish:
+Operators must distinguish:
 
 - PENDING/RETRY_SCHEDULED dispatch publication failure;
 - duplicate broker delivery with a healthy lease (normal no-op);
@@ -279,18 +281,24 @@ When that runtime is implemented, operators must distinguish:
 - fail-closed checkpoint mismatch;
 - poison Task whose runtime recovery budget is exhausted.
 
-The RecoveryScanner may scan only READY/orphaned dispatch, expired lease, due runtime retry, and
+The RecoveryScanner scans only READY/orphaned dispatch, expired lease, due runtime retry, and
 orphan outbox candidates. It must exclude terminal Tasks, unresolved approval waits, and valid
 leases. Operators must not manually delete lease or checkpoint rows to force progress. A lost
 heartbeat because PostgreSQL is unavailable means the Worker has no safe commit authority; it
 must stop committing and wait for database recovery/takeover.
 
-Required operational views/alerts after implementation are Queue depth/oldest age, active Workers
+Required operational views/alerts are Queue depth/oldest age, active Workers
 and leases, acquire conflicts, lease expirations, recoveries/failures, runtime retries, Queue wait,
 active execution, approval wait, total wall-clock duration, and cancellation latency. Heartbeat
 success is a bounded metric rather than a per-beat audit/log stream. Runtime logs contain IDs and
 safe error codes, never credentials, Queue authorization payloads, prompts, rows, or Artifact
 bytes.
+
+Start, health, graceful drain, restart, tenant-safe inspection, read-only SQL diagnostics, metrics,
+and failure response are specified in
+[`async-runtime-operations.md`](async-runtime-operations.md). The installed processes are
+`enterprise-copilot-worker` and `enterprise-copilot-inspect-runtime`; the source equivalents are
+`python -m copilot.worker` and `python scripts/inspect_runtime.py TASK_ID`.
 
 ## Common maintenance
 

@@ -22,6 +22,13 @@ x-copilot-persistence-environment: &copilot-persistence-environment
   DEMO_APPROVAL_ROLES: ${DEMO_ENTERPRISE_ROLES:-["quality_analyst","quality_data_approver","finance_analyst","finance_approver"]}
   TASK_FORCE_READ_ONLY: "true"
   TASK_REQUIRE_APPROVAL_BY_DEFAULT: ${TASK_REQUIRE_APPROVAL_BY_DEFAULT:-false}
+  QUEUE_PROVIDER: postgresql
+  WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+  WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-0.5}
+  WORKER_SHUTDOWN_GRACE_SECONDS: ${WORKER_SHUTDOWN_GRACE_SECONDS:-30}
+  EXECUTION_HEARTBEAT_INTERVAL_SECONDS: ${EXECUTION_HEARTBEAT_INTERVAL_SECONDS:-15}
+  EXECUTION_LEASE_TTL_SECONDS: ${EXECUTION_LEASE_TTL_SECONDS:-60}
+  MAX_RUNTIME_RECOVERY_ATTEMPTS: ${MAX_RUNTIME_RECOVERY_ATTEMPTS:-3}
   MCP_ENABLED: "false"
   NO_PROXY: 127.0.0.1,localhost,enterprise-rag-engine,copilot-postgres,business-postgres,${NO_PROXY:-}
   no_proxy: 127.0.0.1,localhost,enterprise-rag-engine,copilot-postgres,business-postgres,${no_proxy:-}
@@ -313,6 +320,47 @@ services:
       retries: 18
     stop_grace_period: 30s
     networks: [enterprise-edge, enterprise-backend]
+
+  copilot-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *copilot-persistence-environment
+      LLM_PROVIDER: ${COPILOT_LLM_PROVIDER:-deepseek}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      LLM_CONNECT_TIMEOUT_SECONDS: ${LLM_CONNECT_TIMEOUT_SECONDS:-10}
+      LLM_READ_TIMEOUT_SECONDS: ${LLM_READ_TIMEOUT_SECONDS:-60}
+      RAG_TIMEOUT_SECONDS: ${RAG_TIMEOUT_SECONDS:-10}
+      RAG_MAX_ATTEMPTS: ${RAG_MAX_ATTEMPTS:-3}
+    command: ["python", "-m", "copilot.worker"]
+    volumes:
+      - copilot-artifacts:/app/data/artifacts
+      - copilot-policy-snapshots:/app/data/policy-snapshots:ro
+    depends_on:
+      copilot-postgres:
+        condition: service_healthy
+      copilot-migrate:
+        condition: service_completed_successfully
+      ap-business-db-seed:
+        condition: service_completed_successfully
+      ap-policy-publish:
+        condition: service_completed_successfully
+      enterprise-rag-engine:
+        condition: service_healthy
+      rag-warmup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-m", "copilot.worker.health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 18
+    stop_grace_period: ${WORKER_SHUTDOWN_GRACE_PERIOD:-30s}
+    networks: [enterprise-backend]
 
   frontend:
     build:

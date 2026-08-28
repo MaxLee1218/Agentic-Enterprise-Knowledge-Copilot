@@ -25,6 +25,13 @@ from copilot.contracts import (
     TaskType,
     ToolResult,
 )
+from copilot.contracts.async_runtime import (
+    CancellationRequest,
+    CancellationState,
+    RuntimeStatus,
+    TaskRuntimeSnapshot,
+)
+from copilot.contracts.errors import TaskAlreadyTerminalError
 from copilot.policies.permissions import AuthorizationRequest, Permission, PermissionMatrix
 from copilot.security import (
     ContentSourceType,
@@ -149,6 +156,16 @@ class TaskApprovalRepository(Protocol):
     ) -> None: ...
 
 
+class TaskRuntimeRepository(Protocol):
+    """Async runtime operations required by Task management."""
+
+    def snapshot(self, task_id: str, *, tenant_id: str) -> TaskRuntimeSnapshot: ...
+
+    def runtime_status(self, task_id: str, *, tenant_id: str) -> RuntimeStatus: ...
+
+    def request_cancellation(self, request: CancellationRequest) -> CancellationState: ...
+
+
 class TaskServiceError(RuntimeError):
     """Safe typed task-management failure mapped centrally by interfaces."""
 
@@ -211,6 +228,7 @@ class NaturalLanguageTaskService:
         permission_matrix: PermissionMatrix | None = None,
         observability: ObservabilityPort | None = None,
         cancellations: InvocationCancellationRegistry | None = None,
+        runtime: TaskRuntimeRepository | None = None,
     ) -> None:
         self._engine = engine
         self._ids = ids
@@ -227,6 +245,7 @@ class NaturalLanguageTaskService:
         self._permission_matrix = permission_matrix or PermissionMatrix()
         self._observability = observability or NoopObservability()
         self._cancellations = cancellations or InvocationCancellationRegistry()
+        self._runtime = runtime
 
     def submit(
         self,
@@ -379,6 +398,9 @@ class NaturalLanguageTaskService:
             task_text_hash=task_hash,
             task_text_length=len(task_text),
         )
+        protected_metadata = dict(request.metadata.root)
+        protected_metadata["_runtime_context"] = context.model_dump(mode="json")
+        request = request.model_copy(update={"metadata": JsonObject(protected_metadata)})
         return request, context
 
     def get_task(
@@ -527,10 +549,40 @@ class NaturalLanguageTaskService:
         if state.state in {TaskStatus.COMPLETED, TaskStatus.FAILED}:
             self._audit("task_cancellation_rejected", task_id, plan, caller, trace_id)
             raise TaskNotCancellableError(task_id)
+        repository = self._require_repository()
         self._cancellations.cancel_task(
             task_id,
             reason="Cancellation requested by an authorized task owner",
         )
+        if self._runtime is not None:
+            requested_at = self._clock()
+            request_id = (
+                "CANCEL-"
+                + hashlib.sha256(f"{caller.tenant_id}:{task_id}".encode()).hexdigest()[:32]
+            )
+            try:
+                self._runtime.request_cancellation(
+                    CancellationRequest(
+                        tenant_id=caller.tenant_id,
+                        task_id=task_id,
+                        request_id=request_id,
+                        requested_by=caller.user_id,
+                        requested_at=requested_at,
+                        reason_code="USER_REQUESTED",
+                    )
+                )
+            except TaskAlreadyTerminalError as exc:
+                raise TaskNotCancellableError(task_id) from exc
+            current = repository.state_for(task_id, tenant_id=caller.tenant_id)
+            self._audit("task_cancellation_requested", task_id, plan, caller, trace_id)
+            self._audit("task_cancelled", task_id, plan, caller, trace_id)
+            return self._task_view(
+                request,
+                current,
+                contract,
+                plan,
+                tenant_id=caller.tenant_id,
+            )
         if self._state_machine is None:
             raise RuntimeError("Task cancellation is not composed")
         current, event = self._state_machine.transition(
@@ -538,7 +590,6 @@ class NaturalLanguageTaskService:
             "CANCEL_REQUESTED",
             reason="Cancellation requested by an authorized task owner",
         )
-        repository = self._require_repository()
         repository.commit_transition(
             state,
             current,
@@ -709,7 +760,20 @@ class NaturalLanguageTaskService:
                 else 0
             ),
             error_summary=(redact_text(error_summary) if error_summary is not None else None),
+            runtime_status=self._runtime_status(task_id, tenant_id, state),
         )
+
+    def _runtime_status(self, task_id: str, tenant_id: str, state: TaskState) -> str:
+        if self._runtime is not None:
+            try:
+                return self._runtime.runtime_status(task_id, tenant_id=tenant_id).value
+            except KeyError:
+                pass
+        if state.state in _TERMINAL_STATES:
+            return RuntimeStatus.FINISHED.value
+        if state.state is TaskStatus.WAITING_APPROVAL:
+            return RuntimeStatus.SUSPENDED.value
+        return RuntimeStatus.READY.value
 
     def _require_repository(self) -> TaskManagementRepository:
         if self._repository is None:

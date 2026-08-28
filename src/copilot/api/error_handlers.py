@@ -112,9 +112,14 @@ async def task_service_error_handler(request: Request, error: Exception) -> JSON
         task_id=task_error.task_id,
         trace_id=_trace_id(request),
     )
+    headers = None
+    retry_after = getattr(task_error, "retry_after_seconds", None)
+    if isinstance(retry_after, int) and retry_after > 0:
+        headers = {"Retry-After": str(retry_after)}
     return JSONResponse(
         status_code=task_error.status_code,
         content=payload.model_dump(mode="json"),
+        headers=headers,
     )
 
 

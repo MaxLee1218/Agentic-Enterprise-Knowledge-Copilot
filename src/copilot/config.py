@@ -93,6 +93,20 @@ class Settings(BaseSettings):
     db_pool_recycle_seconds: int = Field(default=1800, ge=30, le=86_400)
     db_connect_max_attempts: int = Field(default=5, ge=1, le=20)
     db_connect_retry_delay_seconds: float = Field(default=1, ge=0, le=30)
+    queue_provider: Literal["postgresql"] = "postgresql"
+    task_queue_visibility_timeout_seconds: int = Field(default=90, ge=60, le=3600)
+    task_queue_max_queued_per_tenant: int = Field(default=1000, ge=1, le=1_000_000)
+    task_queue_max_queued_global: int = Field(default=10_000, ge=1, le=10_000_000)
+    task_queue_capacity_retry_after_seconds: int = Field(default=5, ge=1, le=3600)
+    dispatcher_batch_size: int = Field(default=100, ge=1, le=1000)
+    recovery_batch_size: int = Field(default=100, ge=1, le=1000)
+    worker_concurrency: int = Field(default=4, ge=1, le=64)
+    worker_poll_interval_seconds: float = Field(default=0.5, gt=0, le=30)
+    worker_shutdown_grace_seconds: int = Field(default=30, ge=1, le=3600)
+    worker_deployment_id: str = Field(default="local", min_length=1, max_length=200)
+    execution_heartbeat_interval_seconds: int = Field(default=15, ge=1, le=300)
+    execution_lease_ttl_seconds: int = Field(default=60, ge=5, le=900)
+    max_runtime_recovery_attempts: int = Field(default=3, ge=1, le=10)
     artifact_dir: Path = Path("data/artifacts")
     report_max_size_bytes: int = Field(default=25 * 1024 * 1024, ge=1, le=100 * 1024 * 1024)
     max_evidence_items: int = Field(default=500, ge=1, le=10_000)
@@ -154,6 +168,12 @@ class Settings(BaseSettings):
             raise ValueError("Public MCP bind requires MCP_ALLOW_PUBLIC_BIND=true")
         if not self.mcp_http_path.startswith("/") or "//" in self.mcp_http_path:
             raise ValueError("MCP_HTTP_PATH must be a canonical absolute path")
+        if self.task_queue_max_queued_global < self.task_queue_max_queued_per_tenant:
+            raise ValueError("Global Queue capacity must be at least the per-tenant capacity")
+        if self.execution_lease_ttl_seconds < self.execution_heartbeat_interval_seconds * 3:
+            raise ValueError("Execution lease TTL must allow at least three heartbeat intervals")
+        if self.task_queue_visibility_timeout_seconds < self.execution_lease_ttl_seconds:
+            raise ValueError("Queue visibility timeout must not be shorter than the lease TTL")
         if self.mcp_server_enabled and (
             self.mcp_jwt_issuer is None
             or self.mcp_jwt_audience is None

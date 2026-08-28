@@ -4,8 +4,8 @@ from typer.testing import CliRunner
 
 from copilot.cli.main import create_app
 from copilot.config import ConfigurationError
+from copilot.contracts.async_runtime import TaskSubmissionResponse
 from copilot.services.task_service import TaskPermissionDeniedError, TaskServiceError
-from copilot.services.workflows.models import WorkflowExecution
 
 runner = CliRunner()
 app = create_app()
@@ -47,13 +47,13 @@ def test_missing_task_uses_cli_input_exit_code() -> None:
 
 
 def test_runtime_failures_use_stable_exit_codes_and_stderr() -> None:
-    def configuration_failure(_command: object) -> WorkflowExecution:
+    def configuration_failure(_command: object, _key: str | None) -> TaskSubmissionResponse:
         raise ConfigurationError("invalid test configuration")
 
-    def dependency_failure(_command: object) -> WorkflowExecution:
+    def dependency_failure(_command: object, _key: str | None) -> TaskSubmissionResponse:
         raise ConnectionError("controlled unavailable dependency")
 
-    def task_failure(_command: object) -> WorkflowExecution:
+    def task_failure(_command: object, _key: str | None) -> TaskSubmissionResponse:
         raise TaskServiceError(
             "TASK_FAILED",
             "Controlled task failure.",
@@ -61,7 +61,7 @@ def test_runtime_failures_use_stable_exit_codes_and_stderr() -> None:
             task_id="T-001",
         )
 
-    def permission_failure(_command: object) -> WorkflowExecution:
+    def permission_failure(_command: object, _key: str | None) -> TaskSubmissionResponse:
         raise TaskPermissionDeniedError("T-001")
 
     for handler, expected in (

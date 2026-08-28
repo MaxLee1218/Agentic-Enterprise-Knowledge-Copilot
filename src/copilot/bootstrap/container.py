@@ -39,10 +39,12 @@ from copilot.observability import (
 )
 from copilot.persistence.approval_repository import ApprovalRepository
 from copilot.persistence.artifact_repository import LocalArtifactRepository
+from copilot.persistence.async_runtime_repository import AsyncRuntimeRepository
 from copilot.persistence.audit_repository import ToolAuditRepository, WorkflowAuditRepository
 from copilot.persistence.checkpoint import require_postgres_checkpoint_schema
 from copilot.persistence.database import PersistenceDatabase
 from copilot.persistence.identifiers import UuidIdentifierFactory
+from copilot.persistence.postgres_queue import PostgresOutboxDispatcher, PostgresTaskQueue
 from copilot.persistence.task_repository import WorkflowRepository
 from copilot.policies.approval import SupplierQualityApprovalPolicy
 from copilot.policies.data_access import DataAccessPolicy
@@ -57,6 +59,7 @@ from copilot.services.health import ReadinessService
 from copilot.services.llm import LLMGenerationOptions, LLMProvider
 from copilot.services.task_intake import IntakeLimits
 from copilot.services.task_service import NaturalLanguageTaskService
+from copilot.services.task_submission import TaskSubmissionService
 from copilot.services.workflows.dependency import DependencyChecker
 from copilot.services.workflows.fixed_plan import SupplierQualityAnalysisPlanFactory
 from copilot.services.workflows.inputs import StepInputBuilder
@@ -94,6 +97,7 @@ class WorkflowContainer:
 
     service: SupplierQualityWorkflowService
     task_service: NaturalLanguageTaskService
+    task_submission_service: TaskSubmissionService | None
     executor: ToolExecutor
     registry: ToolRegistry
     evidence: InMemoryEvidenceLedger
@@ -119,12 +123,17 @@ class WorkflowContainer:
     owned_llm_provider: DeepSeekProvider | None = None
     checkpoint_connection: Any | None = None
     persistence_database: PersistenceDatabase | None = None
+    async_runtime_repository: AsyncRuntimeRepository | None = None
+    task_queue: PostgresTaskQueue | None = None
+    outbox_dispatcher: PostgresOutboxDispatcher | None = None
     observability: InMemoryObservability | None = None
     readiness: ReadinessService | None = None
     cancellations: InvocationCancellationRegistry | None = None
 
     def close(self) -> None:
         """Release the executor's owned worker pool."""
+        if self.task_queue is not None:
+            self.task_queue.shutdown()
         self.executor.close()
         if self.knowledge_client is not None:
             self.knowledge_client.close()
@@ -541,6 +550,17 @@ def build_workflow_container(
         observability=observability,
         timer=timer,
     )
+    async_runtime_repository = (
+        AsyncRuntimeRepository(
+            persistence_database,
+            max_queued_per_tenant=settings.task_queue_max_queued_per_tenant,
+            max_queued_global=settings.task_queue_max_queued_global,
+            capacity_retry_after_seconds=settings.task_queue_capacity_retry_after_seconds,
+            observability=observability,
+        )
+        if persistence_database is not None
+        else None
+    )
     approval_service = ApprovalService(
         repository=approval_repository,
         engine=engine,
@@ -550,6 +570,13 @@ def build_workflow_container(
         clock=clock,
         permission_matrix=permission_matrix,
         observability=observability,
+        runtime_repository=(
+            async_runtime_repository
+            if persistence_database is not None and persistence_database.backend == "postgresql"
+            else None
+        ),
+        task_repository=repository,
+        state_machine=state_machine,
     )
     service = SupplierQualityWorkflowService(
         engine=engine,
@@ -583,6 +610,33 @@ def build_workflow_container(
         permission_matrix=permission_matrix,
         observability=observability,
         cancellations=cancellations,
+        runtime=async_runtime_repository,
+    )
+    task_submission_service = (
+        TaskSubmissionService(
+            intake=task_service,
+            repository=async_runtime_repository,
+            state_machine=state_machine,
+            ids=identifier_factory,
+            clock=clock,
+            observability=observability,
+        )
+        if async_runtime_repository is not None
+        else None
+    )
+    task_queue = (
+        PostgresTaskQueue(persistence_database)
+        if persistence_database is not None and persistence_database.backend == "postgresql"
+        else None
+    )
+    outbox_dispatcher = (
+        PostgresOutboxDispatcher(
+            persistence_database,
+            task_queue,
+            max_recovery_attempts=settings.max_runtime_recovery_attempts,
+        )
+        if persistence_database is not None and task_queue is not None
+        else None
     )
     artifact_service = ArtifactService(
         repository=artifacts,
@@ -615,6 +669,7 @@ def build_workflow_container(
     return WorkflowContainer(
         service=service,
         task_service=task_service,
+        task_submission_service=task_submission_service,
         executor=executor,
         registry=registry,
         evidence=evidence,
@@ -640,6 +695,9 @@ def build_workflow_container(
         owned_llm_provider=owned_llm_provider,
         checkpoint_connection=checkpoint_connection,
         persistence_database=persistence_database,
+        async_runtime_repository=async_runtime_repository,
+        task_queue=task_queue,
+        outbox_dispatcher=outbox_dispatcher,
         observability=observability,
         readiness=readiness,
         cancellations=cancellations,

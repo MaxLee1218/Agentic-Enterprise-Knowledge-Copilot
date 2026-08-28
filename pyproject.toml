@@ -45,6 +45,8 @@ dev = [
 enterprise-copilot = "copilot.bootstrap.cli:app"
 enterprise-copilot-rag-warmup = "copilot.bootstrap.knowledge_cli:warmup_entrypoint"
 enterprise-copilot-publish-ap-policy = "copilot.bootstrap.policy_cli:policy_publish_entrypoint"
+enterprise-copilot-worker = "copilot.bootstrap.worker:main"
+enterprise-copilot-inspect-runtime = "copilot.bootstrap.runtime_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

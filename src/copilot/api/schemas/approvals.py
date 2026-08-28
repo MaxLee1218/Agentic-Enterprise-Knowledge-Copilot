@@ -7,6 +7,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
+from copilot.contracts.async_runtime import RuntimeStatus
+
 
 class ApprovalAction(StrEnum):
     """Public lowercase approval actions."""
@@ -43,7 +45,7 @@ class ApprovalResolutionRequest(BaseModel):
 
 
 class ApprovalResolutionResponse(BaseModel):
-    """Stable decision and checkpoint-resume response."""
+    """Stable decision acceptance; execution continues asynchronously when approved."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -52,6 +54,8 @@ class ApprovalResolutionResponse(BaseModel):
     resolution_action: str
     task_id: str
     task_status: str
+    runtime_status: RuntimeStatus
+    status_url: str
     resolved_at: datetime
     resolved_by: str
     resume_status: str

@@ -212,6 +212,20 @@ class InMemoryObservability:
         except ValueError:
             return
 
+    def set_gauge(
+        self,
+        name: str,
+        value: float,
+        *,
+        labels: Mapping[str, str] | None = None,
+    ) -> None:
+        if not self._metrics_enabled:
+            return
+        try:
+            self._metrics.set_gauge(name, value, labels=labels)
+        except ValueError:
+            return
+
     def observe(
         self,
         name: str,

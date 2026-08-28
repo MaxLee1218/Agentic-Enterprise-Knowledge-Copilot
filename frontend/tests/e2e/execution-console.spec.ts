@@ -10,6 +10,7 @@ test("Accounts Payable selector, badge, and safe report summary share the existi
     task_id: "T-AP-E2E-001",
     trace_id: "TRACE-AP-E2E-001",
     status: "COMPLETED",
+    runtime_status: "FINISHED",
     task_type: "accounts_payable_analysis.v1",
     created_at: "2026-08-23T08:00:00Z",
     started_at: "2026-08-23T08:00:00Z",
@@ -35,21 +36,16 @@ test("Accounts Payable selector, badge, and safe report summary share the existi
     expect(body).not.toHaveProperty("tenant_id");
     expect(body).not.toHaveProperty("roles");
     await route.fulfill({
-      status: 201,
+      status: 202,
       contentType: "application/json",
       body: JSON.stringify({
         task_id: apTask.task_id,
         trace_id: apTask.trace_id,
-        status: apTask.status,
-        created_at: apTask.created_at,
-        started_at: apTask.started_at,
-        completed_at: apTask.completed_at,
-        summary: apTask.task_summary,
-        artifacts: [],
-        errors: [],
-        missing_information: [],
-        clarification_questions: [],
-        pending_approval_id: null,
+        task_status: "CREATED",
+        runtime_status: "READY",
+        accepted_at: apTask.created_at,
+        status_url: `/v1/tasks/${apTask.task_id}`,
+        artifacts_url: `/v1/tasks/${apTask.task_id}/artifacts`,
       }),
     });
   });
@@ -96,7 +92,7 @@ test("Accounts Payable selector, badge, and safe report summary share the existi
   await page
     .getByLabel("What do you want the Agent to do?")
     .fill("Analyze Accounts Payable exceptions from 2026-04-01 to 2026-06-30.");
-  await page.getByRole("button", { name: "Run task" }).click();
+  await page.getByRole("button", { name: "Submit task" }).click();
 
   await expect(
     page.getByText("Accounts Payable", { exact: true }),
@@ -113,7 +109,7 @@ test("real API task completes with traceable Evidence and a downloadable Artifac
 }) => {
   await page.goto("/tasks/new");
   await page.getByLabel("What do you want the Agent to do?").fill(taskText);
-  await page.getByRole("button", { name: "Run task" }).click();
+  await page.getByRole("button", { name: "Submit task" }).click();
 
   await expect(
     page.getByText("Verification passed and the final result was committed."),
@@ -154,7 +150,7 @@ test("authorized approver inspects and approves the frozen action", async ({
   await page
     .getByRole("checkbox", { name: /Require governed approval/ })
     .check();
-  await page.getByRole("button", { name: "Run task" }).click();
+  await page.getByRole("button", { name: "Submit task" }).click();
 
   await expect(
     page.getByText("Execution is waiting for governed approval"),
@@ -177,7 +173,7 @@ test("an approver can reject a controlled action with a reason", async ({
   await page
     .getByRole("checkbox", { name: /Require governed approval/ })
     .check();
-  await page.getByRole("button", { name: "Run task" }).click();
+  await page.getByRole("button", { name: "Submit task" }).click();
   await page.getByRole("link", { name: "Open approval workbench" }).click();
 
   await page.getByRole("button", { name: "Reject" }).click();
@@ -199,7 +195,7 @@ test("task cancellation requires explicit confirmation", async ({ page }) => {
   await page
     .getByRole("checkbox", { name: /Require governed approval/ })
     .check();
-  await page.getByRole("button", { name: "Run task" }).click();
+  await page.getByRole("button", { name: "Submit task" }).click();
 
   await page.getByRole("button", { name: "Cancel task" }).click();
   const dialog = page.getByRole("dialog");
@@ -237,7 +233,7 @@ test("uniform API failures are rendered with trace context", async ({
   });
   await page.goto("/tasks/new");
   await page.getByLabel("What do you want the Agent to do?").fill(taskText);
-  await page.getByRole("button", { name: "Run task" }).click();
+  await page.getByRole("button", { name: "Submit task" }).click();
 
   await expect(
     page.getByText("The governed runtime is temporarily not ready."),

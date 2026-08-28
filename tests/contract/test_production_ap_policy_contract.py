@@ -76,3 +76,30 @@ def test_production_does_not_publish_policy_during_api_startup(tmp_path: Path) -
     payload = _render_compose(tmp_path)
 
     assert "ap-policy-publish" not in payload["services"]
+
+
+def test_production_worker_shares_migrations_queue_and_artifact_storage(tmp_path: Path) -> None:
+    payload = _render_compose(tmp_path)
+    services = payload["services"]
+    api = services["copilot-api"]
+    worker = services["copilot-worker"]
+    assert worker["command"] == ["python", "-m", "copilot.worker"]
+    assert worker["environment"]["QUEUE_PROVIDER"] == "postgresql"
+    assert (
+        worker["environment"]["PERSISTENCE_DATABASE_URL"]
+        == api["environment"]["PERSISTENCE_DATABASE_URL"]
+    )
+    assert worker["depends_on"]["migrate"]["condition"] == "service_completed_successfully"
+    assert worker["healthcheck"]["test"] == [
+        "CMD",
+        "python",
+        "-m",
+        "copilot.worker.health",
+    ]
+    worker_artifacts = next(
+        mount for mount in worker["volumes"] if mount["target"] == "/app/data/artifacts"
+    )
+    api_artifacts = next(
+        mount for mount in api["volumes"] if mount["target"] == "/app/data/artifacts"
+    )
+    assert worker_artifacts["source"] == api_artifacts["source"]

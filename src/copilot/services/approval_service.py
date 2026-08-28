@@ -14,10 +14,13 @@ from copilot.contracts import (
     JsonObject,
     TaskContract,
     TaskPlan,
+    TaskState,
     TaskStatus,
     TaskStep,
     ToolDefinition,
 )
+from copilot.contracts.async_runtime import TaskDispatch
+from copilot.contracts.errors import DispatchConflictError
 from copilot.policies.approval import (
     ApprovalPolicyDecision,
     action_fingerprint,
@@ -30,8 +33,9 @@ from copilot.security.redaction import redact_text
 from copilot.services.observability import EventName, NoopObservability, ObservabilityPort
 from copilot.services.task_intake import TrustedCallerContext
 from copilot.services.workflows.fixed_plan import SUPPLIER_QUALITY_PLAN_ID
-from copilot.services.workflows.models import WorkflowAuditRecord, WorkflowExecution
+from copilot.services.workflows.models import TaskStateEvent, WorkflowAuditRecord, WorkflowExecution
 from copilot.services.workflows.ports import IdentifierFactory, WorkflowAuditSink
+from copilot.services.workflows.state_machine import TaskStateMachine
 from copilot.tools.exceptions import ToolRuntimeError, ToolValidationError
 from copilot.tools.registry import ToolRegistry
 from copilot.tools.schema import validate_payload
@@ -67,6 +71,28 @@ class ApprovalWorkflowEngine(Protocol):
     ) -> WorkflowExecution | None:
         """Apply the decision to TaskState and resume or cancel the checkpoint."""
         ...
+
+
+class ApprovalTaskRepository(Protocol):
+    """Authoritative Task state needed by atomic approval redispatch."""
+
+    def state_for(self, task_id: str, *, tenant_id: str) -> TaskState: ...
+
+
+class ApprovalRuntimeRepository(Protocol):
+    """Atomic approval, Task transition, and resume-dispatch transaction."""
+
+    def resolve_approval_and_update_runtime(
+        self,
+        pending: ApprovalRequest,
+        resolved: ApprovalRequest,
+        previous: TaskState,
+        current: TaskState,
+        event: TaskStateEvent,
+        *,
+        tenant_id: str,
+        dispatch: TaskDispatch | None,
+    ) -> None: ...
 
 
 class ApprovalServiceError(RuntimeError):
@@ -270,6 +296,9 @@ class ApprovalService:
         clock: Callable[[], datetime],
         permission_matrix: PermissionMatrix | None = None,
         observability: ObservabilityPort | None = None,
+        runtime_repository: ApprovalRuntimeRepository | None = None,
+        task_repository: ApprovalTaskRepository | None = None,
+        state_machine: TaskStateMachine | None = None,
     ) -> None:
         self._repository = repository
         self._engine = engine
@@ -279,6 +308,9 @@ class ApprovalService:
         self._clock = clock
         self._permission_matrix = permission_matrix or PermissionMatrix()
         self._observability = observability or NoopObservability()
+        self._runtime_repository = runtime_repository
+        self._task_repository = task_repository
+        self._state_machine = state_machine
 
     def get(
         self,
@@ -403,7 +435,10 @@ class ApprovalService:
                     "version": pending.version + 1,
                 }
             )
-            self._resolve_once(pending, expired)
+            if self._runtime_repository is not None:
+                self._resolve_async(pending, expired, state, caller)
+            else:
+                self._resolve_once(pending, expired)
             expired_error = ApprovalExpiredError("Approval has expired")
             self._append_audit(
                 expired,
@@ -412,7 +447,8 @@ class ApprovalService:
                 caller=caller,
                 error=expired_error,
             )
-            self._engine.resume_approval(expired, caller.tenant_id)
+            if self._runtime_repository is None:
+                self._engine.resume_approval(expired, caller.tenant_id)
             raise expired_error
         try:
             resolved = self._decision(pending, command, caller.user_id, now)
@@ -435,16 +471,27 @@ class ApprovalService:
             )
             raise
         try:
-            self._resolve_once(pending, resolved)
-        except ApprovalStateConflictError as exc:
+            if self._runtime_repository is not None:
+                current = self._resolve_async(pending, resolved, state, caller)
+            else:
+                self._resolve_once(pending, resolved)
+                current = None
+        except (ApprovalStateConflictError, DispatchConflictError) as exc:
+            state_error = (
+                exc
+                if isinstance(exc, ApprovalStateConflictError)
+                else ApprovalStateConflictError("Approval resolution lost a concurrency race")
+            )
             self._append_audit(
                 pending,
-                exc.code,
+                state_error.code,
                 trace_id=trace_id,
                 caller=caller,
-                error=exc,
+                error=state_error,
             )
-            raise
+            if state_error is exc:
+                raise
+            raise state_error from exc
         event = {
             ApprovalResolutionAction.APPROVE: "APPROVAL_APPROVED",
             ApprovalResolutionAction.EDIT: "APPROVAL_EDITED",
@@ -469,6 +516,24 @@ class ApprovalService:
                     EventName.APPROVAL_REJECTED,
                     fields={"approval_status": resolved.status.value},
                 )
+        if self._runtime_repository is not None:
+            assert current is not None
+            self._append_audit(
+                resolved,
+                (
+                    "APPROVAL_RESUME_DISPATCHED"
+                    if resolved.status is ApprovalStatus.APPROVED
+                    else "APPROVAL_TERMINALIZED"
+                ),
+                trace_id=trace_id,
+                caller=caller,
+            )
+            return ApprovalResolutionResult(
+                approval=resolved,
+                task_status=current.state,
+                trace_id=trace_id,
+                execution=None,
+            )
         self._append_audit(
             resolved,
             "APPROVAL_RESUME_STARTED",
@@ -500,6 +565,76 @@ class ApprovalService:
             trace_id=str(latest["trace_id"]),
             execution=execution,
         )
+
+    def _resolve_async(
+        self,
+        pending: ApprovalRequest,
+        resolved: ApprovalRequest,
+        checkpoint_state: dict[str, object],
+        caller: TrustedCallerContext,
+    ) -> TaskState:
+        """Commit approval and next execution intent without invoking LangGraph inline."""
+        if (
+            self._runtime_repository is None
+            or self._task_repository is None
+            or self._state_machine is None
+        ):
+            raise ApprovalStateConflictError("Async approval runtime is not fully composed")
+        previous = self._task_repository.state_for(
+            pending.task_id,
+            tenant_id=caller.tenant_id,
+        )
+        transition = {
+            ApprovalStatus.APPROVED: (
+                "APPROVAL_EDITED"
+                if resolved.resolution_action is ApprovalResolutionAction.EDIT
+                else "APPROVAL_GRANTED"
+            ),
+            ApprovalStatus.REJECTED: "APPROVAL_REJECTED",
+            ApprovalStatus.EXPIRED: "APPROVAL_EXPIRED",
+            ApprovalStatus.REVOKED: "APPROVAL_REVOKED",
+        }.get(resolved.status)
+        if transition is None:
+            raise ApprovalStateConflictError("Unsupported approval resolution state")
+        current, event = self._state_machine.transition(
+            previous,
+            transition,
+            reason=f"Approval {resolved.approval_id} resolved as {resolved.status.value}",
+        )
+        dispatch: TaskDispatch | None = None
+        if resolved.status is ApprovalStatus.APPROVED:
+            checkpoint_id = checkpoint_state.get("checkpoint_id")
+            predecessor = checkpoint_state.get("execution_generation")
+            trace_id = checkpoint_state.get("trace_id")
+            if (
+                not isinstance(checkpoint_id, str)
+                or not isinstance(predecessor, int)
+                or not isinstance(trace_id, str)
+            ):
+                raise ApprovalStateConflictError("Approval checkpoint identity is incomplete")
+            now = self._clock()
+            dispatch = TaskDispatch(
+                tenant_id=caller.tenant_id,
+                task_id=pending.task_id,
+                trace_id=trace_id,
+                dispatch_id=self._ids.new_id("DISPATCH"),
+                execution_generation=predecessor + 1,
+                predecessor_execution_generation=predecessor,
+                resume_checkpoint_id=checkpoint_id,
+                expected_task_version=current.version,
+                enqueued_at=now,
+                not_before=now,
+            )
+        self._runtime_repository.resolve_approval_and_update_runtime(
+            pending,
+            resolved,
+            previous,
+            current,
+            event,
+            tenant_id=caller.tenant_id,
+            dispatch=dispatch,
+        )
+        return current
 
     def _authorize_approval_permission(
         self,

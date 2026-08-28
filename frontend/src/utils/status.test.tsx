@@ -5,6 +5,7 @@ import type { TaskStatus } from "../api/types";
 import { StatusBadge } from "../components/StatusBadge";
 import {
   pollingInterval,
+  runtimeLabel,
   statusTone,
   taskStatuses,
   terminalTaskStatuses,
@@ -30,5 +31,15 @@ describe("authoritative task statuses", () => {
     }
     expect(pollingInterval("EXECUTING")).toBe(2_000);
     expect(pollingInterval("WAITING_APPROVAL")).toBe(10_000);
+  });
+
+  it("maps Task and runtime state without exposing Worker or lease internals", () => {
+    expect(runtimeLabel("CREATED", "READY")).toBe("Queued");
+    expect(runtimeLabel("EXECUTING", "LEASED")).toBe("Running");
+    expect(runtimeLabel("EXECUTING", "WAITING_RETRY")).toBe("Retry scheduled");
+    expect(runtimeLabel("WAITING_APPROVAL", "SUSPENDED")).toBe(
+      "Waiting approval",
+    );
+    expect(runtimeLabel("COMPLETED", "FINISHED")).toBe("Completed");
   });
 });

@@ -21,6 +21,13 @@ x-copilot-environment: &copilot-production-environment
   IDENTITY_PROVIDER: trusted_headers
   IDENTITY_SIGNING_SECRET: ${IDENTITY_SIGNING_SECRET:?inject a 32-byte minimum signing secret}
   CHECKPOINT_ENABLED: "true"
+  QUEUE_PROVIDER: postgresql
+  WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+  WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-0.5}
+  WORKER_SHUTDOWN_GRACE_SECONDS: ${WORKER_SHUTDOWN_GRACE_SECONDS:-30}
+  EXECUTION_HEARTBEAT_INTERVAL_SECONDS: ${EXECUTION_HEARTBEAT_INTERVAL_SECONDS:-15}
+  EXECUTION_LEASE_TTL_SECONDS: ${EXECUTION_LEASE_TTL_SECONDS:-60}
+  MAX_RUNTIME_RECOVERY_ATTEMPTS: ${MAX_RUNTIME_RECOVERY_ATTEMPTS:-3}
 
 services:
   postgres:
@@ -105,6 +112,37 @@ services:
       start_period: 20s
       retries: 12
     stop_grace_period: 30s
+    networks: [copilot]
+
+  copilot-worker:
+    image: ${COPILOT_IMAGE:?set the immutable Copilot image}
+    restart: unless-stopped
+    environment: *copilot-production-environment
+    command: ["python", "-m", "copilot.worker"]
+    volumes:
+      - artifact-data:/app/data/artifacts
+      - type: bind
+        source: ${AP_POLICY_BUNDLE_PATH:?mount the approved tenant-bound AP policy bundle}
+        target: /app/config/accounts-payable-policy
+        read_only: true
+      - type: bind
+        source: ${AP_POLICY_SNAPSHOT_PATH:?mount the published AP policy snapshot root}
+        target: /app/data/policy-snapshots
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      rag-health:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-m", "copilot.worker.health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 12
+    stop_grace_period: ${WORKER_SHUTDOWN_GRACE_PERIOD:-30s}
     networks: [copilot]
 
   frontend:

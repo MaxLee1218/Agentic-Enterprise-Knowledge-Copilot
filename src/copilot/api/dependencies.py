@@ -9,11 +9,17 @@ from copilot.services.artifact_service import ArtifactService
 from copilot.services.identity import IdentityProvider, IdentityRequest, IdentityResolutionError
 from copilot.services.task_intake import TrustedCallerContext
 from copilot.services.task_service import NaturalLanguageTaskService
+from copilot.services.task_submission import TaskSubmissionService
 
 
 def get_task_service(request: Request) -> NaturalLanguageTaskService:
     """Return the application service installed by the composition root."""
     return cast(NaturalLanguageTaskService, request.app.state.task_service)
+
+
+def get_task_submission_service(request: Request) -> TaskSubmissionService:
+    """Return the acceptance-only Task submission service."""
+    return cast(TaskSubmissionService, request.app.state.task_submission_service)
 
 
 def get_approval_service(request: Request) -> ApprovalService:
@@ -43,4 +49,5 @@ __all__ = [
     "get_artifact_service",
     "get_caller_context",
     "get_task_service",
+    "get_task_submission_service",
 ]

@@ -205,19 +205,43 @@ entry follows symptom, probable cause, diagnostic, and resolution.
 - **Symptom:** task state stops changing.
 - **Probable cause:** it is legitimately waiting for approval, an external call is in progress, a
   lease has not expired, or a worker failed.
-- **Diagnostic:** inspect task, steps, approval, Audit, trace, lease, and checkpoint using
+- **Diagnostic:** inspect task, steps, approval, Audit, trace, dispatch, lease, recovery count, and
+  checkpoint using `enterprise-copilot-inspect-runtime TASK_ID` plus
   `python scripts/inspect_task.py TASK_ID --performance`.
-- **Resolution:** resolve a legitimate approval, restore the dependency, or use the existing bounded
-  recovery path after lease expiry. Do not edit state rows.
+- **Resolution:** resolve a legitimate approval, restore the dependency, or allow the bounded
+  scanner to recover after lease expiry. Do not edit state, Queue, lease, or checkpoint rows.
+
+### Accepted task never starts
+
+- **Symptom:** submission returned `202`, but runtime remains `READY` and no step starts.
+- **Probable cause:** no healthy Worker, a PENDING dispatch cannot be armed, Queue capacity/backlog,
+  or a configured Worker dependency is unavailable.
+- **Diagnostic:** check `copilot-worker` health/logs, `task_queue_depth`, oldest age, dispatch status,
+  and the tenant-scoped runtime inspection output. A PENDING dispatch is durable and is not a reason
+  to resubmit with a different idempotency key.
+- **Resolution:** restore PostgreSQL/dependencies and start a healthy Worker. Let the embedded
+  dispatcher/scanner act; never insert a Queue row or delete a receipt manually.
+
+### Queue delivery repeats
+
+- **Symptom:** the same dispatch ID is received more than once or delivery attempt increases.
+- **Probable cause:** visibility expiry, ACK loss, Worker crash, or recovery re-arm. This is expected
+  under at-least-once delivery.
+- **Diagnostic:** compare authoritative Task/runtime status, current generation, lease/fencing
+  token, durable successful step IDs, and Artifact count. A terminal Task should turn redelivery
+  into an acknowledged no-op.
+- **Resolution:** fix the underlying timeout/crash if abnormal; do not deduplicate by deleting
+  Queue rows. Escalate if duplicate durable business effects appear.
 
 ### Cancellation remains requested
 
-- **Symptom:** the task no longer accepts a result, but a Knowledge, Database, or Report worker is
-  still draining.
+- **Symptom:** the Task is durably `CANCELLED`, but a Knowledge, Database, or Report thread is still
+  draining.
 - **Probable cause:** the adapter is truthfully classified non-cancellable; Python cannot forcibly
   stop its synchronous thread safely.
-- **Diagnostic:** correlate task/tool Audit and trace, token request time, dependency timeout, and
-  shutdown grace period. Confirm no Evidence or Artifact was committed from the late result.
+- **Diagnostic:** inspect durable cancellation request/Worker observation, lease deletion,
+  task/tool Audit and trace, dependency timeout, and shutdown grace. Confirm no Evidence or
+  Artifact was committed from the late result.
 - **Resolution:** wait for the bounded adapter timeout or terminate the process after the deployment
   grace policy. Repair an unbounded dependency timeout; do not relabel requested work as already
   interrupted.
@@ -231,6 +255,17 @@ entry follows symptom, probable cause, diagnostic, and resolution.
   checkpoint tables using read-only operator queries.
 - **Resolution:** restore the matching checkpoint/database backup or repair the adapter with a
   regression test. Never invent a checkpoint from final text.
+
+### Runtime retries are exhausted
+
+- **Symptom:** Task is `FAILED`, runtime is `FINISHED`, dispatch is `DEAD_LETTERED`, and the safe
+  error is `RUNTIME_RETRY_EXHAUSTED` or a checkpoint reconciliation error.
+- **Probable cause:** three process/runtime recoveries failed; this is separate from bounded
+  Graph/Tool retry ownership.
+- **Diagnostic:** inspect runtime attempts, recovery count, last safe error, dispatch, checkpoint
+  identity, successful step IDs, dependency health, and the code/image revision.
+- **Resolution:** preserve evidence, repair/restore the actual dependency or code, and submit a new
+  Task only after correction. Do not reset the recovery counter or replay a dead-letter row.
 
 ### Task failed
 

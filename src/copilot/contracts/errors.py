@@ -56,6 +56,14 @@ class QueueUnavailableError(RuntimeContractError):
     code = "QUEUE_UNAVAILABLE"
 
 
+class RuntimeCapacityError(RuntimeContractError):
+    code = "RUNTIME_CAPACITY_EXCEEDED"
+
+    def __init__(self, message: str, *, retry_after_seconds: int = 5) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
 class DispatchConflictError(RuntimeContractError):
     code = "DISPATCH_CONFLICT"
 
@@ -104,6 +112,7 @@ __all__ = [
     "LeaseExpiredError",
     "LeaseLostError",
     "QueueUnavailableError",
+    "RuntimeCapacityError",
     "RecoveryNotSafeError",
     "RuntimeContractError",
     "RuntimeRetryExhaustedError",

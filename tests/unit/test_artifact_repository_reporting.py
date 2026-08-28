@@ -77,3 +77,31 @@ def test_repository_compensates_metadata_failure(
         _write(repository)
     assert not repository.exists("A-001", tenant_id=TENANT_ID)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_repository_adopts_deterministic_bytes_after_process_crash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A retry publishes one metadata row after a crash between bytes and metadata."""
+    repository = _repository(tmp_path)
+
+    with monkeypatch.context() as crash:
+
+        def terminate_after_bytes(_artifact: object, *, tenant_id: str) -> None:
+            assert tenant_id == TENANT_ID
+            raise SystemExit(137)
+
+        crash.setattr(repository, "_save_metadata", terminate_after_bytes)
+        with pytest.raises(SystemExit, match="137"):
+            _write(repository, artifact_id="A-STABLE-COMMAND")
+
+    orphan = tmp_path / "A-STABLE-COMMAND.json"
+    assert orphan.read_bytes() == b"{}"
+    assert not repository.exists("A-STABLE-COMMAND", tenant_id=TENANT_ID)
+
+    _write(repository, artifact_id="A-STABLE-COMMAND")
+    artifact = repository.get("A-STABLE-COMMAND", tenant_id=TENANT_ID)
+    assert repository.path_for(artifact) == orphan.resolve()
+    assert repository.list_by_task("T-001", tenant_id=TENANT_ID) == (artifact,)
+    assert tuple(tmp_path.iterdir()) == (orphan,)

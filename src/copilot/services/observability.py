@@ -121,6 +121,14 @@ class ObservabilityPort(Protocol):
         labels: Mapping[str, str] | None = None,
     ) -> None: ...
 
+    def set_gauge(
+        self,
+        name: str,
+        value: float,
+        *,
+        labels: Mapping[str, str] | None = None,
+    ) -> None: ...
+
     def observe(
         self,
         name: str,
@@ -218,6 +226,15 @@ class NoopObservability:
         labels: Mapping[str, str] | None = None,
     ) -> None:
         del name, amount, labels
+
+    def set_gauge(
+        self,
+        name: str,
+        value: float,
+        *,
+        labels: Mapping[str, str] | None = None,
+    ) -> None:
+        del name, value, labels
 
     def observe(
         self,

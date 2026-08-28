@@ -35,9 +35,24 @@ COUNTER_NAMES = frozenset(
         "plan_repairs_total",
         "verification_failures_total",
         "performance_limit_exceeded_total",
+        "lease_acquire_conflicts",
+        "lease_expirations",
+        "task_recoveries",
+        "recovery_failures",
+        "runtime_retry_count",
     }
 )
-GAUGE_NAMES = frozenset({"active_tasks", "active_tool_calls"})
+GAUGE_NAMES = frozenset(
+    {
+        "active_tasks",
+        "active_tool_calls",
+        "task_queue_depth",
+        "task_queue_oldest_age_seconds",
+        "active_workers",
+        "active_execution_leases",
+        "waiting_approval_count",
+    }
+)
 HISTOGRAM_NAMES = frozenset(
     {
         "request_latency_ms",
@@ -46,6 +61,9 @@ HISTOGRAM_NAMES = frozenset(
         "step_latency_ms",
         "tool_latency_ms",
         "external_service_latency_ms",
+        "task_queue_wait_seconds",
+        "task_execution_seconds",
+        "cancel_latency_seconds",
     }
 )
 LABEL_ALLOWLIST = frozenset(

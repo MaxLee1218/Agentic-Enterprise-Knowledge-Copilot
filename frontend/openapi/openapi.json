@@ -196,7 +196,7 @@
       },
       "ApprovalResolutionResponse": {
         "additionalProperties": false,
-        "description": "Stable decision and checkpoint-resume response.",
+        "description": "Stable decision acceptance; execution continues asynchronously when approved.",
         "properties": {
           "approval_id": {
             "title": "Approval Id",
@@ -223,6 +223,13 @@
             "title": "Resume Status",
             "type": "string"
           },
+          "runtime_status": {
+            "$ref": "#/components/schemas/RuntimeStatus"
+          },
+          "status_url": {
+            "title": "Status Url",
+            "type": "string"
+          },
           "task_id": {
             "title": "Task Id",
             "type": "string"
@@ -242,6 +249,8 @@
           "resolution_action",
           "task_id",
           "task_status",
+          "runtime_status",
+          "status_url",
           "resolved_at",
           "resolved_by",
           "resume_status",
@@ -327,17 +336,6 @@
         ],
         "title": "ArtifactMetadataResponse",
         "type": "object"
-      },
-      "ArtifactType": {
-        "description": "Versioned internal report Artifact types admitted by contracts.",
-        "enum": [
-          "QUALITY_ANALYSIS_REPORT_PDF",
-          "QUALITY_ANALYSIS_REPORT_JSON",
-          "ACCOUNTS_PAYABLE_REPORT_PDF",
-          "ACCOUNTS_PAYABLE_REPORT_JSON"
-        ],
-        "title": "ArtifactType",
-        "type": "string"
       },
       "EvidenceType": {
         "description": "Evidence source types permitted by the frozen v1.0 scenario.",
@@ -521,50 +519,17 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
-      "TaskArtifactResponse": {
-        "additionalProperties": false,
-        "description": "Safe Artifact reference returned by task submission.",
-        "properties": {
-          "artifact_id": {
-            "title": "Artifact Id",
-            "type": "string"
-          },
-          "checksum": {
-            "title": "Checksum",
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "filename": {
-            "title": "Filename",
-            "type": "string"
-          },
-          "media_type": {
-            "title": "Media Type",
-            "type": "string"
-          },
-          "size_bytes": {
-            "title": "Size Bytes",
-            "type": "integer"
-          },
-          "type": {
-            "$ref": "#/components/schemas/ArtifactType"
-          }
-        },
-        "required": [
-          "artifact_id",
-          "type",
-          "filename",
-          "media_type",
-          "checksum",
-          "size_bytes",
-          "created_at"
+      "RuntimeStatus": {
+        "description": "Execution-host status kept separate from the frozen business TaskStatus.",
+        "enum": [
+          "READY",
+          "LEASED",
+          "WAITING_RETRY",
+          "SUSPENDED",
+          "FINISHED"
         ],
-        "title": "TaskArtifactResponse",
-        "type": "object"
+        "title": "RuntimeStatus",
+        "type": "string"
       },
       "TaskErrorResponse": {
         "additionalProperties": false,
@@ -741,31 +706,6 @@
         "title": "TaskEvidenceResponse",
         "type": "object"
       },
-      "TaskFailureResponse": {
-        "additionalProperties": false,
-        "description": "One safe typed workflow error.",
-        "properties": {
-          "error_code": {
-            "title": "Error Code",
-            "type": "string"
-          },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "recoverable": {
-            "title": "Recoverable",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "error_code",
-          "message",
-          "recoverable"
-        ],
-        "title": "TaskFailureResponse",
-        "type": "object"
-      },
       "TaskListResponse": {
         "additionalProperties": false,
         "description": "Bounded current-user task history ordered newest-first.",
@@ -886,6 +826,9 @@
             ],
             "title": "Pending Approval Id"
           },
+          "runtime_status": {
+            "$ref": "#/components/schemas/RuntimeStatus"
+          },
           "started_at": {
             "anyOf": [
               {
@@ -932,6 +875,7 @@
           "task_id",
           "trace_id",
           "status",
+          "runtime_status",
           "task_type",
           "created_at",
           "started_at",
@@ -1108,92 +1052,36 @@
       },
       "TaskSubmissionResponse": {
         "additionalProperties": false,
-        "description": "Stable synchronous task-creation response.",
+        "description": "Future 202 Accepted response returned after Task and dispatch commit atomically.",
         "properties": {
-          "artifacts": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/TaskArtifactResponse"
-            },
-            "title": "Artifacts",
-            "type": "array"
-          },
-          "clarification_questions": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Clarification Questions",
-            "type": "array"
-          },
-          "completed_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Completed At"
-          },
-          "created_at": {
+          "accepted_at": {
             "format": "date-time",
-            "title": "Created At",
+            "title": "Accepted At",
             "type": "string"
           },
-          "errors": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/TaskFailureResponse"
-            },
-            "title": "Errors",
-            "type": "array"
+          "artifacts_url": {
+            "minLength": 1,
+            "title": "Artifacts Url",
+            "type": "string"
           },
-          "missing_information": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Missing Information",
-            "type": "array"
+          "runtime_status": {
+            "$ref": "#/components/schemas/RuntimeStatus"
           },
-          "pending_approval_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pending Approval Id"
-          },
-          "started_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Started At"
-          },
-          "status": {
-            "$ref": "#/components/schemas/TaskStatus"
-          },
-          "summary": {
-            "title": "Summary",
+          "status_url": {
+            "minLength": 1,
+            "title": "Status Url",
             "type": "string"
           },
           "task_id": {
+            "minLength": 1,
             "title": "Task Id",
             "type": "string"
           },
+          "task_status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
           "trace_id": {
+            "minLength": 1,
             "title": "Trace Id",
             "type": "string"
           }
@@ -1201,9 +1089,11 @@
         "required": [
           "task_id",
           "trace_id",
-          "status",
-          "created_at",
-          "summary"
+          "task_status",
+          "runtime_status",
+          "accepted_at",
+          "status_url",
+          "artifacts_url"
         ],
         "title": "TaskSubmissionResponse",
         "type": "object"
@@ -1382,8 +1272,26 @@
         ]
       },
       "post": {
-        "description": "Submit one unmodified natural-language task through the shared application service.",
+        "description": "Durably accept one Task without executing LangGraph in the API process.",
         "operationId": "create_task",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -1395,7 +1303,7 @@
           "required": true
         },
         "responses": {
-          "201": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
@@ -1405,15 +1313,15 @@
             },
             "description": "Successful Response"
           },
-          "202": {
+          "409": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TaskSubmissionResponse"
+                  "$ref": "#/components/schemas/TaskErrorResponse"
                 }
               }
             },
-            "description": "Accepted"
+            "description": "Conflict"
           },
           "422": {
             "content": {
@@ -1627,7 +1535,7 @@
         ]
       },
       "post": {
-        "description": "Resolve and resume through ApprovalService; the route never calls a tool directly.",
+        "description": "Persist a decision and optional resume dispatch without running the Graph inline.",
         "operationId": "resolve_approval_v1_tasks__task_id__approvals__approval_id__post",
         "parameters": [
           {
@@ -1660,7 +1568,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
@@ -1905,7 +1813,7 @@
     },
     "/v1/tasks/{task_id}/cancel": {
       "post": {
-        "description": "Request cooperative cancellation through the frozen domain state machine.",
+        "description": "Durably accept cancellation; underlying I/O may stop at a later safe boundary.",
         "operationId": "cancel_task",
         "parameters": [
           {
@@ -1919,7 +1827,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {

@@ -11,7 +11,8 @@ from copilot.api.schemas.approvals import (
     ApprovalResolutionResponse,
 )
 from copilot.api.schemas.tasks import TaskErrorResponse
-from copilot.contracts import ApprovalResolutionAction, JsonObject
+from copilot.contracts import ApprovalResolutionAction, JsonObject, TaskStatus
+from copilot.contracts.async_runtime import RuntimeStatus
 from copilot.services.approval_service import ApprovalResolutionCommand, ApprovalService
 from copilot.services.task_intake import TrustedCallerContext
 
@@ -74,8 +75,9 @@ def get_approval(
 @router.post(
     "/{task_id}/approvals/{approval_id}",
     response_model=ApprovalResolutionResponse,
-    status_code=200,
+    status_code=202,
     responses={
+        202: {"model": ApprovalResolutionResponse},
         400: {"model": TaskErrorResponse},
         403: {"model": TaskErrorResponse},
         404: {"model": TaskErrorResponse},
@@ -92,7 +94,7 @@ def resolve_approval(
     service: Annotated[ApprovalService, Depends(get_approval_service)],
     caller: Annotated[TrustedCallerContext, Depends(get_caller_context)],
 ) -> ApprovalResolutionResponse:
-    """Resolve and resume through ApprovalService; the route never calls a tool directly."""
+    """Persist a decision and optional resume dispatch without running the Graph inline."""
     result = service.resolve(
         ApprovalResolutionCommand(
             task_id=task_id,
@@ -118,6 +120,12 @@ def resolve_approval(
         resolution_action=approval.resolution_action.value,
         task_id=approval.task_id,
         task_status=result.task_status.value,
+        runtime_status=(
+            RuntimeStatus.READY
+            if result.task_status is TaskStatus.EXECUTING
+            else RuntimeStatus.FINISHED
+        ),
+        status_url=f"/v1/tasks/{approval.task_id}",
         resolved_at=approval.decided_at,
         resolved_by=approval.approver,
         resume_status=result.task_status.value,

@@ -11,7 +11,7 @@ describe("task creation", () => {
   it("shows client validation for an empty task", async () => {
     const user = userEvent.setup();
     renderApp("/tasks/new");
-    await user.click(screen.getByRole("button", { name: "Run task" }));
+    await user.click(screen.getByRole("button", { name: "Submit task" }));
     expect(
       await screen.findByText("Describe the enterprise task to run."),
     ).toBeVisible();
@@ -23,7 +23,7 @@ describe("task creation", () => {
     server.use(
       http.post("*/api/v1/tasks", async ({ request }) => {
         requestBody(await request.json());
-        return HttpResponse.json(createdTask, { status: 201 });
+        return HttpResponse.json(createdTask, { status: 202 });
       }),
     );
     renderApp("/tasks/new");
@@ -31,7 +31,7 @@ describe("task creation", () => {
       screen.getByLabelText("What do you want the Agent to do?"),
       "Analyze supplier quality for Q2 2026 and generate a PDF report.",
     );
-    await user.click(screen.getByRole("button", { name: "Run task" }));
+    await user.click(screen.getByRole("button", { name: "Submit task" }));
     expect(await screen.findByText("Governed task")).toBeVisible();
     expect(requestBody).toHaveBeenCalledWith(
       expect.objectContaining({ output_format: "pdf" }),
@@ -44,7 +44,7 @@ describe("task creation", () => {
     server.use(
       http.post("*/api/v1/tasks", async ({ request }) => {
         requestBody(await request.json());
-        return HttpResponse.json(createdTask, { status: 201 });
+        return HttpResponse.json(createdTask, { status: 202 });
       }),
     );
     renderApp("/tasks/new");
@@ -59,7 +59,7 @@ describe("task creation", () => {
       screen.getByLabelText("What do you want the Agent to do?"),
       "Analyze AP exceptions from 2026-04-01 to 2026-06-30.",
     );
-    await user.click(screen.getByRole("button", { name: "Run task" }));
+    await user.click(screen.getByRole("button", { name: "Submit task" }));
 
     expect(requestBody).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -96,7 +96,7 @@ describe("task creation", () => {
       screen.getByLabelText("What do you want the Agent to do?"),
       "Analyze Q2 2026 supplier quality.",
     );
-    await user.click(screen.getByRole("button", { name: "Run task" }));
+    await user.click(screen.getByRole("button", { name: "Submit task" }));
     expect(await screen.findByText("Task text is invalid.")).toBeVisible();
     expect(screen.getByText("TRACE-ERROR")).toBeVisible();
   });

@@ -386,13 +386,14 @@ checks for an already committed result before repeating work. Compensation means
 cleaning an uncommitted artifact and recording the outcome; it never rewrites immutable evidence
 or audit history.
 
-## 6. Frozen Future Async Runtime Boundary
+## 6. Asynchronous Runtime Boundary
 
-The architecture and contracts for a future asynchronous Task runtime are frozen in
-[`async-runtime-architecture.md`](async-runtime-architecture.md) and ADR-012 through ADR-016. This
-is a future hosting boundary, not an implemented Queue or Worker.
+The architecture and contracts are frozen in
+[`async-runtime-architecture.md`](async-runtime-architecture.md) and ADR-012 through ADR-016.
+ADR-017 selects the PostgreSQL-backed Queue v1. Stage 19 implements the hosting path without
+changing the business state machines or creating a second lease/outbox authority.
 
-The target calling direction is:
+The implemented calling direction is:
 
 ```text
 API
@@ -400,7 +401,7 @@ API
   -> one PostgreSQL transaction: Task + submission idempotency + PENDING dispatch
   -> 202 Accepted
 
-Outbox dispatcher -> broker-neutral TaskQueue -> Worker runtime host
+PostgreSQL outbox dispatcher -> PostgreSQL TaskQueue -> independent Worker runtime host
   -> reload authoritative tenant/task/trusted context
   -> atomic database lease + execution generation + fencing token
   -> existing NaturalLanguageTaskService / LangGraph / Registry / Executor
@@ -420,16 +421,24 @@ monotonic fencing token. The existing `workflow_leases` table is extended rather
 `WAITING_APPROVAL` persists its approval and checkpoint, releases the lease, and occupies no
 Worker.
 
-Application-owned future ports live in `copilot.services.async_runtime`; provider-neutral values
-live in `copilot.contracts.async_runtime`. A broker adapter, dispatcher loop, Worker entry point,
-and recovery scanner are future interface/infrastructure implementations composed only from
-`copilot.bootstrap`. They may not contain business logic or bypass Policy, Approval, Registry,
-Executor, Evidence, Audit, Artifact, or Verification.
+Application-owned ports live in `copilot.services.async_runtime`; provider-neutral values live in
+`copilot.contracts.async_runtime`. PostgreSQL Queue/dispatcher/recovery adapters stay in
+`copilot.persistence`; Worker orchestration stays in `copilot.services.task_execution` and
+`copilot.worker`; composition stays in `copilot.bootstrap`. The Worker reuses the same workflow,
+Policy, Approval, Registry/Executor, Evidence, Audit, Artifact, and Verification path as the API
+previously hosted.
 
-The current synchronous `POST /v1/tasks` remains implemented as documented in
-[`task-lifecycle.md`](task-lifecycle.md). No code path may claim background execution until the
-persistence, real PostgreSQL concurrency, Queue, Worker, API, frontend, scanner, backpressure, and
-failure-testing rollout stages pass.
+`POST /v1/tasks` now performs acceptance only and returns `202`; it never invokes the Graph or
+Tools. Approval resolution commits the decision and a new generation/dispatch, then returns `202`.
+The Worker owns normal execution and checkpoint continuation. The bounded scanner recovers only
+eligible runtime faults and excludes terminal Tasks, unresolved approvals, and valid leases.
+Capacity is enforced atomically per tenant and globally at submission, with HTTP `429` and
+`Retry-After` when full.
+
+This implementation is at-least-once and PostgreSQL-dependent. It does not establish external
+side-effect exactly-once semantics, multi-host shared Artifact storage, high availability, or
+production readiness. See the [Stage 19 report](stage-19-queue-worker-execution.md) and
+[operations guide](async-runtime-operations.md).
 
 ## 7. Extension Rules
 

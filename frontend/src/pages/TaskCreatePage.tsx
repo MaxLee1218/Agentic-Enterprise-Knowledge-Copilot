@@ -155,7 +155,7 @@ export function TaskCreatePage() {
               type="submit"
               disabled={create.isPending}
             >
-              {create.isPending ? "Running governed workflow…" : "Run task"}
+              {create.isPending ? "Submitting task…" : "Submit task"}
             </button>
           </div>
         </form>

@@ -10,6 +10,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
     DateTime,
     ForeignKeyConstraint,
     Index,
@@ -40,6 +42,228 @@ class WorkflowTaskRow(PersistenceBase):
     state_json: Mapped[str] = mapped_column(Text, nullable=False)
     task_result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     verification_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class TaskDispatchRow(PersistenceBase):
+    """Durable transactional-outbox record for one immutable execution intent."""
+
+    __tablename__ = "task_dispatches"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "task_id"],
+            ["workflow_tasks.tenant_id", "workflow_tasks.task_id"],
+            name="fk_task_dispatches_tenant_task",
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "task_id",
+            "execution_generation",
+            name="uq_task_dispatches_tenant_task_generation",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "task_id",
+            "dispatch_id",
+            name="uq_task_dispatches_tenant_task_dispatch",
+        ),
+        CheckConstraint("execution_generation >= 1", name="ck_task_dispatch_generation"),
+        CheckConstraint("expected_task_version >= 1", name="ck_task_dispatch_version"),
+        CheckConstraint("attempt_count >= 0", name="ck_task_dispatch_attempt_count"),
+        CheckConstraint(
+            "status IN ('PENDING','ENQUEUED','ACKNOWLEDGED','RETRY_SCHEDULED',"
+            "'SUPERSEDED','DEAD_LETTERED')",
+            name="ck_task_dispatch_status",
+        ),
+        CheckConstraint(
+            "(predecessor_execution_generation IS NULL AND resume_checkpoint_id IS NULL) "
+            "OR (predecessor_execution_generation = execution_generation - 1 "
+            "AND resume_checkpoint_id IS NOT NULL)",
+            name="ck_task_dispatch_resume_binding",
+        ),
+        Index("ix_task_dispatches_due", "status", "available_at", "tenant_id"),
+    )
+
+    tenant_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    dispatch_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    execution_generation: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    predecessor_execution_generation: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    resume_checkpoint_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    expected_task_version: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    trace_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error_code: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class TaskQueueDeliveryRow(PersistenceBase):
+    """PostgreSQL Queue v1 transport state subordinate to one durable dispatch."""
+
+    __tablename__ = "task_queue_deliveries"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "task_id", "dispatch_id"],
+            [
+                "task_dispatches.tenant_id",
+                "task_dispatches.task_id",
+                "task_dispatches.dispatch_id",
+            ],
+            name="fk_task_queue_deliveries_dispatch",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("delivery_attempt >= 0", name="ck_task_queue_delivery_attempt"),
+        CheckConstraint(
+            "(receipt_id IS NULL AND receipt_expires_at IS NULL) "
+            "OR (receipt_id IS NOT NULL AND receipt_expires_at IS NOT NULL)",
+            name="ck_task_queue_delivery_receipt_binding",
+        ),
+        Index(
+            "ix_task_queue_deliveries_due",
+            "acked_at",
+            "available_at",
+            "receipt_expires_at",
+            "tenant_id",
+        ),
+    )
+
+    tenant_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    dispatch_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    delivery_attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    receipt_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    receipt_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    acked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error_code: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class WorkflowTaskRuntimeRow(PersistenceBase):
+    """One-to-one authoritative runtime projection and monotonic fencing counter."""
+
+    __tablename__ = "workflow_task_runtime"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "task_id"],
+            ["workflow_tasks.tenant_id", "workflow_tasks.task_id"],
+            name="fk_workflow_task_runtime_tenant_task",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "runtime_status IN ('READY','LEASED','WAITING_RETRY','SUSPENDED','FINISHED')",
+            name="ck_workflow_task_runtime_status",
+        ),
+        CheckConstraint("execution_generation >= 1", name="ck_workflow_task_runtime_generation"),
+        CheckConstraint("fencing_counter >= 0", name="ck_workflow_task_runtime_fencing"),
+        CheckConstraint(
+            "recovery_attempt_count >= 0", name="ck_workflow_task_runtime_recovery_count"
+        ),
+        CheckConstraint(
+            "(runtime_status = 'WAITING_RETRY' AND retry_not_before IS NOT NULL) "
+            "OR (runtime_status <> 'WAITING_RETRY' AND retry_not_before IS NULL)",
+            name="ck_workflow_task_runtime_retry_binding",
+        ),
+        CheckConstraint(
+            "(predecessor_execution_generation IS NULL AND resume_checkpoint_id IS NULL) "
+            "OR (predecessor_execution_generation = execution_generation - 1 "
+            "AND resume_checkpoint_id IS NOT NULL)",
+            name="ck_workflow_task_runtime_resume_binding",
+        ),
+        Index("ix_workflow_task_runtime_recovery", "runtime_status", "retry_not_before"),
+    )
+
+    tenant_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    runtime_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    execution_generation: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1)
+    predecessor_execution_generation: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    resume_checkpoint_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    current_dispatch_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    fencing_counter: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    recovery_attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    retry_not_before: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_recovery_error: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    cancellation_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class TaskSubmissionIdempotencyRow(PersistenceBase):
+    """Tenant/caller/key binding to one canonical submission response."""
+
+    __tablename__ = "task_submission_idempotency"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "task_id"],
+            ["workflow_tasks.tenant_id", "workflow_tasks.task_id"],
+            name="fk_task_submission_idempotency_tenant_task",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "length(request_fingerprint) = 64",
+            name="ck_task_submission_idempotency_fingerprint",
+        ),
+    )
+
+    tenant_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    caller_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(200), primary_key=True)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    response_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class TaskRuntimeAttemptRow(PersistenceBase):
+    """Persistent Worker-host attempt accounting, separate from business Tool attempts."""
+
+    __tablename__ = "task_runtime_attempts"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "task_id", "dispatch_id"],
+            [
+                "task_dispatches.tenant_id",
+                "task_dispatches.task_id",
+                "task_dispatches.dispatch_id",
+            ],
+            name="fk_task_runtime_attempts_tenant_task_dispatch",
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "task_id",
+            "execution_generation",
+            "runtime_attempt",
+            name="uq_task_runtime_attempt_identity",
+        ),
+        CheckConstraint("execution_generation >= 1", name="ck_task_runtime_attempt_generation"),
+        CheckConstraint("runtime_attempt >= 1", name="ck_task_runtime_attempt_number"),
+        CheckConstraint(
+            "status IN ('RUNNING','SUCCEEDED','SUSPENDED','FAILED','LOST')",
+            name="ck_task_runtime_attempt_status",
+        ),
+        Index("ix_task_runtime_attempts_tenant_task", "tenant_id", "task_id"),
+    )
+
+    sequence_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    dispatch_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    execution_generation: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    runtime_attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
 
 class WorkflowStateEventRow(PersistenceBase):
@@ -130,12 +354,33 @@ class WorkflowLeaseRow(PersistenceBase):
             name="fk_workflow_leases_tenant_task",
             ondelete="CASCADE",
         ),
+        ForeignKeyConstraint(
+            ["tenant_id", "task_id", "dispatch_id"],
+            [
+                "task_dispatches.tenant_id",
+                "task_dispatches.task_id",
+                "task_dispatches.dispatch_id",
+            ],
+            name="fk_workflow_leases_tenant_task_dispatch",
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("tenant_id", "lease_id", name="uq_workflow_leases_tenant_lease"),
+        CheckConstraint("execution_generation >= 1", name="ck_workflow_lease_generation"),
+        CheckConstraint("task_version >= 1", name="ck_workflow_lease_task_version"),
+        CheckConstraint("fencing_token > 0", name="ck_workflow_lease_fencing"),
         Index("ix_workflow_leases_tenant_task", "tenant_id", "task_id"),
     )
 
-    tenant_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    tenant_id: Mapped[str] = mapped_column(String(200), primary_key=True)
     task_id: Mapped[str] = mapped_column(String(200), primary_key=True)
-    owner_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    dispatch_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    execution_generation: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    task_version: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    worker_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    lease_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    fencing_token: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    acquired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 

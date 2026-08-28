@@ -7,7 +7,7 @@ from copilot.api.schemas.tasks import (
     TaskResponse,
     TaskStepResponse,
 )
-from copilot.contracts import EvidenceType, TaskStatus, TaskType
+from copilot.contracts import EvidenceType, RuntimeStatus, TaskStatus, TaskType
 from copilot.services.task_views import (
     TaskArtifactView,
     TaskEvidenceView,
@@ -22,6 +22,7 @@ def task_response(view: TaskSummaryView) -> TaskResponse:
         task_id=view.task_id,
         trace_id=view.trace_id,
         status=TaskStatus(view.status),
+        runtime_status=RuntimeStatus(view.runtime_status),
         task_type=TaskType(view.task_type) if view.task_type is not None else None,
         created_at=view.created_at,
         started_at=view.started_at,

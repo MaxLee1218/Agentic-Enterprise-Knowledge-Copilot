@@ -16,6 +16,7 @@ from copilot.persistence.identifiers import SequentialIdentifierFactory
 from copilot.security.identity import DemoIdentityProvider
 from copilot.services.task_intake import TrustedCallerContext
 from copilot.tools.mock_supplier_quality import MockBehavior, MockFailureKind
+from tests.async_runtime_helpers import execute_accepted_task
 from tests.workflow_helpers import fixed_clock
 
 TASK_TEXT = "Analyze Q2 2026 supplier quality and generate a JSON report."
@@ -57,6 +58,7 @@ def _client(
     settings = Settings(
         app_env="test",
         database_url="sqlite:///unused-stage13-api.db",
+        persistence_database_url=f"sqlite:///{tmp_path / 'runtime.db'}",
         artifact_dir=tmp_path / "artifacts",
         checkpoint_database_path=tmp_path / "workflow.db",
         checkpoint_enabled=persistent,
@@ -71,6 +73,7 @@ def _client(
     )
     application = create_app(
         task_service=container.task_service,
+        task_submission_service=container.task_submission_service,
         artifact_service=container.artifact_service,
         approval_service=container.approval_service,
         settings=settings,
@@ -91,10 +94,11 @@ def test_failed_task_summary_and_audit_preserve_the_root_cause(tmp_path: Path) -
     try:
         with client:
             created = client.post("/v1/tasks", json={"task": TASK_TEXT})
+            execute_accepted_task(container, created.json()["task_id"], tenant_id="TENANT-DEMO")
             task = client.get(f"/v1/tasks/{created.json()['task_id']}")
             steps = client.get(f"/v1/tasks/{created.json()['task_id']}/steps")
 
-        assert created.status_code == 201
+        assert created.status_code == 202
         assert task.status_code == steps.status_code == 200
         assert task.json()["status"] == "FAILED"
         step_rows = steps.json()["steps"]
@@ -132,9 +136,12 @@ def test_retryable_knowledge_timeout_retries_as_a_separate_tool_attempt(
     try:
         with client:
             created = client.post("/v1/tasks", json={"task": TASK_TEXT})
+            execute_accepted_task(container, created.json()["task_id"], tenant_id="TENANT-DEMO")
+            task = client.get(f"/v1/tasks/{created.json()['task_id']}")
 
-        assert created.status_code == 201
-        assert created.json()["status"] == "COMPLETED"
+        assert created.status_code == 202
+        assert created.json()["task_status"] == "CREATED"
+        assert task.json()["status"] == "COMPLETED"
         assert container.knowledge_tool.call_count == 2
         timeout_audits = [
             record
@@ -153,8 +160,9 @@ def test_complete_task_can_be_queried_with_steps_evidence_and_artifact(tmp_path:
     try:
         with client:
             created = client.post("/v1/tasks", json={"task": TASK_TEXT})
-            assert created.status_code == 201
+            assert created.status_code == 202
             task_id = created.json()["task_id"]
+            execute_accepted_task(container, task_id, tenant_id="TENANT-DEMO")
             task = client.get(f"/v1/tasks/{task_id}")
             steps = client.get(f"/v1/tasks/{task_id}/steps")
             evidence = client.get(f"/v1/tasks/{task_id}/evidence")
@@ -201,12 +209,15 @@ def test_task_history_is_owner_scoped_filtered_and_paginated(tmp_path: Path) -> 
         with client:
             application.dependency_overrides[get_caller_context] = lambda: owner
             first = client.post("/v1/tasks", json={"task": TASK_TEXT})
+            execute_accepted_task(container, first.json()["task_id"], tenant_id="TENANT-DEMO")
             second = client.post(
                 "/v1/tasks",
                 json={"task": TASK_TEXT, "require_approval": True},
             )
+            execute_accepted_task(container, second.json()["task_id"], tenant_id="TENANT-DEMO")
             application.dependency_overrides[get_caller_context] = lambda: other
             hidden = client.post("/v1/tasks", json={"task": TASK_TEXT})
+            execute_accepted_task(container, hidden.json()["task_id"], tenant_id="TENANT-DEMO")
             application.dependency_overrides[get_caller_context] = lambda: owner
 
             page = client.get("/v1/tasks", params={"limit": 1, "offset": 0})
@@ -216,7 +227,7 @@ def test_task_history_is_owner_scoped_filtered_and_paginated(tmp_path: Path) -> 
             )
             invalid = client.get("/v1/tasks", params={"limit": 101})
 
-        assert first.status_code == hidden.status_code == 201
+        assert first.status_code == hidden.status_code == 202
         assert second.status_code == 202
         assert page.status_code == 200
         assert page.json()["total"] == 2
@@ -250,11 +261,13 @@ def test_two_sequential_tasks_reuse_frozen_step_ids_without_cross_task_reads(
                     "output_format": "pdf",
                 },
             )
-            assert first.status_code == 201
-            assert second.status_code == 201
+            assert first.status_code == 202
+            assert second.status_code == 202
             first_task_id = first.json()["task_id"]
             second_task_id = second.json()["task_id"]
             assert first_task_id != second_task_id
+            execute_accepted_task(container, first_task_id, tenant_id="TENANT-DEMO")
+            execute_accepted_task(container, second_task_id, tenant_id="TENANT-DEMO")
 
             first_task = client.get(f"/v1/tasks/{first_task_id}")
             second_task = client.get(f"/v1/tasks/{second_task_id}")
@@ -301,6 +314,7 @@ def test_missing_task_and_terminal_cancellation_use_uniform_errors(tmp_path: Pat
             missing = client.get("/v1/tasks/T-NOT-FOUND")
             created = client.post("/v1/tasks", json={"task": TASK_TEXT})
             task_id = created.json()["task_id"]
+            execute_accepted_task(container, task_id, tenant_id="TENANT-DEMO")
             conflict = client.post(f"/v1/tasks/{task_id}/cancel")
         assert missing.status_code == 404
         assert set(missing.json()) == {
@@ -329,16 +343,21 @@ def test_waiting_approval_can_be_cancelled_and_old_approval_cannot_resume(
             )
             assert created.status_code == 202
             payload = created.json()
+            interrupted = execute_accepted_task(
+                container, payload["task_id"], tenant_id="TENANT-DEMO"
+            )
+            assert interrupted is not None
+            detail = client.get(f"/v1/tasks/{payload['task_id']}").json()
             cancelled = client.post(f"/v1/tasks/{payload['task_id']}/cancel")
             repeated = client.post(f"/v1/tasks/{payload['task_id']}/cancel")
             stale = client.post(
-                f"/v1/tasks/{payload['task_id']}/approvals/{payload['pending_approval_id']}",
+                f"/v1/tasks/{payload['task_id']}/approvals/{detail['pending_approval_id']}",
                 json={"action": "approve", "reason": "stale"},
             )
-        assert cancelled.status_code == 200
+        assert cancelled.status_code == 202
         assert cancelled.json()["status"] == "CANCELLED"
         assert cancelled.json()["cancelled_at"] is not None
-        assert repeated.status_code == 200
+        assert repeated.status_code == 202
         assert repeated.json()["status"] == "CANCELLED"
         assert stale.status_code == 409
         assert stale.json()["error_code"] == "APPROVAL_ALREADY_RESOLVED"
@@ -357,7 +376,10 @@ def test_unauthorized_task_and_artifact_access_is_denied(tmp_path: Path) -> None
         with client:
             created = client.post("/v1/tasks", json={"task": TASK_TEXT})
             task_id = created.json()["task_id"]
-            artifact_id = created.json()["artifacts"][0]["artifact_id"]
+            execute_accepted_task(container, task_id, tenant_id="TENANT-DEMO")
+            artifact_id = client.get(f"/v1/tasks/{task_id}/artifacts").json()["artifacts"][0][
+                "artifact_id"
+            ]
             cast(FastAPI, client.app).dependency_overrides[get_caller_context] = lambda: (
                 TrustedCallerContext(
                     user_id="U-OTHER",
@@ -384,7 +406,10 @@ def test_missing_artifact_file_returns_gone_without_exposing_path(tmp_path: Path
         with client:
             created = client.post("/v1/tasks", json={"task": TASK_TEXT})
             payload = created.json()
-            artifact_id = payload["artifacts"][0]["artifact_id"]
+            execute_accepted_task(container, payload["task_id"], tenant_id="TENANT-DEMO")
+            artifact_id = client.get(f"/v1/tasks/{payload['task_id']}/artifacts").json()[
+                "artifacts"
+            ][0]["artifact_id"]
             metadata = container.artifacts.get_by_id(artifact_id, tenant_id="TENANT-DEMO")
             container.artifacts.path_for(metadata).unlink()
             response = client.get(f"/v1/tasks/{payload['task_id']}/artifacts/{artifact_id}")
@@ -424,7 +449,8 @@ def test_api_trace_propagates_through_task_graph_steps_and_tools(tmp_path: Path)
                 json={"task": TASK_TEXT},
                 headers={"X-Trace-ID": trace_id, "X-Request-ID": "REQUEST-client-stage16"},
             )
-        assert response.status_code == 201
+            execute_accepted_task(container, response.json()["task_id"], tenant_id="TENANT-DEMO")
+        assert response.status_code == 202
         assert response.headers["x-trace-id"] == trace_id
         assert response.json()["trace_id"] == trace_id
         assert container.observability is not None
@@ -437,9 +463,8 @@ def test_api_trace_propagates_through_task_graph_steps_and_tools(tmp_path: Path)
             SpanKind.STEP,
             SpanKind.TOOL,
         }.issubset(kinds)
-        request_span = next(span for span in spans if span.name == "request.http")
         task_span = next(span for span in spans if span.name == "task.total")
-        assert task_span.parent_span_id == request_span.span_id
+        assert task_span.parent_span_id is None
         assert all(span.status is SpanStatus.SUCCEEDED for span in spans)
         assert all(span.step_id for span in spans if span.kind is SpanKind.TOOL)
         summary = container.observability.trace_summary(trace_id, status="COMPLETED")

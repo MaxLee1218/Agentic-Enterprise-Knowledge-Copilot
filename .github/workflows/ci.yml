@@ -210,7 +210,14 @@ jobs:
       - name: Install project
         run: python -m pip install -e ".[dev]"
       - name: Run PostgreSQL integration test
-        run: pytest tests/integration/test_postgres_persistence.py -v
+        run: >-
+          pytest
+          tests/integration/test_postgres_persistence.py
+          tests/integration/test_postgres_async_runtime.py
+          tests/integration/test_postgres_queue_worker.py
+          tests/integration/test_async_worker_api.py
+          tests/integration/test_worker_hard_kill.py
+          -v
       - name: Run PostgreSQL business migration and seed tests
         run: >-
           pytest tests/integration/test_postgres_business_database.py -v

@@ -2,7 +2,14 @@
 
 **Decision date:** 2026-08-25  
 **Scope:** architecture, contracts, ports, schema proposal, invariants, and rollout gates  
-**Implementation status:** contract freeze only; no broker, dispatcher daemon, worker daemon, or API cutover
+**Implementation status (2026-08-27):** Stages B–H are implemented with the PostgreSQL Queue v1
+selected by ADR-017; Stage I has the listed deterministic failure tests but not production
+load/soak evidence; Stage J remains deployment-owned and incomplete
+
+> This is still the frozen design authority. Sections that audit the pre-Stage-19 synchronous
+> baseline are historical inputs to the design, not a description of the current executable
+> path. The implementation record is
+> [`stage-19-queue-worker-execution.md`](stage-19-queue-worker-execution.md).
 
 This document is the implementation authority for the future asynchronous runtime layer. It does
 not change the frozen Supplier Quality v1.1 or Accounts Payable v1 business state machines. When a
@@ -43,17 +50,18 @@ Queue receipt, queue ACK, worker memory, and checkpoint presence are not terms i
 
 ## 2. Non-goals
 
-This stage does not implement or deploy Redis, Celery, RQ, Kafka, RabbitMQ, SQS, a real queue
-adapter, a dispatcher loop, a worker daemon, background threads, Kubernetes, cloud infrastructure,
+The contract-freeze stage did not itself implement or deploy a Queue adapter, dispatcher, Worker,
+or API/frontend migration; those later implementation stages are recorded separately. The design
+does not authorize Redis, Celery, RQ, Kafka, RabbitMQ, SQS, Kubernetes, cloud infrastructure,
 autoscaling, scheduled monitoring, Multi-Agent execution, write tools, external report delivery,
-or distributed exactly-once side effects. It does not switch `POST /v1/tasks`, change the current
-frontend, or add a production migration.
+or distributed exactly-once side effects. ADR-017 subsequently selected PostgreSQL Queue v1
+without changing these contracts.
 
-## 3. Current state audit
+## 3. Frozen pre-implementation state audit
 
 ### 3.1 Current `POST /v1/tasks`
 
-The implemented call path is synchronous in the request thread:
+At contract-freeze time, the implemented call path was synchronous in the request thread:
 
 ```text
 FastAPI POST /v1/tasks
@@ -928,7 +936,10 @@ No later stage may bypass an earlier correctness gate.
 
 ## 26. Explicit non-claims
 
-The async runtime architecture and contracts are frozen and validated at the model/port level.
-Background Workers are not implemented. Automatic crash recovery is not deployed. Horizontal
-scaling, high availability, production readiness, and exactly-once external side effects are not
-claimed. The current API remains synchronous until Stage E completes all preceding gates.
+The async runtime architecture and contracts are frozen. The repository now contains the
+PostgreSQL-backed Queue v1, dispatcher, independent Worker, heartbeat/fencing, bounded recovery,
+always-202 API, and polling frontend described by Stages B–H. Those components are implementation
+evidence, not a claim of horizontal scaling, multi-host Artifact safety, high availability,
+production readiness, or exactly-once external side effects. Production rollout remains gated by
+environment-specific load/soak, restore, monitoring, security, operational ownership, and shared
+Artifact-storage evidence.

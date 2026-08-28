@@ -1,12 +1,15 @@
 """Composed CLI entry point sharing the API's natural-language Task Service."""
 
+from time import monotonic, sleep
+
 from copilot.bootstrap.container import build_application
 from copilot.cli.main import create_app
 from copilot.config import ConfigurationError, get_settings
+from copilot.contracts.async_runtime import TaskSubmissionResponse
 from copilot.security.identity import DemoIdentityProvider
 from copilot.services.identity import IdentityRequest
 from copilot.services.task_intake import NaturalLanguageTaskCommand, TrustedCallerContext
-from copilot.services.workflows.models import WorkflowExecution
+from copilot.services.task_views import TaskSummaryView
 
 
 def build_demo_caller() -> TrustedCallerContext:
@@ -15,7 +18,11 @@ def build_demo_caller() -> TrustedCallerContext:
     return DemoIdentityProvider(settings).resolve(IdentityRequest(headers={}, source="cli"))
 
 
-def _run(command: NaturalLanguageTaskCommand) -> WorkflowExecution:
+def _submit(
+    command: NaturalLanguageTaskCommand,
+    idempotency_key: str | None,
+) -> TaskSubmissionResponse:
+    """Durably submit through the same acceptance service as HTTP without inline execution."""
     settings = get_settings()
     if command.metadata.get("cli_demo_identity") is not True:
         raise ConfigurationError(
@@ -24,9 +31,27 @@ def _run(command: NaturalLanguageTaskCommand) -> WorkflowExecution:
         )
     caller = build_demo_caller()
     with build_application(settings) as container:
-        return container.task_service.submit(command, caller)
+        service = container.task_submission_service
+        if service is None:
+            raise ConfigurationError("Async submission requires authoritative persistence")
+        return service.submit(command, caller, idempotency_key=idempotency_key)
 
 
-app = create_app(_run)
+def _wait(task_id: str, timeout_seconds: float) -> TaskSummaryView:
+    """Poll authoritative state only; execution remains owned by an independent Worker."""
+    settings = get_settings()
+    caller = build_demo_caller()
+    deadline = monotonic() + timeout_seconds
+    with build_application(settings) as container:
+        while True:
+            task = container.task_service.get_task(task_id, caller)
+            if task.status in {"COMPLETED", "FAILED", "CANCELLED"}:
+                return task
+            if monotonic() >= deadline:
+                raise TimeoutError(f"Task {task_id} did not reach a terminal state")
+            sleep(min(0.5, max(0.0, deadline - monotonic())))
+
+
+app = create_app(_submit, _wait)
 
 __all__ = ["app", "build_demo_caller"]

@@ -19,6 +19,7 @@ def _client(tmp_path: Path) -> tuple[TestClient, WorkflowContainer]:
     settings = Settings(
         database_url="sqlite:///unused-api-contract.db",
         artifact_dir=tmp_path / "artifacts",
+        persistence_database_url=f"sqlite:///{tmp_path / 'persistence.db'}",
         checkpoint_enabled=False,
     )
     container = build_workflow_container(
@@ -32,6 +33,7 @@ def _client(tmp_path: Path) -> tuple[TestClient, WorkflowContainer]:
         TestClient(
             create_app(
                 task_service=container.task_service,
+                task_submission_service=container.task_submission_service,
                 settings=settings,
                 identity_provider=DemoIdentityProvider(settings),
             )
@@ -48,11 +50,19 @@ def test_post_tasks_requires_only_task_and_returns_correlation_ids(tmp_path: Pat
                 "/v1/tasks",
                 json={"task": "Analyze supplier quality in Q2 2026 and generate a JSON report."},
             )
-        assert response.status_code == 201
+        assert response.status_code == 202
         payload = response.json()
         assert payload["task_id"] == "T-0001"
         assert payload["trace_id"].startswith("TRACE-")
-        assert payload["status"] == "COMPLETED"
+        assert payload["task_status"] == "CREATED"
+        assert payload["runtime_status"] == "READY"
+        assert payload["status_url"] == "/v1/tasks/T-0001"
+        assert payload["artifacts_url"] == "/v1/tasks/T-0001/artifacts"
+        assert (
+            container.repository.state_for("T-0001", tenant_id="TENANT-DEMO").state.value
+            == "CREATED"
+        )
+        assert container.engine.checkpoint_identity("T-0001", "TENANT-DEMO") is None
     finally:
         container.close()
 
@@ -178,7 +188,38 @@ def test_caller_can_tighten_approval_without_causing_an_internal_error(
                 },
             )
         assert response.status_code == 202
-        assert response.json()["status"] == "WAITING_APPROVAL"
+        assert response.json()["task_status"] == "CREATED"
+        assert response.json()["runtime_status"] == "READY"
         assert response.json()["task_id"] == "T-0001"
+    finally:
+        container.close()
+
+
+def test_idempotency_key_reuses_acceptance_and_rejects_different_content(
+    tmp_path: Path,
+) -> None:
+    client, container = _client(tmp_path)
+    headers = {"Idempotency-Key": "submission-key-1"}
+    try:
+        with client:
+            first = client.post(
+                "/v1/tasks",
+                json={"task": "Analyze supplier quality in Q2 2026."},
+                headers=headers,
+            )
+            duplicate = client.post(
+                "/v1/tasks",
+                json={"task": "Analyze supplier quality in Q2 2026."},
+                headers=headers,
+            )
+            conflict = client.post(
+                "/v1/tasks",
+                json={"task": "Analyze supplier quality in Q3 2026."},
+                headers=headers,
+            )
+        assert first.status_code == duplicate.status_code == 202
+        assert first.json() == duplicate.json()
+        assert conflict.status_code == 409
+        assert conflict.json()["error_code"] == "IDEMPOTENCY_CONFLICT"
     finally:
         container.close()

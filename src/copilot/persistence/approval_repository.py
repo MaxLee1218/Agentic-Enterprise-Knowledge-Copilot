@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from copilot.contracts import ApprovalRequest, ApprovalStatus
 from copilot.persistence.database import PersistenceDatabase, coerce_database
+from copilot.persistence.fencing import assert_fenced_session
 from copilot.persistence.models import WorkflowApprovalHistoryRow, WorkflowApprovalRow
 
 
@@ -48,6 +49,7 @@ class ApprovalRepository:
                 return
             try:
                 with self._database.session() as session:
+                    assert_fenced_session(session, tenant_id=tenant_id, task_id=stored.task_id)
                     session.add(
                         WorkflowApprovalRow(
                             approval_id=stored.approval_id,
@@ -179,6 +181,7 @@ class ApprovalRepository:
                 return
             try:
                 with self._database.session() as session:
+                    assert_fenced_session(session, tenant_id=tenant_id, task_id=stored.task_id)
                     result = cast(
                         CursorResult[Any],
                         session.execute(

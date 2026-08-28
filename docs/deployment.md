@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide deploys the hardened Copilot API and compiled execution console. It does not deploy the
+This guide deploys the hardened Copilot API, independent Worker, and compiled execution console. It does not deploy the
 upstream enterprise IdP/gateway, a managed secret store, an Enterprise RAG implementation, or
 MCP. The Enterprise RAG Engine remains an independent service and image.
 
@@ -12,7 +12,8 @@ Client
   -> frontend Nginx / React SPA
        -> same-origin /api proxy
        -> Copilot API
-       -> Copilot PostgreSQL (task/state/evidence/approval/audit/artifact metadata/checkpoints)
+       -> Copilot PostgreSQL (task/runtime/outbox/Queue/evidence/approval/audit/checkpoints)
+       -> independent Copilot Worker -> existing governed Graph and Tools
        -> Artifact volume (report content)
        -> Approved AP policy bundle + immutable published snapshot (read-only mounts)
        -> Enterprise RAG Engine (approved HTTP contract)
@@ -45,6 +46,10 @@ Start from `.env.example`, but do not put production secrets in a committed `.en
 | `IDENTITY_SIGNING_SECRET` | Trusted-gateway assertion verification | Secret injection, at least 32 bytes |
 | `PERSISTENCE_DATABASE_URL` | Copilot-owned state | Explicit PostgreSQL URL |
 | `PERSISTENCE_AUTO_CREATE_SCHEMA` | Test/dev schema helper | `false` |
+| `QUEUE_PROVIDER` | Queue v1 adapter | `postgresql` only |
+| `WORKER_CONCURRENCY` | Per-process active execution slots | Finite reviewed value |
+| `EXECUTION_HEARTBEAT_INTERVAL_SECONDS` | Lease renewal interval | Less than one third of TTL |
+| `EXECUTION_LEASE_TTL_SECONDS` | DB-time takeover boundary | At least three heartbeats |
 | `DATABASE_URL` | Read-only enterprise business DB | Approved non-SQLite source |
 | `DATABASE_PROVIDER` | Business DB adapter | `sqlalchemy` |
 | `KNOWLEDGE_PROVIDER` | Knowledge adapter | `http` |
@@ -148,13 +153,11 @@ an approved image or separately governed image packaging. Do not improvise that 
 the Copilot repository or copy RAG source into this image.
 
 The topology contains `postgres`, `enterprise-rag-engine`, one-shot `migrate` and `rag-health`
-services, `copilot-api`, and `frontend`. Compose waits for PostgreSQL health, a successful
+services, `copilot-api`, `copilot-worker`, and `frontend`. API and Worker use the same image and
+Artifact volume but separate entry points. Compose waits for PostgreSQL health, a successful
 migration, a successful real Knowledge-client RAG probe, and API readiness before starting the
 frontend. The sidecar probe avoids
 assuming that Python, curl, or wget exists inside the independent RAG image. `RAG_BASE_URL` uses
-the Compose DNS name `http://enterprise-rag-engine:8000`; `localhost` inside the API container
-would address the API container itself.
-
 For an externally managed RAG, run the API outside this Compose topology with its approved URL, or
 use a deployment-specific override that removes the RAG service and supplies a routable endpoint.
 Do not copy the RAG code into this repository.
@@ -173,8 +176,8 @@ alembic current
 python -m copilot.persistence.migrate
 ```
 
-For a fresh PostgreSQL database, `alembic current` must report `20260808_0002 (head)` before the API
-starts. Grant the runtime API role only the data privileges it needs; a separate deployment role
+For a fresh PostgreSQL database, `alembic current` must report `20260826_0006 (head)` before the API
+or Worker starts. Grant the runtime role only the data privileges it needs; a separate deployment role
 may own schema changes.
 
 ## RAG connectivity
@@ -200,10 +203,11 @@ image layer, command transcript, or committed file.
 7. Configure the upstream trusted gateway to replace spoofable inbound identity headers and sign
    the normalized identity assertion; route the browser origin to the frontend and preserve the
    signed assertion on `/api` requests.
-8. Start `copilot.bootstrap.api:app` using the same composition root as local execution.
-9. Start the frontend only after API readiness succeeds.
-10. Check API `/health/live`, `/health/ready`, and frontend `/health` through the intended routes.
-11. Run authenticated Supplier Quality and AP browser smoke requests with approved test data.
+8. Start `copilot.bootstrap.api:app`; it accepts and queries Tasks but does not host the Graph.
+9. Start at least one `python -m copilot.worker` process and require its dependency health probe.
+10. Start the frontend only after API readiness succeeds.
+11. Check API `/health/live`, `/health/ready`, Worker health, and frontend `/health`.
+12. Run authenticated Supplier Quality and AP browser smoke requests with approved test data.
 
 Do not have every API worker race to apply migrations.
 
@@ -217,6 +221,11 @@ Do not have every API worker race to apply migrations.
 
 Health output contains component states and safe error categories, never secrets or raw connection
 strings.
+
+The Worker health command is `python -m copilot.worker.health`. It verifies persistence, Queue,
+checkpoints, Artifact storage, and configured business dependencies. Stop/restart/drain and safe
+inspection procedures are in
+[`async-runtime-operations.md`](async-runtime-operations.md).
 
 ## Volumes
 
@@ -284,10 +293,13 @@ recovery-point objective, encryption/access review, or Artifact/policy/RAG check
   not itself an IdP or workforce lifecycle system.
 - Artifact content uses one filesystem/volume rather than object storage.
 - Audit is durable but not cryptographically tamper-proof.
-- No distributed task queue or guaranteed forced cancellation of an in-flight external call.
-- The future async runtime architecture is frozen in `docs/async-runtime-architecture.md`, but its
-  outbox migration, Queue adapter, Worker, heartbeat/fencing implementation, recovery scanner,
-  backpressure, and failure/soak evidence are not deployed by this guide.
+- PostgreSQL Queue v1 is at-least-once and shares the persistence outage domain; it is not an
+  external broker or an exactly-once guarantee.
+- Forced interruption of an in-flight external call is not guaranteed; late commits are fenced.
+- Deterministic Queue/crash/recovery tests are present, but environment-specific load/soak,
+  restore, alerting, HA/DR, and formal production approvals remain deployment gates.
+- The committed Compose Artifact volume is single-host. Multi-host Workers require a reviewed
+  shared/object store and corresponding consistency/recovery evidence.
 - No automatic cross-resource transaction for PostgreSQL, RAG, business DB, and Artifact storage.
 - Retention and legal-hold periods remain deployment-owned; the application does not yet perform
   an automatic coordinated purge across Task, Evidence, Audit, checkpoints, Artifacts, policy and

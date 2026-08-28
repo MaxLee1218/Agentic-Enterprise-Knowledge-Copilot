@@ -25,7 +25,7 @@ test("live Accounts Payable browser workflow reaches governed Artifact download"
       "Analyze all Accounts Payable exceptions from 2026-04-01 to 2026-06-30 " +
         "for LE-CN-01 and LE-US-01 and generate a JSON report.",
     );
-  await page.getByRole("button", { name: "Run task" }).click();
+  await page.getByRole("button", { name: "Submit task" }).click();
 
   await expect(
     page.getByText("Verification passed and the final result was committed."),

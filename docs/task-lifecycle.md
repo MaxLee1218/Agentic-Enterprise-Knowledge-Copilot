@@ -75,15 +75,16 @@ Contract before planning; planning commits the Plan before deterministic validat
 business tool call. Existing checkpoint records with pre-populated Contract/Plan remain readable,
 and internal prepared execution remains available for deterministic compatibility tests.
 
-## Stage 13 query and cancellation semantics
+## Task query and cancellation semantics
 
 The external task-management API reads the authoritative task, plan, StepResult, Evidence, and
 Artifact repositories through `NaturalLanguageTaskService` and `ArtifactService`. It never returns
 Checkpoint payloads or a serialized `TaskState`.
 
-`POST /v1/tasks` remains request-synchronous: ordinary terminal results return `201 Created`.
-When the Graph has durably checkpointed a `WAITING_APPROVAL` interruption, the existing API returns
-`202 Accepted` with the pending approval ID; this does not represent background queue execution.
+`POST /v1/tasks` is acceptance-only. It atomically commits Task, runtime, idempotency, and initial
+`PENDING` dispatch state, then returns `202 Accepted` with `task_id`, business `task_status`,
+separate `runtime_status`, and `status_url`. It never invokes the Graph, Tools, verifier, or
+Artifact renderer in the HTTP request thread. Clients poll `GET /v1/tasks/{task_id}`.
 
 Cancellation is the frozen `CANCEL_REQUESTED` domain event. It is valid from `CREATED`,
 `UNDERSTANDING`, `PLANNING`, `WAITING_APPROVAL`, `EXECUTING`, `RETRYING`, `REPLANNING`, and
@@ -94,14 +95,11 @@ the cancellation audit/result records. Repeating cancellation on `CANCELLED` is 
 an already-running non-interruptible external call may finish, but its late result cannot move the
 terminal task or authorize downstream steps.
 
-## Frozen future asynchronous hosting contract
+## Asynchronous hosting contract
 
-The current synchronous behavior above remains active. The future async migration is frozen but
-not implemented: after Stages B through E in
-[`async-runtime-architecture.md`](async-runtime-architecture.md), `POST /v1/tasks` will always
-return `202 Accepted` immediately after a Task and initial dispatch commit atomically. It will not
-run understanding, planning, LangGraph, tools, verification, or Artifact generation in the HTTP
-request thread.
+Stages B through H in [`async-runtime-architecture.md`](async-runtime-architecture.md) are now
+implemented using the PostgreSQL Queue v1 selected by ADR-017. The business state machine remains
+unchanged; runtime state describes only hosting and recovery.
 
 The business state machine in this document remains unchanged. A separate runtime projection is
 used only for execution hosting:
@@ -119,11 +117,14 @@ reconciles the tenant/task checkpoint, and acquires the atomic lease before ente
 workflow. A monotonic fencing token is checked on authoritative commits. Duplicate/stale delivery
 therefore becomes an acknowledged no-op rather than a second Task execution.
 
-Approval resolution persists one immutable decision and creates a new dispatch; it no longer
-executes the resumed Graph in the approval request thread after the async cutover. Reject, expiry,
-revoke, and cancellation create no executable resume dispatch. Durable cancellation remains the
-Task DB source of truth, while cooperative signals only reduce observation latency.
+Approval resolution persists one immutable decision and, for an approved request, atomically
+creates a new dispatch at `execution_generation + 1`; it returns `202` without executing the Graph.
+Reject, expiry, revoke, and cancellation create no executable resume dispatch. A
+`WAITING_APPROVAL` Task is `SUSPENDED`, has no execution lease, and consumes no Worker slot.
+Durable cancellation remains the Task DB source of truth, while process-local cooperative signals
+only reduce observation latency. Late Tool results cannot commit through a deleted/stale lease.
 
-See ADR-012 through ADR-016 for the accepted submission, dispatch, lease, recovery, and retry
-decisions. This section does not claim that a Queue, Worker, heartbeat, scanner, or async API is
-currently deployed.
+See ADR-012 through ADR-017 for submission, dispatch, lease, recovery, retry, and provider
+decisions. The deployed environment still must run Alembic, PostgreSQL checkpoints, at least one
+independent Worker, and shared Artifact storage appropriate to its topology; source availability
+alone is not a production-readiness claim.

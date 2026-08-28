@@ -103,7 +103,7 @@ def classify_path(path: Path, source_root: Path = SOURCE_ROOT) -> Layer:
         return Layer.INFRASTRUCTURE
     if first in {"api", "cli"}:
         return Layer.INTERFACES
-    if first == "bootstrap":
+    if first in {"bootstrap", "worker"}:
         return Layer.BOOTSTRAP
     return Layer.SHARED
 
@@ -128,7 +128,7 @@ def classify_module(module: str) -> Layer | None:
         return Layer.INFRASTRUCTURE
     if first in {"api", "cli"}:
         return Layer.INTERFACES
-    if first == "bootstrap":
+    if first in {"bootstrap", "worker"}:
         return Layer.BOOTSTRAP
     return Layer.SHARED
 

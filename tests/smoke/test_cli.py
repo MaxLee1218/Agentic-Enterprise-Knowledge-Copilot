@@ -24,6 +24,7 @@ def test_run_task_help() -> None:
     assert result.returncode == 0
     assert "--task" in result.stdout
     assert "--dry-run" in result.stdout
+    assert "--wait" in result.stdout
 
 
 def test_run_task_help_keeps_option_names_machine_readable_in_ci() -> None:
@@ -65,7 +66,11 @@ def test_stage13_management_cli_help_and_missing_task(tmp_path: Path) -> None:
             "CHECKPOINT_DATABASE_PATH": str(tmp_path / "workflow.db"),
         }
     )
-    for script in ("scripts/inspect_task.py", "scripts/smoke_agent.py"):
+    for script in (
+        "scripts/inspect_task.py",
+        "scripts/inspect_runtime.py",
+        "scripts/smoke_agent.py",
+    ):
         help_result = subprocess.run(
             [sys.executable, script, "--help"],
             cwd=project_root,
@@ -107,8 +112,8 @@ def test_stage13_smoke_agent_is_offline_and_successful() -> None:
     assert "Artifact ID:" in result.stdout
 
 
-def test_run_task_business_failure_uses_stderr_and_exit_one(tmp_path: Path) -> None:
-    """A deterministic business failure keeps status output separate from safe errors."""
+def test_run_task_accepts_without_executing_business_work_inline(tmp_path: Path) -> None:
+    """CLI submission returns durable acceptance before any business outcome exists."""
     project_root = Path(__file__).resolve().parents[2]
     environment = os.environ.copy()
     environment.update(
@@ -116,6 +121,7 @@ def test_run_task_business_failure_uses_stderr_and_exit_one(tmp_path: Path) -> N
             "APP_ENV": "test",
             "PYTHONPATH": str(project_root / "src"),
             "DATABASE_URL": "sqlite:///unused-failure.db",
+            "PERSISTENCE_DATABASE_URL": "sqlite:///" + str(tmp_path / "runtime-failure.db"),
             "ARTIFACT_DIR": str(tmp_path / "artifacts"),
             "CHECKPOINT_DATABASE_PATH": str(tmp_path / "workflow.db"),
             "LLM_PROVIDER": "mock",
@@ -134,9 +140,10 @@ def test_run_task_business_failure_uses_stderr_and_exit_one(tmp_path: Path) -> N
         text=True,
         check=False,
     )
-    assert result.returncode == 1
-    assert "Task status: FAILED" in result.stdout
-    assert "TASK_INFORMATION_MISSING" in result.stderr
+    assert result.returncode == 0, result.stderr
+    assert "Task status: CREATED" in result.stdout
+    assert "Runtime status: READY" in result.stdout
+    assert "TASK_INFORMATION_MISSING" not in result.stderr
 
 
 def test_cli_execution_requires_explicit_demo_identity(tmp_path: Path) -> None:
@@ -170,8 +177,8 @@ def test_cli_execution_requires_explicit_demo_identity(tmp_path: Path) -> None:
     assert "CLI execution requires --demo" in result.stderr
 
 
-def test_run_supplier_quality_workflow_offline(tmp_path: Path) -> None:
-    """The composed CLI should create a verified report without external services."""
+def test_run_supplier_quality_cli_submits_and_can_be_inspected(tmp_path: Path) -> None:
+    """The composed CLI durably submits and exposes state without inline Graph execution."""
     project_root = Path(__file__).resolve().parents[2]
     artifact_dir = tmp_path / "artifacts"
     environment = os.environ.copy()
@@ -180,6 +187,7 @@ def test_run_supplier_quality_workflow_offline(tmp_path: Path) -> None:
             "APP_ENV": "test",
             "PYTHONPATH": str(project_root / "src"),
             "DATABASE_URL": "sqlite:///unused-smoke.db",
+            "PERSISTENCE_DATABASE_URL": "sqlite:///" + str(tmp_path / "runtime.db"),
             "ARTIFACT_DIR": str(artifact_dir),
             "CHECKPOINT_DATABASE_PATH": str(tmp_path / "workflow.db"),
             "LLM_PROVIDER": "mock",
@@ -202,13 +210,11 @@ def test_run_supplier_quality_workflow_offline(tmp_path: Path) -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert "Task status: COMPLETED" in result.stdout
-    assert "Artifact ID:" in result.stdout
-    assert "Artifact filename:" in result.stdout
+    assert "Task status: CREATED" in result.stdout
+    assert "Runtime status: READY" in result.stdout
     assert "Artifact path:" not in result.stdout
     generated = tuple(artifact_dir.glob("*.json"))
-    assert len(generated) == 1
-    assert generated[0].read_text(encoding="utf-8").strip()
+    assert generated == ()
     task_id_line = next(line for line in result.stdout.splitlines() if line.startswith("Task ID:"))
     task_id = task_id_line.partition(":")[2].strip()
     inspected = subprocess.run(
@@ -221,4 +227,17 @@ def test_run_supplier_quality_workflow_offline(tmp_path: Path) -> None:
     )
     assert inspected.returncode == 0, inspected.stderr
     assert f'"task_id": "{task_id}"' in inspected.stdout
-    assert '"status": "COMPLETED"' in inspected.stdout
+    assert '"status": "CREATED"' in inspected.stdout
+    assert '"runtime_status": "READY"' in inspected.stdout
+    runtime = subprocess.run(
+        [sys.executable, "scripts/inspect_runtime.py", task_id],
+        cwd=project_root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert runtime.returncode == 0, runtime.stderr
+    assert '"task_status": "CREATED"' in runtime.stdout
+    assert '"runtime_status": "READY"' in runtime.stdout
+    assert '"status": "PENDING"' in runtime.stdout

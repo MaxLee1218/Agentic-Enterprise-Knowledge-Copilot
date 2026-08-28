@@ -45,6 +45,7 @@ from copilot.contracts import (
     TaskStatus,
     TaskType,
 )
+from copilot.contracts.async_runtime import CheckpointIdentity
 from copilot.services.observability import (
     EventName,
     NoopObservability,
@@ -340,9 +341,153 @@ class LangGraphWorkflowEngine:
         finally:
             self._repository.release_execution(task_id, owner_id, tenant_id=tenant_id)
 
+    def execute_dispatched(
+        self,
+        request: TaskRequest,
+        intake_context: TrustedTaskContext,
+        *,
+        execution_generation: int,
+    ) -> WorkflowExecution:
+        """Execute an already-persisted initial Task under a Worker-owned lease."""
+        initial = self._repository.state_for(
+            intake_context.task_id,
+            tenant_id=intake_context.tenant_id,
+        )
+        if initial.state is not TaskStatus.CREATED:
+            raise WorkflowRecoveryError("initial dispatch no longer points at a CREATED Task")
+        state = initial_graph_state(
+            request=request,
+            intake_context=intake_context,
+            domain_state=initial,
+            started_at=self._clock(),
+            execution_generation=execution_generation,
+        )
+        self._runtime.record_submission(state)
+        output = self._invoke_graph(
+            state,
+            self._config(intake_context.task_id, intake_context.tenant_id),
+            intake_context=intake_context,
+            resumed=False,
+        )
+        return self._execution(output)
+
+    def resume_dispatched(
+        self,
+        task_id: str,
+        tenant_id: str,
+        *,
+        execution_generation: int,
+    ) -> WorkflowExecution:
+        """Resume a current-generation checkpoint under a Worker-owned lease."""
+        config = self._config(task_id, tenant_id)
+        snapshot = self._graph.get_state(config)
+        if not snapshot.values:
+            raise WorkflowRecoveryError("workflow checkpoint was not found")
+        current = cast(AgentGraphState, snapshot.values)
+        if current["task_id"] != task_id or current["intake_context"].tenant_id != tenant_id:
+            raise WorkflowRecoveryError("workflow checkpoint scope does not match the Task")
+        if current.get("execution_generation", 1) != execution_generation:
+            raise WorkflowRecoveryError("workflow checkpoint execution generation is stale")
+        if current["domain_state"] != self._repository.state_for(task_id, tenant_id=tenant_id):
+            raise WorkflowRecoveryError(
+                "workflow checkpoint does not match authoritative domain state"
+            )
+        if current["task_result"] is not None:
+            raise WorkflowRecoveryError("terminal task cannot be resumed")
+        self._graph.update_state(config, {"resume_count": current["resume_count"] + 1})
+        output = self._invoke_graph(
+            None,
+            config,
+            intake_context=current["intake_context"],
+            resumed=True,
+        )
+        return self._execution(output)
+
+    def resume_approval_dispatched(
+        self,
+        approval: ApprovalRequest,
+        tenant_id: str,
+        *,
+        execution_generation: int,
+    ) -> WorkflowExecution:
+        """Apply a durable approved decision and resume outside the API process."""
+        config = self._config(approval.task_id, tenant_id)
+        snapshot = self._graph.get_state(config)
+        if not snapshot.values:
+            raise WorkflowRecoveryError("workflow checkpoint was not found")
+        current = cast(AgentGraphState, snapshot.values)
+        if (
+            current["task_id"] != approval.task_id
+            or current["intake_context"].tenant_id != tenant_id
+            or current["approval_id"] != approval.approval_id
+            or current["approval_step_id"] != approval.step_id
+            or current["plan"].planning_version != approval.planning_version
+        ):
+            raise WorkflowRecoveryError("approval does not match the workflow checkpoint")
+        if current["domain_state"].state is not TaskStatus.WAITING_APPROVAL:
+            raise WorkflowRecoveryError("checkpoint is not waiting for approval")
+        if current.get("execution_generation", 1) != execution_generation - 1:
+            raise WorkflowRecoveryError("approval checkpoint is not the immediate predecessor")
+        if any(call.step_id == approval.step_id for call in current["tool_calls"]):
+            raise WorkflowRecoveryError("approval target tool has already been called")
+        authoritative = self._repository.state_for(approval.task_id, tenant_id=tenant_id)
+        if authoritative.state is not TaskStatus.EXECUTING:
+            raise WorkflowRecoveryError("resolved approval Task is not executable")
+        if approval.status is not ApprovalStatus.APPROVED:
+            raise WorkflowRecoveryError("only an approved decision may be dispatched")
+        self._graph.update_state(
+            config,
+            {
+                "domain_state": authoritative,
+                "route": "allowed",
+                "route_reason": "Approval resolved; execute the bound step",
+                "last_arguments": approval.resolved_arguments,
+                "resume_count": current["resume_count"] + 1,
+                "execution_generation": execution_generation,
+            },
+            as_node="policy_check",
+        )
+        output = self._invoke_graph(
+            None,
+            config,
+            intake_context=current["intake_context"],
+            resumed=True,
+        )
+        return self._execution(output)
+
+    def checkpoint_identity(self, task_id: str, tenant_id: str) -> CheckpointIdentity | None:
+        """Return minimized tenant-qualified checkpoint facts for reconciliation."""
+        snapshot = self._graph.get_state(self._config(task_id, tenant_id))
+        if not snapshot.values:
+            return None
+        current = cast(AgentGraphState, snapshot.values)
+        configurable = snapshot.config.get("configurable", {})
+        checkpoint_id = configurable.get("checkpoint_id")
+        if not isinstance(checkpoint_id, str) or not checkpoint_id:
+            raise WorkflowRecoveryError("workflow checkpoint identity is missing")
+        plan = current.get("plan")
+        return CheckpointIdentity(
+            tenant_id=tenant_id,
+            task_id=task_id,
+            checkpoint_id=checkpoint_id,
+            thread_id=f"{tenant_id}:{task_id}",
+            task_version=current["domain_state"].version,
+            plan_version=plan.planning_version if plan is not None else None,
+            execution_generation=current.get("execution_generation", 1),
+            current_step_id=current.get("current_step_id"),
+            successful_step_ids=tuple(
+                result.step_id
+                for result in current["step_results"]
+                if result.status.value == "SUCCESS"
+            ),
+        )
+
     def approval_state(self, task_id: str, tenant_id: str) -> dict[str, object]:
         """Return the minimized checkpoint facts needed to validate one decision."""
         state = self.get_state(task_id, tenant_id)
+        identity = self.checkpoint_identity(task_id, tenant_id)
+        if identity is None:
+            raise ValueError("workflow checkpoint was not found")
         step_id = state["approval_step_id"]
         return {
             "task_status": state["domain_state"].state.value,
@@ -352,6 +497,8 @@ class LangGraphWorkflowEngine:
             "step_id": step_id,
             "planning_version": state["plan"].planning_version,
             "target_executed": any(call.step_id == step_id for call in state["tool_calls"]),
+            "checkpoint_id": identity.checkpoint_id,
+            "execution_generation": identity.execution_generation,
         }
 
     def resume_approval(

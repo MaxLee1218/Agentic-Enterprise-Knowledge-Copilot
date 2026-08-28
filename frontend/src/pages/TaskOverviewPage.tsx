@@ -5,6 +5,7 @@ import { EmptyState, ErrorPanel, LoadingState } from "../components/PageState";
 import { StatusBadge } from "../components/StatusBadge";
 import { useSteps } from "../features/tasks/queries";
 import { formatDate, formatDuration } from "../utils/format";
+import { runtimeLabel } from "../utils/status";
 import type { TaskOutletContext } from "./TaskLayout";
 
 export function TaskOverviewPage() {
@@ -30,14 +31,22 @@ export function TaskOverviewPage() {
             "Execution was cancelled and cannot leave the terminal state."}
           {task.status === "WAITING_APPROVAL" &&
             "A controlled action is frozen until an authorized human decision."}
+          {task.status === "CREATED" &&
+            task.runtime_status === "READY" &&
+            "The task is durably queued and will be claimed by an available Worker."}
           {!(
             ["COMPLETED", "FAILED", "CANCELLED", "WAITING_APPROVAL"] as string[]
           ).includes(task.status) &&
+            !(task.status === "CREATED" && task.runtime_status === "READY") &&
             "The Agent is progressing through the authoritative governed lifecycle."}
         </p>
         <MetadataList
           items={[
             { label: "Task type", value: task.task_type ?? "Not classified" },
+            {
+              label: "Runtime",
+              value: runtimeLabel(task.status, task.runtime_status),
+            },
             { label: "Steps", value: String(task.step_count) },
             { label: "Evidence", value: String(task.evidence_count) },
             { label: "Artifacts", value: String(task.artifact_count) },

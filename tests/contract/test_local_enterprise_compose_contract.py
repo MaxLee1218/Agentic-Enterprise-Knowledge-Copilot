@@ -49,6 +49,7 @@ def test_local_enterprise_topology_has_only_one_browser_facing_port() -> None:
     assert {
         "frontend",
         "copilot-api",
+        "copilot-worker",
         "copilot-migrate",
         "copilot-postgres",
         "business-postgres",
@@ -114,6 +115,29 @@ def test_local_enterprise_uses_separate_state_volumes_and_compose_dns() -> None:
     assert api_policy_mount["read_only"] is True
     assert api_environment["AP_POLICY_REQUIRE_PUBLISHED_SNAPSHOT"] == "true"
     assert api_environment["DEMO_IDENTITY_PROFILE"] == "local_enterprise"
+
+
+def test_worker_is_a_separate_process_with_shared_authoritative_state() -> None:
+    payload = _render_compose()
+    services = payload["services"]
+    api = services["copilot-api"]
+    worker = services["copilot-worker"]
+    assert worker["command"] == ["python", "-m", "copilot.worker"]
+    assert (
+        worker["environment"]["PERSISTENCE_DATABASE_URL"]
+        == api["environment"]["PERSISTENCE_DATABASE_URL"]
+    )
+    assert worker["environment"]["CHECKPOINT_ENABLED"] == "true"
+    assert worker["depends_on"]["copilot-migrate"]["condition"] == (
+        "service_completed_successfully"
+    )
+    worker_mounts = {mount["target"]: mount for mount in worker["volumes"]}
+    api_mounts = {mount["target"]: mount for mount in api["volumes"]}
+    assert (
+        worker_mounts["/app/data/artifacts"]["source"]
+        == api_mounts["/app/data/artifacts"]["source"]
+    )
+    assert worker.get("ports") is None
 
 
 def test_formal_rag_is_the_default_with_read_only_documents_and_isolated_data() -> None:

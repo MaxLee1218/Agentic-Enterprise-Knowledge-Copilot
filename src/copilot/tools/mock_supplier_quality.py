@@ -36,6 +36,7 @@ from copilot.tools.exceptions import (
     ToolTimeoutError,
 )
 from copilot.tools.reporting.exceptions import SensitiveOutputBlockedError
+from copilot.tools.reporting.idempotency import artifact_id_for_idempotency_key
 
 
 class MockFailureKind(StrEnum):
@@ -771,7 +772,27 @@ class MockReportTool(_MockToolBase):
             if isinstance(numeric, dict):
                 numeric["value"] = 0.5
         content = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8")
-        artifact_id = self._ids.new_id("A")
+        artifact_id = artifact_id_for_idempotency_key(context.call.idempotency_key)
+        try:
+            existing = self._artifact_store.get(artifact_id, tenant_id=context.tenant_id)
+        except (KeyError, LookupError):
+            existing = None
+        if existing is not None:
+            citation_map = {item.evidence_id: item.source_type.value for item in evidence}
+            return ToolExecutionOutput(
+                output=_json_object(
+                    {
+                        "artifact_id": existing.artifact_id,
+                        "type": existing.type.value,
+                        "location": existing.location,
+                        "created_at": existing.created_at.isoformat(),
+                        "checksum": existing.checksum,
+                        "size_bytes": existing.size_bytes,
+                        "citation_map": citation_map,
+                        "generator_version": existing.generator_version,
+                    }
+                )
+            )
         safe_task = _safe_filename_component(task_id)
         safe_artifact = _safe_filename_component(artifact_id)
         try:

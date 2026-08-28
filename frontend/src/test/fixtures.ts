@@ -11,6 +11,7 @@ export const task: Task = {
   task_id: "T-TEST-001",
   trace_id: "TRACE-TEST-001",
   status: "COMPLETED",
+  runtime_status: "FINISHED",
   task_type: "supplier_quality_analysis.v1",
   created_at: "2026-08-13T08:00:00Z",
   started_at: "2026-08-13T08:00:01Z",
@@ -29,6 +30,7 @@ export const task: Task = {
 export const waitingTask: Task = {
   ...task,
   status: "WAITING_APPROVAL",
+  runtime_status: "SUSPENDED",
   completed_at: null,
   current_step: "S-DB-01",
   pending_approval_id: "AP-TEST-001",
@@ -48,16 +50,11 @@ export const accountsPayableTask: Task = {
 export const createdTask: TaskCreateResponse = {
   task_id: task.task_id,
   trace_id: task.trace_id,
-  status: "COMPLETED",
-  created_at: task.created_at,
-  started_at: task.started_at,
-  completed_at: task.completed_at,
-  summary: task.task_summary,
-  artifacts: [],
-  errors: [],
-  missing_information: [],
-  clarification_questions: [],
-  pending_approval_id: null,
+  task_status: "CREATED",
+  runtime_status: "READY",
+  accepted_at: task.created_at,
+  status_url: `/v1/tasks/${task.task_id}`,
+  artifacts_url: `/v1/tasks/${task.task_id}/artifacts`,
 };
 
 export const steps: Step[] = [

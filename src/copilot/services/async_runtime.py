@@ -19,6 +19,8 @@ from copilot.contracts.async_runtime import (
     LeaseTimingPolicy,
     QueueDelivery,
     RecoveryDecision,
+    RuntimeAttempt,
+    RuntimeAttemptStatus,
     SubmissionIdempotency,
     TaskDispatch,
     TaskRuntimeSnapshot,
@@ -56,6 +58,14 @@ class TaskQueue(Protocol):
         reason_code: str,
     ) -> None:
         """Release or delay transport delivery without deciding business retry semantics."""
+        ...
+
+    def health(self) -> bool:
+        """Return whether the durable Queue dependency is reachable."""
+        ...
+
+    def shutdown(self) -> None:
+        """Stop new Queue operations without disposing shared persistence."""
         ...
 
 
@@ -150,6 +160,45 @@ class RuntimeRepository(Protocol):
         ...
 
 
+class WorkerRuntimeRepository(LeaseRepository, RuntimeRepository, DispatchRepository, Protocol):
+    """Complete authoritative runtime port consumed by one Worker execution host."""
+
+    def start_runtime_attempt(self, lease: ExecutionLease) -> RuntimeAttempt: ...
+
+    def finish_runtime_attempt(
+        self,
+        attempt: RuntimeAttempt,
+        *,
+        status: RuntimeAttemptStatus,
+        error_code: str | None = None,
+    ) -> RuntimeAttempt: ...
+
+    def acknowledge_dispatch(self, dispatch: TaskDispatch) -> DispatchRecord: ...
+
+    def supersede_dispatch(
+        self,
+        dispatch: TaskDispatch,
+        *,
+        reason_code: str,
+    ) -> DispatchRecord: ...
+
+    def schedule_runtime_retry(
+        self,
+        lease: ExecutionLease,
+        *,
+        retry_at: datetime,
+        error_code: str,
+    ) -> int: ...
+
+    def observe_cancellation(
+        self,
+        task_id: str,
+        *,
+        tenant_id: str,
+        worker_id: str,
+    ) -> CancellationState | None: ...
+
+
 class RecoveryRepository(Protocol):
     """Bounded candidate scan port; scanner policy stays in the application layer."""
 
@@ -170,4 +219,5 @@ __all__ = [
     "RuntimeRepository",
     "TaskQueue",
     "TaskSubmissionRepository",
+    "WorkerRuntimeRepository",
 ]

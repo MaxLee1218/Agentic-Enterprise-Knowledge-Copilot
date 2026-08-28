@@ -1,5 +1,9 @@
 # Frontend and HTTP Contract Audit
 
+> Historical pre-Stage-19 audit. Its synchronous-submission observations are the migration
+> baseline; the current console accepts `202`, navigates immediately, and polls the authoritative
+> Task/runtime projection.
+
 **Audit date:** 2026-08-13  
 **Scope:** existing browser UI, FastAPI/OpenAPI, identity and tenant boundaries, deployment,
 tests, and the frozen Supplier Quality Analysis v1.1 design.

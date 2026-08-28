@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from datetime import datetime
-from threading import RLock
 from typing import cast
 
 from pydantic import JsonValue, ValidationError
@@ -60,6 +59,7 @@ from copilot.tools.reporting.exceptions import (
     ReportSizeLimitError,
     SensitiveOutputBlockedError,
 )
+from copilot.tools.reporting.idempotency import artifact_id_for_idempotency_key
 from copilot.tools.reporting.schemas import ReportFormat
 
 LOGGER = logging.getLogger(__name__)
@@ -122,8 +122,6 @@ class AccountsPayableReportTool:
         self._validator = validator or AccountsPayableReportValidator()
         self._renderers = renderers or APRendererRegistry()
         self._output_guard = output_guard or OutputGuard()
-        self._idempotent_artifacts: dict[str, str] = {}
-        self._lock = RLock()
         self.call_count = 0
         self.received_evidence_ids: list[tuple[str, ...]] = []
 
@@ -141,20 +139,18 @@ class AccountsPayableReportTool:
             raise ReportInputDeniedError("AP detail report requires finance:ap.detail scope")
         self.received_evidence_ids.append(request.evidence_refs)
 
-        with self._lock:
-            cached_id = self._idempotent_artifacts.get(context.call.idempotency_key)
-        if cached_id is not None:
-            try:
-                cached = self._artifact_store.get(cached_id, tenant_id=context.tenant_id)
-            except (KeyError, LookupError):
-                cached = None
-            if cached is not None:
-                evidence = self._composer.load_evidence(
-                    request,
-                    task_id=context.call.task_id,
-                    tenant_id=context.tenant_id,
-                )
-                return ToolExecutionOutput(output=self._tool_output(cached, evidence))
+        artifact_id = artifact_id_for_idempotency_key(context.call.idempotency_key)
+        try:
+            cached = self._artifact_store.get(artifact_id, tenant_id=context.tenant_id)
+        except (KeyError, LookupError):
+            cached = None
+        if cached is not None:
+            evidence = self._composer.load_evidence(
+                request,
+                task_id=context.call.task_id,
+                tenant_id=context.tenant_id,
+            )
+            return ToolExecutionOutput(output=self._tool_output(cached, evidence))
 
         evidence = self._composer.load_evidence(
             request,
@@ -206,7 +202,6 @@ class AccountsPayableReportTool:
         if guarded_bytes.disposition is OutputDisposition.BLOCKED:
             raise SensitiveOutputBlockedError()
 
-        artifact_id = self._ids.new_id("A")
         filename = self._filename(request, artifact_id, rendered.extension)
         artifact_type = (
             ArtifactType.ACCOUNTS_PAYABLE_REPORT_PDF
@@ -250,8 +245,6 @@ class AccountsPayableReportTool:
             if isinstance(validation_error, ReportConsistencyError):
                 raise
             raise ReportPersistenceError() from validation_error
-        with self._lock:
-            self._idempotent_artifacts[context.call.idempotency_key] = artifact.artifact_id
         LOGGER.info(
             "Accounts Payable report Artifact committed",
             extra={

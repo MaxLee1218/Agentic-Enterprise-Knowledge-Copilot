@@ -25,6 +25,7 @@ class TaskSummaryView:
     evidence_count: int
     artifact_count: int
     error_summary: str | None
+    runtime_status: str = "READY"
 
 
 @dataclass(frozen=True, slots=True)

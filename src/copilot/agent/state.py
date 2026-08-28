@@ -214,6 +214,7 @@ class AgentGraphState(TypedDict):
 
     task_id: str
     trace_id: str
+    execution_generation: int
     intake_context: TrustedTaskContext
     request: TaskRequest
     contract: TaskContract
@@ -255,6 +256,7 @@ def initial_graph_state(
     intake_context: TrustedTaskContext | None = None,
     contract: TaskContract | None = None,
     plan: TaskPlan | None = None,
+    execution_generation: int = 1,
 ) -> AgentGraphState:
     """Create a complete, stable checkpoint input without duplicating large source payloads."""
     if intake_context is None:
@@ -318,6 +320,7 @@ def initial_graph_state(
     return AgentGraphState(
         task_id=intake_context.task_id,
         trace_id=intake_context.trace_id,
+        execution_generation=execution_generation,
         intake_context=intake_context,
         request=request,
         contract=cast(TaskContract, contract),

@@ -31,6 +31,7 @@ from copilot.services.task_intake import (
     RequestSource,
     TrustedCallerContext,
 )
+from tests.async_runtime_helpers import execute_accepted_task
 from tests.workflow_helpers import build_test_container, fixed_clock
 
 TASK_TEXT = "Analyze supplier quality in Q2 2026 and generate a JSON report."
@@ -349,6 +350,7 @@ def test_expired_approval_cancels_without_executing_target(tmp_path: Path) -> No
 def test_approval_api_validates_actions_and_resumes_the_graph(tmp_path: Path) -> None:
     settings = Settings(
         database_url="sqlite:///unused-approval-api.db",
+        persistence_database_url=f"sqlite:///{tmp_path / 'api' / 'runtime.db'}",
         artifact_dir=tmp_path / "api" / "artifacts",
         checkpoint_database_path=tmp_path / "api" / "checkpoints.db",
         demo_approval_roles=("quality_data_approver",),
@@ -363,6 +365,7 @@ def test_approval_api_validates_actions_and_resumes_the_graph(tmp_path: Path) ->
     client = TestClient(
         create_app(
             task_service=container.task_service,
+            task_submission_service=container.task_submission_service,
             approval_service=container.approval_service,
             settings=settings,
             identity_provider=DemoIdentityProvider(settings),
@@ -376,7 +379,8 @@ def test_approval_api_validates_actions_and_resumes_the_graph(tmp_path: Path) ->
             )
             assert submitted.status_code == 202
             task_id = submitted.json()["task_id"]
-            approval_id = submitted.json()["pending_approval_id"]
+            assert execute_accepted_task(container, task_id, tenant_id=TENANT_ID) is not None
+            approval_id = client.get(f"/v1/tasks/{task_id}").json()["pending_approval_id"]
             approval_detail = client.get(f"/v1/tasks/{task_id}/approvals/{approval_id}")
             assert approval_detail.status_code == 200
             assert approval_detail.json()["editable_fields"] == ["row_limit"]
@@ -425,7 +429,7 @@ def test_approval_api_validates_actions_and_resumes_the_graph(tmp_path: Path) ->
                     "reason": "Reduce bounded result size",
                 },
             )
-            assert resolved.status_code == 200
+            assert resolved.status_code == 202
             assert resolved.json()["approval_status"] == "APPROVED"
             assert resolved.json()["resolution_action"] == "EDIT"
             assert resolved.json()["task_status"] == "COMPLETED"
@@ -447,9 +451,18 @@ def test_approval_api_validates_actions_and_resumes_the_graph(tmp_path: Path) ->
             )
             assert concurrent_task.status_code == 202
             concurrent_payload = concurrent_task.json()
+            assert (
+                execute_accepted_task(
+                    container,
+                    concurrent_payload["task_id"],
+                    tenant_id=TENANT_ID,
+                )
+                is not None
+            )
+            concurrent_detail = client.get(f"/v1/tasks/{concurrent_payload['task_id']}").json()
             concurrent_url = (
                 f"/v1/tasks/{concurrent_payload['task_id']}/approvals/"
-                f"{concurrent_payload['pending_approval_id']}"
+                f"{concurrent_detail['pending_approval_id']}"
             )
             barrier = Barrier(2)
 
@@ -460,7 +473,7 @@ def test_approval_api_validates_actions_and_resumes_the_graph(tmp_path: Path) ->
             with ThreadPoolExecutor(max_workers=2) as pool:
                 statuses = tuple(pool.map(lambda _index: approve_concurrently(), range(2)))
 
-            assert sorted(statuses) == [200, 409]
+            assert sorted(statuses) == [202, 409]
 
             rejected_task = client.post(
                 "/v1/tasks",
@@ -468,14 +481,23 @@ def test_approval_api_validates_actions_and_resumes_the_graph(tmp_path: Path) ->
             )
             assert rejected_task.status_code == 202
             rejected_payload = rejected_task.json()
+            assert (
+                execute_accepted_task(
+                    container,
+                    rejected_payload["task_id"],
+                    tenant_id=TENANT_ID,
+                )
+                is not None
+            )
+            rejected_detail = client.get(f"/v1/tasks/{rejected_payload['task_id']}").json()
             rejected = client.post(
                 (
                     f"/v1/tasks/{rejected_payload['task_id']}/approvals/"
-                    f"{rejected_payload['pending_approval_id']}"
+                    f"{rejected_detail['pending_approval_id']}"
                 ),
                 json={"action": "reject", "reason": "Insufficient evidence"},
             )
-            assert rejected.status_code == 200
+            assert rejected.status_code == 202
             assert rejected.json()["approval_status"] == "REJECTED"
             assert rejected.json()["task_status"] == "CANCELLED"
     finally:

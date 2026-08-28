@@ -9,6 +9,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
 from copilot.contracts import ArtifactType, EvidenceType, TaskStatus, TaskType
+from copilot.contracts.async_runtime import RuntimeStatus, TaskSubmissionResponse
 from copilot.services.task_intake import TaskOutputFormat
 
 
@@ -76,25 +77,6 @@ class TaskFailureResponse(BaseModel):
     recoverable: bool
 
 
-class TaskSubmissionResponse(BaseModel):
-    """Stable synchronous task-creation response."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    task_id: str
-    trace_id: str
-    status: TaskStatus
-    created_at: datetime
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-    summary: str
-    artifacts: tuple[TaskArtifactResponse, ...] = ()
-    errors: tuple[TaskFailureResponse, ...] = ()
-    missing_information: tuple[str, ...] = ()
-    clarification_questions: tuple[str, ...] = ()
-    pending_approval_id: str | None = None
-
-
 class TaskErrorResponse(BaseModel):
     """Uniform transport error returned before a workflow result exists."""
 
@@ -115,6 +97,7 @@ class TaskResponse(BaseModel):
     task_id: str
     trace_id: str
     status: TaskStatus
+    runtime_status: RuntimeStatus
     task_type: TaskType | None
     created_at: datetime
     started_at: datetime | None

@@ -6,10 +6,8 @@ from typing import Annotated
 import typer
 from pydantic import ValidationError
 
-from copilot.agent.graph import WorkflowInterrupted
 from copilot.config import ConfigurationError
-from copilot.contracts import TaskStatus
-from copilot.services.artifact_service import safe_artifact_filename
+from copilot.contracts.async_runtime import TaskSubmissionResponse
 from copilot.services.task_intake import (
     NaturalLanguageTaskCommand,
     RequestSource,
@@ -17,12 +15,16 @@ from copilot.services.task_intake import (
     TaskOutputFormat,
 )
 from copilot.services.task_service import TaskPermissionDeniedError, TaskServiceError
-from copilot.services.workflows.models import WorkflowExecution
+from copilot.services.task_views import TaskSummaryView
 
-WorkflowHandler = Callable[[NaturalLanguageTaskCommand], WorkflowExecution]
+SubmissionHandler = Callable[[NaturalLanguageTaskCommand, str | None], TaskSubmissionResponse]
+WaitHandler = Callable[[str, float], TaskSummaryView]
 
 
-def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
+def create_app(
+    handler: SubmissionHandler | None = None,
+    wait_handler: WaitHandler | None = None,
+) -> typer.Typer:
     """Create a CLI app with an injected application-service adapter."""
     cli = typer.Typer(
         add_completion=False,
@@ -75,6 +77,18 @@ def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
                 ),
             ),
         ] = False,
+        idempotency_key: Annotated[
+            str | None,
+            typer.Option("--idempotency-key", help="Tenant/caller-scoped submission key."),
+        ] = None,
+        wait: Annotated[
+            bool,
+            typer.Option("--wait", help="Poll durable Task state until terminal."),
+        ] = False,
+        wait_timeout: Annotated[
+            float,
+            typer.Option("--wait-timeout", min=0.1, help="Maximum polling time in seconds."),
+        ] = 300.0,
     ) -> None:
         """Submit one natural-language task to the governed workflow."""
         if task_text is not None and task_option is not None:
@@ -108,7 +122,7 @@ def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
             typer.echo("Workflow runtime is not composed at this entry point.", err=True)
             raise typer.Exit(code=2)
         try:
-            execution = handler(command)
+            accepted = handler(command, idempotency_key)
         except TaskIntakeValidationError as exc:
             typer.echo(f"{exc.code}: {exc}", err=True)
             raise typer.Exit(code=2) from exc
@@ -124,33 +138,27 @@ def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
         except (ConnectionError, TimeoutError) as exc:
             typer.echo(f"DEPENDENCY_UNAVAILABLE: {exc}", err=True)
             raise typer.Exit(code=4) from exc
-        except WorkflowInterrupted as interrupted:
-            typer.echo(f"Task ID: {interrupted.task_id}")
-            typer.echo(f"Trace ID: {interrupted.trace_id}")
-            typer.echo(f"Task status: {interrupted.status}")
-            typer.echo(f"Summary: {interrupted}")
+        typer.echo(f"Task ID: {accepted.task_id}")
+        typer.echo(f"Trace ID: {accepted.trace_id}")
+        typer.echo(f"Task status: {accepted.task_status.value}")
+        typer.echo(f"Runtime status: {accepted.runtime_status.value}")
+        typer.echo(f"Status URL: {accepted.status_url}")
+        if not wait:
             return
-        typer.echo(f"Task ID: {execution.task_result.task_id}")
-        typer.echo(f"Trace ID: {execution.trace_id}")
-        typer.echo(f"Task status: {execution.task_result.final_status.value}")
-        typer.echo(f"Total latency: {execution.duration_ms} ms")
-        typer.echo(f"Summary: {execution.task_result.summary}")
-        for error in execution.errors:
-            typer.echo(f"Error: {error.error_code}: {error.message}", err=True)
-            if error.error_code == "TASK_INFORMATION_MISSING":
-                typer.echo(f"Missing information: {error.message}", err=True)
-        if execution.artifacts:
-            artifact = execution.artifacts[0]
-            filename = safe_artifact_filename(
-                artifact.location.rsplit("/", maxsplit=1)[-1], artifact
-            )
-            typer.echo(f"Artifact ID: {artifact.artifact_id}")
-            typer.echo(f"Artifact filename: {filename}")
-        else:
-            typer.echo("Artifact ID: none")
-        if execution.verification_result is not None:
-            typer.echo(f"Verification status: {execution.verification_result.status.value}")
-        if execution.task_result.final_status is not TaskStatus.COMPLETED:
+        if wait_handler is None:
+            typer.echo("Wait polling is not composed at this entry point.", err=True)
+            raise typer.Exit(code=2)
+        try:
+            completed = wait_handler(accepted.task_id, wait_timeout)
+        except TimeoutError as exc:
+            typer.echo(f"WAIT_TIMEOUT: {exc}", err=True)
+            raise typer.Exit(code=4) from exc
+        typer.echo(f"Final task status: {completed.status}")
+        typer.echo(f"Final runtime status: {completed.runtime_status}")
+        typer.echo(f"Summary: {completed.task_summary}")
+        if completed.status != "COMPLETED":
+            if completed.error_summary:
+                typer.echo(f"Error: {completed.error_summary}", err=True)
             raise typer.Exit(code=1)
 
     return cli
@@ -158,4 +166,4 @@ def create_app(handler: WorkflowHandler | None = None) -> typer.Typer:
 
 app = create_app()
 
-__all__ = ["WorkflowHandler", "app", "create_app"]
+__all__ = ["SubmissionHandler", "WaitHandler", "app", "create_app"]

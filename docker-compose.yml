@@ -67,6 +67,13 @@ services:
       ARTIFACT_DIR: /app/data/artifacts
       LLM_PROVIDER: mock
       CHECKPOINT_ENABLED: "true"
+      QUEUE_PROVIDER: postgresql
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+      WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-0.5}
+      WORKER_SHUTDOWN_GRACE_SECONDS: ${WORKER_SHUTDOWN_GRACE_SECONDS:-30}
+      EXECUTION_HEARTBEAT_INTERVAL_SECONDS: ${EXECUTION_HEARTBEAT_INTERVAL_SECONDS:-15}
+      EXECUTION_LEASE_TTL_SECONDS: ${EXECUTION_LEASE_TTL_SECONDS:-60}
+      MAX_RUNTIME_RECOVERY_ATTEMPTS: ${MAX_RUNTIME_RECOVERY_ATTEMPTS:-3}
     command: ["python", "-m", "copilot.persistence.migrate"]
     depends_on:
       postgres:
@@ -168,6 +175,33 @@ services:
       timeout: 3s
       start_period: 20s
       retries: 12
+    networks: [copilot]
+
+  copilot-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment: *copilot-environment
+    command: ["python", "-m", "copilot.worker"]
+    volumes:
+      - artifact-data:/app/data/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      seed-ap-business-database:
+        condition: service_completed_successfully
+      rag-health:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-m", "copilot.worker.health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 12
+    stop_grace_period: ${WORKER_SHUTDOWN_GRACE_PERIOD:-30s}
     networks: [copilot]
 
 volumes:

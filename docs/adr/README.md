@@ -106,3 +106,4 @@ What becomes easier or harder, including operational and migration effects?
 | [ADR-014](ADR-014-worker-lease-fencing.md) | Accepted | 2026-08-25 | Extend the database lease with heartbeat, expiry, takeover, and monotonic fencing |
 | [ADR-015](ADR-015-checkpoint-recovery-authority.md) | Accepted | 2026-08-25 | Keep Task DB authoritative and require fail-closed checkpoint recovery reconciliation |
 | [ADR-016](ADR-016-runtime-graph-retry-ownership.md) | Accepted | 2026-08-25 | Separate Queue/runtime recovery from Graph and Tool business retry ownership |
+| [ADR-017](ADR-017-postgresql-backed-queue-v1.md) | Accepted | 2026-08-26 | Use PostgreSQL-backed at-least-once Queue v1 behind the existing transactional outbox |

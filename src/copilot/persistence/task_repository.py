@@ -7,8 +7,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import RLock
 from typing import Any, cast
+from uuid import uuid4
 
-from sqlalchemy import JSON, delete, func, or_, select, update
+from sqlalchemy import JSON, func, or_, select, update
 from sqlalchemy import cast as sql_cast
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
@@ -21,6 +22,7 @@ from copilot.contracts import (
     TaskRequest,
     TaskResult,
     TaskState,
+    TaskStatus,
     ToolResult,
     VerificationResult,
 )
@@ -29,12 +31,15 @@ from copilot.contracts.serialization import (
     deserialize_task_plan_json,
 )
 from copilot.persistence.database import PersistenceDatabase, coerce_database
+from copilot.persistence.fencing import assert_fenced_session
 from copilot.persistence.models import (
+    TaskDispatchRow,
     WorkflowLeaseRow,
     WorkflowPlanHistoryRow,
     WorkflowStateEventRow,
     WorkflowStepResultRow,
     WorkflowTaskRow,
+    WorkflowTaskRuntimeRow,
     WorkflowToolResultRow,
     WorkflowVerificationHistoryRow,
 )
@@ -146,6 +151,7 @@ class WorkflowRepository:
                 return
             try:
                 with self._database.session() as session:
+                    assert_fenced_session(session, tenant_id=tenant_id, task_id=previous.task_id)
                     result = cast(
                         CursorResult[Any],
                         session.execute(
@@ -186,6 +192,7 @@ class WorkflowRepository:
                 self._contracts[contract.task_id] = contract
                 return
             with self._database.session() as session:
+                assert_fenced_session(session, tenant_id=tenant_id, task_id=contract.task_id)
                 row = session.scalar(
                     select(WorkflowTaskRow).where(
                         WorkflowTaskRow.task_id == contract.task_id,
@@ -234,6 +241,7 @@ class WorkflowRepository:
                 self._plans[plan.task_id] = plan
                 return
             with self._database.session() as session:
+                assert_fenced_session(session, tenant_id=tenant_id, task_id=plan.task_id)
                 row = session.scalar(
                     select(WorkflowTaskRow).where(
                         WorkflowTaskRow.task_id == plan.task_id,
@@ -303,6 +311,7 @@ class WorkflowRepository:
                 self._tool_results.append(result)
                 return
             with self._database.session() as session:
+                assert_fenced_session(session, tenant_id=tenant_id, task_id=result.task_id)
                 payload = session.scalar(
                     select(WorkflowToolResultRow.payload_json).where(
                         WorkflowToolResultRow.tool_call_id == result.tool_call_id,
@@ -345,6 +354,7 @@ class WorkflowRepository:
                 self._step_executions[key] = execution
                 return
             with self._database.session() as session:
+                assert_fenced_session(session, tenant_id=tenant_id, task_id=task_id)
                 row = session.scalar(
                     select(WorkflowStepResultRow).where(
                         WorkflowStepResultRow.step_id == result.step_id,
@@ -383,6 +393,7 @@ class WorkflowRepository:
                 self._task_results[result.task_id] = result
                 return
             with self._database.session() as session:
+                assert_fenced_session(session, tenant_id=tenant_id, task_id=result.task_id)
                 row = session.scalar(
                     select(WorkflowTaskRow).where(
                         WorkflowTaskRow.task_id == result.task_id,
@@ -407,6 +418,7 @@ class WorkflowRepository:
                 self._verification_results[result.task_id] = result
                 return
             with self._database.session() as session:
+                assert_fenced_session(session, tenant_id=tenant_id, task_id=result.task_id)
                 row = session.scalar(
                     select(WorkflowTaskRow).where(
                         WorkflowTaskRow.task_id == result.task_id,
@@ -437,7 +449,12 @@ class WorkflowRepository:
                 row.verification_json = result.model_dump_json()
 
     def acquire_execution(self, task_id: str, owner_id: str, *, tenant_id: str) -> None:
-        """Prevent concurrent start/resume for one task with a bounded lease."""
+        """Compatibility claim for the pre-Stage-E synchronous execution host.
+
+        The future Worker uses ``AsyncRuntimeRepository.try_acquire_lease``. This path still writes
+        the evolved single lease table so deployment of the Stage B migration does not introduce a
+        second lock or break the current synchronous API before the Queue/Worker gates pass.
+        """
         with self._lock:
             if self._database is None:
                 self._require_in_memory_tenant(task_id, tenant_id)
@@ -448,27 +465,109 @@ class WorkflowRepository:
                     raise ValueError("terminal task cannot be resumed")
                 self._execution_leases[task_id] = owner_id
                 return
-            now = datetime.now(UTC)
             try:
                 with self._database.session() as session:
                     task = session.scalar(
-                        select(WorkflowTaskRow).where(
+                        select(WorkflowTaskRow)
+                        .where(
                             WorkflowTaskRow.task_id == task_id,
                             WorkflowTaskRow.tenant_id == tenant_id,
                         )
+                        .with_for_update()
                     )
                     if task is None:
                         raise ValueError("workflow task was not initialized")
                     if task.task_result_json is not None:
                         raise ValueError("terminal task cannot be resumed")
-                    session.execute(
-                        delete(WorkflowLeaseRow).where(WorkflowLeaseRow.expires_at <= now)
+                    observed = session.scalar(select(func.now()))
+                    if not isinstance(observed, datetime):
+                        raise RuntimeError("database did not return a timestamp")
+                    now = _aware_utc(observed)
+                    state = TaskState.model_validate_json(task.state_json)
+                    runtime = session.scalar(
+                        select(WorkflowTaskRuntimeRow)
+                        .where(
+                            WorkflowTaskRuntimeRow.task_id == task_id,
+                            WorkflowTaskRuntimeRow.tenant_id == tenant_id,
+                        )
+                        .with_for_update()
                     )
+                    if runtime is None:
+                        runtime = WorkflowTaskRuntimeRow(
+                            task_id=task_id,
+                            tenant_id=tenant_id,
+                            runtime_status="READY",
+                            execution_generation=1,
+                            fencing_counter=0,
+                            recovery_attempt_count=0,
+                            created_at=now,
+                            updated_at=now,
+                        )
+                        session.add(runtime)
+                        session.flush()
+                    existing_lease = session.scalar(
+                        select(WorkflowLeaseRow)
+                        .where(
+                            WorkflowLeaseRow.task_id == task_id,
+                            WorkflowLeaseRow.tenant_id == tenant_id,
+                        )
+                        .with_for_update()
+                    )
+                    if existing_lease is not None:
+                        if (
+                            existing_lease.worker_id == owner_id
+                            and _aware_utc(existing_lease.expires_at) > now
+                        ):
+                            return
+                        if _aware_utc(existing_lease.expires_at) > now:
+                            raise ValueError("task execution lease conflict")
+                        session.delete(existing_lease)
+                        session.flush()
+                    dispatch = (
+                        session.scalar(
+                            select(TaskDispatchRow).where(
+                                TaskDispatchRow.tenant_id == tenant_id,
+                                TaskDispatchRow.dispatch_id == runtime.current_dispatch_id,
+                            )
+                        )
+                        if runtime.current_dispatch_id is not None
+                        else None
+                    )
+                    if dispatch is None or dispatch.status != "ENQUEUED":
+                        if dispatch is not None:
+                            runtime.execution_generation += 1
+                        dispatch_id = f"D-INLINE-{uuid4().hex}"
+                        dispatch = TaskDispatchRow(
+                            tenant_id=tenant_id,
+                            dispatch_id=dispatch_id,
+                            task_id=task_id,
+                            execution_generation=runtime.execution_generation,
+                            expected_task_version=state.version,
+                            trace_id=_request_id_for(task.request_json, task_id),
+                            status="ENQUEUED",
+                            available_at=now,
+                            attempt_count=1,
+                            created_at=now,
+                            updated_at=now,
+                        )
+                        session.add(dispatch)
+                        session.flush()
+                        runtime.current_dispatch_id = dispatch_id
+                    runtime.fencing_counter += 1
+                    runtime.runtime_status = "LEASED"
+                    runtime.updated_at = now
                     session.add(
                         WorkflowLeaseRow(
                             task_id=task_id,
                             tenant_id=tenant_id,
-                            owner_id=owner_id,
+                            dispatch_id=dispatch.dispatch_id,
+                            execution_generation=runtime.execution_generation,
+                            task_version=state.version,
+                            worker_id=owner_id,
+                            lease_id=f"L-INLINE-{uuid4().hex}",
+                            fencing_token=runtime.fencing_counter,
+                            acquired_at=now,
+                            heartbeat_at=now,
                             expires_at=now + timedelta(minutes=10),
                         )
                     )
@@ -484,13 +583,55 @@ class WorkflowRepository:
                     del self._execution_leases[task_id]
                 return
             with self._database.session() as session:
-                session.execute(
-                    delete(WorkflowLeaseRow).where(
+                lease = session.scalar(
+                    select(WorkflowLeaseRow).where(
                         WorkflowLeaseRow.task_id == task_id,
                         WorkflowLeaseRow.tenant_id == tenant_id,
-                        WorkflowLeaseRow.owner_id == owner_id,
+                        WorkflowLeaseRow.worker_id == owner_id,
                     )
                 )
+                if lease is None:
+                    return
+                dispatch_id = lease.dispatch_id
+                session.delete(lease)
+                task = session.scalar(
+                    select(WorkflowTaskRow).where(
+                        WorkflowTaskRow.task_id == task_id,
+                        WorkflowTaskRow.tenant_id == tenant_id,
+                    )
+                )
+                runtime = session.scalar(
+                    select(WorkflowTaskRuntimeRow).where(
+                        WorkflowTaskRuntimeRow.task_id == task_id,
+                        WorkflowTaskRuntimeRow.tenant_id == tenant_id,
+                    )
+                )
+                observed = session.scalar(select(func.now()))
+                if not isinstance(observed, datetime):
+                    raise RuntimeError("database did not return a timestamp")
+                now = _aware_utc(observed)
+                if task is not None and runtime is not None:
+                    state = TaskState.model_validate_json(task.state_json)
+                    if state.state in {
+                        TaskStatus.COMPLETED,
+                        TaskStatus.FAILED,
+                        TaskStatus.CANCELLED,
+                    }:
+                        runtime.runtime_status = "FINISHED"
+                    elif state.state is TaskStatus.WAITING_APPROVAL:
+                        runtime.runtime_status = "SUSPENDED"
+                    else:
+                        runtime.runtime_status = "READY"
+                    runtime.updated_at = now
+                dispatch = session.scalar(
+                    select(TaskDispatchRow).where(
+                        TaskDispatchRow.tenant_id == tenant_id,
+                        TaskDispatchRow.dispatch_id == dispatch_id,
+                    )
+                )
+                if dispatch is not None and dispatch.status == "ENQUEUED":
+                    dispatch.status = "ACKNOWLEDGED"
+                    dispatch.updated_at = now
 
     def state_for(self, task_id: str, *, tenant_id: str) -> TaskState:
         with self._lock:
@@ -816,6 +957,22 @@ def _execution_json(execution: StepExecutionRecord) -> str:
         },
         sort_keys=True,
     )
+
+
+def _aware_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _request_id_for(request_json: str, task_id: str) -> str:
+    """Return a safe compatibility trace identity from the persisted Task request."""
+    try:
+        payload = json.loads(request_json)
+    except json.JSONDecodeError:
+        return f"TRACE-{task_id}"[:200]
+    request_id = payload.get("id") if isinstance(payload, dict) else None
+    return str(request_id or f"TRACE-{task_id}")[:200]
 
 
 def _execution_from_json(payload: str) -> StepExecutionRecord:

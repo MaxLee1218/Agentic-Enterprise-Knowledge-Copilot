@@ -70,7 +70,7 @@ export interface paths {
         put?: never;
         /**
          * Submit Task
-         * @description Submit one unmodified natural-language task through the shared application service.
+         * @description Durably accept one Task without executing LangGraph in the API process.
          */
         post: operations["create_task"];
         delete?: never;
@@ -114,7 +114,7 @@ export interface paths {
         put?: never;
         /**
          * Resolve Approval
-         * @description Resolve and resume through ApprovalService; the route never calls a tool directly.
+         * @description Persist a decision and optional resume dispatch without running the Graph inline.
          */
         post: operations["resolve_approval_v1_tasks__task_id__approvals__approval_id__post"];
         delete?: never;
@@ -174,7 +174,7 @@ export interface paths {
         put?: never;
         /**
          * Cancel Task
-         * @description Request cooperative cancellation through the frozen domain state machine.
+         * @description Durably accept cancellation; underlying I/O may stop at a later safe boundary.
          */
         post: operations["cancel_task"];
         delete?: never;
@@ -298,7 +298,7 @@ export interface components {
         };
         /**
          * ApprovalResolutionResponse
-         * @description Stable decision and checkpoint-resume response.
+         * @description Stable decision acceptance; execution continues asynchronously when approved.
          */
         ApprovalResolutionResponse: {
             /** Approval Id */
@@ -316,6 +316,9 @@ export interface components {
             resolved_by: string;
             /** Resume Status */
             resume_status: string;
+            runtime_status: components["schemas"]["RuntimeStatus"];
+            /** Status Url */
+            status_url: string;
             /** Task Id */
             task_id: string;
             /** Task Status */
@@ -361,12 +364,6 @@ export interface components {
             /** Task Id */
             task_id: string;
         };
-        /**
-         * ArtifactType
-         * @description Versioned internal report Artifact types admitted by contracts.
-         * @enum {string}
-         */
-        ArtifactType: "QUALITY_ANALYSIS_REPORT_PDF" | "QUALITY_ANALYSIS_REPORT_JSON" | "ACCOUNTS_PAYABLE_REPORT_PDF" | "ACCOUNTS_PAYABLE_REPORT_JSON";
         /**
          * EvidenceType
          * @description Evidence source types permitted by the frozen v1.0 scenario.
@@ -442,27 +439,11 @@ export interface components {
             status: "ready" | "degraded" | "not_ready";
         };
         /**
-         * TaskArtifactResponse
-         * @description Safe Artifact reference returned by task submission.
+         * RuntimeStatus
+         * @description Execution-host status kept separate from the frozen business TaskStatus.
+         * @enum {string}
          */
-        TaskArtifactResponse: {
-            /** Artifact Id */
-            artifact_id: string;
-            /** Checksum */
-            checksum: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Filename */
-            filename: string;
-            /** Media Type */
-            media_type: string;
-            /** Size Bytes */
-            size_bytes: number;
-            type: components["schemas"]["ArtifactType"];
-        };
+        RuntimeStatus: "READY" | "LEASED" | "WAITING_RETRY" | "SUSPENDED" | "FINISHED";
         /**
          * TaskErrorResponse
          * @description Uniform transport error returned before a workflow result exists.
@@ -526,18 +507,6 @@ export interface components {
             type: components["schemas"]["EvidenceType"];
         };
         /**
-         * TaskFailureResponse
-         * @description One safe typed workflow error.
-         */
-        TaskFailureResponse: {
-            /** Error Code */
-            error_code: string;
-            /** Message */
-            message: string;
-            /** Recoverable */
-            recoverable: boolean;
-        };
-        /**
          * TaskListResponse
          * @description Bounded current-user task history ordered newest-first.
          */
@@ -581,6 +550,7 @@ export interface components {
             evidence_count: number;
             /** Pending Approval Id */
             pending_approval_id: string | null;
+            runtime_status: components["schemas"]["RuntimeStatus"];
             /** Started At */
             started_at: string | null;
             status: components["schemas"]["TaskStatus"];
@@ -643,45 +613,22 @@ export interface components {
         };
         /**
          * TaskSubmissionResponse
-         * @description Stable synchronous task-creation response.
+         * @description Future 202 Accepted response returned after Task and dispatch commit atomically.
          */
         TaskSubmissionResponse: {
             /**
-             * Artifacts
-             * @default []
-             */
-            artifacts: components["schemas"]["TaskArtifactResponse"][];
-            /**
-             * Clarification Questions
-             * @default []
-             */
-            clarification_questions: string[];
-            /** Completed At */
-            completed_at?: string | null;
-            /**
-             * Created At
+             * Accepted At
              * Format: date-time
              */
-            created_at: string;
-            /**
-             * Errors
-             * @default []
-             */
-            errors: components["schemas"]["TaskFailureResponse"][];
-            /**
-             * Missing Information
-             * @default []
-             */
-            missing_information: string[];
-            /** Pending Approval Id */
-            pending_approval_id?: string | null;
-            /** Started At */
-            started_at?: string | null;
-            status: components["schemas"]["TaskStatus"];
-            /** Summary */
-            summary: string;
+            accepted_at: string;
+            /** Artifacts Url */
+            artifacts_url: string;
+            runtime_status: components["schemas"]["RuntimeStatus"];
+            /** Status Url */
+            status_url: string;
             /** Task Id */
             task_id: string;
+            task_status: components["schemas"]["TaskStatus"];
             /** Trace Id */
             trace_id: string;
         };
@@ -823,7 +770,9 @@ export interface operations {
     create_task: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -834,7 +783,7 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -842,13 +791,13 @@ export interface operations {
                     "application/json": components["schemas"]["TaskSubmissionResponse"];
                 };
             };
-            /** @description Accepted */
-            202: {
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TaskSubmissionResponse"];
+                    "application/json": components["schemas"]["TaskErrorResponse"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -1032,7 +981,7 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1234,7 +1183,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

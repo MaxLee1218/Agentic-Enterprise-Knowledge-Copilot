@@ -16,7 +16,9 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from copilot.contracts import Artifact, ArtifactType
+from copilot.contracts.errors import RuntimeContractError
 from copilot.persistence.database import PersistenceDatabase, coerce_database
+from copilot.persistence.fencing import assert_fenced_database, assert_fenced_session
 from copilot.persistence.models import WorkflowArtifactRow
 from copilot.security import (
     ContentSourceType,
@@ -65,8 +67,6 @@ class AtomicArtifactWriter:
         target = (self.root / filename).resolve()
         if target.parent != self.root:
             raise ValueError("artifact path escaped the configured root")
-        if target.exists():
-            raise FileExistsError("artifact target already exists")
         descriptor, temporary_name = tempfile.mkstemp(
             prefix=".artifact-", suffix=".tmp", dir=self.root
         )
@@ -76,10 +76,21 @@ class AtomicArtifactWriter:
                 stream.write(content)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temporary, target)
+            try:
+                # A hard link publishes without overwriting an Artifact created by a racing or
+                # recovering process. Both paths are on the same filesystem by construction.
+                os.link(temporary, target)
+            except FileExistsError:
+                existing_content = target.read_bytes()
+                if existing_content != content:
+                    raise FileExistsError(
+                        "artifact target already exists with different content"
+                    ) from None
         except BaseException:
             temporary.unlink(missing_ok=True)
             raise
+        else:
+            temporary.unlink(missing_ok=True)
         size = target.stat().st_size
         if not target.is_file() or size != len(content):
             target.unlink(missing_ok=True)
@@ -168,6 +179,11 @@ class LocalArtifactRepository:
         if Path(filename).suffix.lower() != expected_extension:
             raise ValueError("artifact extension does not match its type")
         with self._lock:
+            assert_fenced_database(
+                self._database,
+                tenant_id=tenant_id,
+                task_id=task_id,
+            )
             try:
                 existing = self.get(artifact_id, tenant_id=tenant_id)
             except KeyError:
@@ -191,9 +207,24 @@ class LocalArtifactRepository:
             )
             try:
                 self._save_metadata(artifact, tenant_id=tenant_id)
-            except Exception:
-                self._writer.delete(written.path)
+            except RuntimeContractError:
+                # A process may die after publishing bytes but before metadata. Keep the
+                # deterministic final file when execution authority changes so the current
+                # Worker can verify and adopt it without a stale process deleting shared bytes.
                 raise
+            except Exception as metadata_error:
+                # If a concurrent fenced publisher won the metadata race, return its equivalent
+                # record. Otherwise compensate an ordinary persistence error.
+                try:
+                    committed = self.get(artifact_id, tenant_id=tenant_id)
+                except KeyError:
+                    self._writer.delete(written.path)
+                    raise metadata_error from None
+                if committed.checksum != artifact.checksum:
+                    raise ValueError(
+                        "artifact identifier already exists with different content"
+                    ) from None
+                return committed
             return artifact
 
     def get(self, artifact_id: str, *, tenant_id: str) -> Artifact:
@@ -295,6 +326,11 @@ class LocalArtifactRepository:
         if self._database is not None:
             try:
                 with self._database.session() as session:
+                    assert_fenced_session(
+                        session,
+                        tenant_id=tenant_id,
+                        task_id=artifact.task_id,
+                    )
                     session.add(
                         WorkflowArtifactRow(
                             artifact_id=artifact.artifact_id,

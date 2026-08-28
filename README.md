@@ -9,6 +9,10 @@ persistence. Stage 17.1 hardens identity, mandatory execution context, tenant pe
 approval enforcement, registry lifecycle, cancellation, correlation, and production configuration
 without adding a business capability. Stage 18 adds an optional governed MCP `2025-11-25`
 client/server interoperability boundary while preserving that frozen business behavior.
+Stage 19 implements the frozen asynchronous runtime with PostgreSQL Queue v1: API acceptance,
+transactional dispatch, an independent bounded Worker, lease heartbeat/fencing, recovery,
+approval redispatch, durable cancellation, and frontend polling. This is at-least-once execution;
+it is not an exactly-once or production-readiness claim.
 
 The **Enterprise RAG Engine is a separate service and repository**. The Copilot consumes its
 approved HTTP contract through the Knowledge Tool; this repository does not copy, embed, or
@@ -17,9 +21,11 @@ reimplement the RAG service.
 ## Architecture
 
 ```text
-User -> API / CLI -> Task Understanding -> Planner -> Policy / Approval
-     -> Tool Registry / Executor -> Knowledge + Database + Analytics + Reporting
-     -> Evidence -> Verifier -> TaskResult + Artifact
+User -> API / CLI -> PostgreSQL Task + dispatch -> 202 Accepted
+                  -> PostgreSQL Queue -> independent Worker
+                  -> Task Understanding -> Planner -> Policy / Approval
+                  -> Tool Registry / Executor -> Knowledge + Database + Analytics + Reporting
+                  -> Evidence -> Verifier -> TaskResult + Artifact
 
 External boundaries:
   Enterprise RAG Engine       Copilot PostgreSQL       Artifact filesystem/volume
@@ -34,9 +40,10 @@ The Copilot persistence database and enterprise business database are deliberate
 - `DATABASE_URL` is visible only to the registered, read-only enterprise Database Tool. It cannot
   access Copilot internal tables through the application architecture.
 
-The API and CLI share `build_application(settings)` as their composition root. Docker does not
-create a second workflow or bypass Policy, Approval, Registry/Executor, Evidence, Audit,
-Observability, or Verification.
+The API, CLI, and Worker reuse the same application composition and workflow services. The API and
+CLI only accept work; the Worker hosts the existing Graph. Docker does not create a second business
+workflow or bypass Policy, Approval, Registry/Executor, Evidence, Audit, Observability, or
+Verification.
 
 See [Architecture](docs/architecture.md), the [frozen v1.1 baseline](docs/design/design_baseline.md),
 and [ADR-006](docs/adr/ADR-006-deployment-persistence-boundary.md). Stage 18 admission is recorded
@@ -58,8 +65,8 @@ Current boundaries are intentional:
 - no CAPA execution, email, procurement, supplier-status change, or business-database write;
 - no arbitrary SQL/Python, open internet source, or unregistered connector;
 - no cross-database atomic transaction or external API exactly-once guarantee;
-- no background task queue or forced interruption of a synchronous in-flight external call; such
-  calls expose cancellation-requested state and their late output is discarded;
+- no guaranteed forced interruption of an in-flight external call; durable cancellation fences
+  late output and cooperative process-local tokens reduce stop latency;
 - no bundled enterprise IAM/SSO: production verifies a short-lived signed assertion from an
   approved upstream gateway, while Demo Identity is restricted to explicit development/test use;
 - no automatic MCP trust or export: only approved server namespaces and explicit export rules are
@@ -216,7 +223,7 @@ docker compose up
 
 Compose starts persistence `postgres`, the separate synthetic `business-postgres`,
 `enterprise-rag-engine`, one-shot persistence migration, ordered Supplier Quality/AP business
-seed jobs, `rag-health`, and `copilot-api`. The persistence migration service runs Alembic and the
+seed jobs, `rag-health`, `copilot-api`, and `copilot-worker`. The persistence migration service runs Alembic and the
 official LangGraph PostgreSQL saver setup; the separate business history migrates and seeds the
 synthetic Supplier Quality and AP tables;
 `rag-health` uses the Copilot's real HTTP Knowledge client without assuming utilities exist inside
@@ -232,8 +239,9 @@ For an already-running RAG outside Compose, run the API outside Compose with an 
 
 ## Database and migrations
 
-SQLite remains supported for fast tests and local demos. PostgreSQL is required by the production
-configuration profile and is used by Compose. Copilot-owned schema changes are explicit:
+SQLite remains supported for legacy/unit tests and controlled local service composition.
+PostgreSQL is required for asynchronous submission, Queue v1, Worker execution, and the production
+configuration profile. Copilot-owned schema changes are explicit:
 
 ```bash
 alembic upgrade head
@@ -285,6 +293,10 @@ curl -OJ http://127.0.0.1:8000/v1/tasks/TASK_ID/artifacts/ARTIFACT_ID
 curl -X POST http://127.0.0.1:8000/v1/tasks/TASK_ID/cancel
 ```
 
+Submission and approval resolution return `202 Accepted`; use the returned `status_url` and poll
+until `runtime_status` is `FINISHED` or `SUSPENDED`. `TaskStatus` remains the business state while
+`runtime_status` is the separate execution-hosting projection.
+
 Approval APIs actually implemented by this repository are:
 
 ```bash
@@ -311,14 +323,19 @@ Health semantics:
 enterprise-copilot --help
 python scripts/run_task.py \
   "Analyze Q2 2026 supplier quality deviations and generate a JSON report." --demo
+python scripts/run_task.py \
+  "Analyze Q2 2026 supplier quality deviations and generate a JSON report." --demo --wait
+enterprise-copilot-inspect-runtime TASK_ID
 python scripts/inspect_task.py TASK_ID
 python scripts/inspect_task.py TASK_ID --performance
 python scripts/smoke_agent.py --show-trace
 python scripts/check_rag_health.py
 ```
 
-API and CLI use the same Task Service and LangGraph. CLI exit codes are documented in
-[Operations](docs/operations.md).
+API and CLI use the same acceptance service and never run the Graph inline. `--wait` polls
+authoritative persistence; it does not become a Worker. CLI exit codes and Worker operations are
+documented in [Operations](docs/operations.md) and the
+[Async runtime operations guide](docs/async-runtime-operations.md).
 
 ## Important configuration
 
@@ -329,6 +346,9 @@ API and CLI use the same Task Service and LangGraph. CLI exit codes are document
 | `IDENTITY_SIGNING_SECRET` | blank | injected secret, at least 32 bytes |
 | `PERSISTENCE_DATABASE_URL` | local SQLite fallback | required PostgreSQL URL |
 | `PERSISTENCE_AUTO_CREATE_SCHEMA` | `true` | `false`; run migrations separately |
+| `QUEUE_PROVIDER` | `postgresql` | `postgresql` (ADR-017 v1) |
+| `WORKER_CONCURRENCY` | `4` | reviewed finite process-local limit |
+| `EXECUTION_HEARTBEAT_INTERVAL_SECONDS` / `EXECUTION_LEASE_TTL_SECONDS` | `15` / `60` | DB-time TTL at least 3 heartbeats |
 | `DATABASE_URL` | demo business SQLite | approved read-only business DB |
 | `DATABASE_PROVIDER` | `mock` | `sqlalchemy` |
 | `KNOWLEDGE_PROVIDER` | `mock` | `http` |

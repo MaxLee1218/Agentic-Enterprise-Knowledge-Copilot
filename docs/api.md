@@ -2,8 +2,10 @@
 
 ## 提交自然语言任务
 
-`POST /v1/tasks` 的唯一必需字段是 `task`。当策略无需人工决定时返回 201；产生待审批动作时返回
-202、`status=WAITING_APPROVAL` 和 `pending_approval_id`。
+`POST /v1/tasks` 的唯一必需字段是 `task`。合法任务原子持久化 Task 与初始 dispatch 后统一返回
+`202 Accepted`；响应包含 `task_id`、`trace_id`、`task_status=CREATED`、
+`runtime_status=READY`、`accepted_at`、`status_url` 和 `artifacts_url`。HTTP 请求不运行 Graph、
+Tool、验证或报告生成。客户端通过 `status_url` 轮询。
 
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/tasks \
@@ -58,32 +60,33 @@ curl -X POST http://127.0.0.1:8000/v1/tasks \
 {"action": "reject", "reason": "Insufficient evidence"}
 ```
 
-成功响应包含 `approval_id`、`approval_status`、`resolution_action`、`task_id`、最新
-`task_status`、`resolved_at`、`resolved_by`、`resume_status` 和 `trace_id`。当前离线工作流同步继续到
-终态；接口不会假定所有部署都同步完成。
+成功响应为 `202`，包含 `approval_id`、`approval_status`、`resolution_action`、`task_id`、最新
+`task_status`、`runtime_status`、`status_url`、`resolved_at`、`resolved_by`、`resume_status` 和
+`trace_id`。批准/编辑批准会原子创建下一 generation 的 dispatch；接口不 inline resume Graph。
+拒绝、过期、撤销和取消不会创建可执行 resume dispatch。
 
 稳定错误映射：400 `INVALID_APPROVAL_ACTION`；403 `APPROVAL_PERMISSION_DENIED`；404
 `APPROVAL_NOT_FOUND`；409 `APPROVAL_ALREADY_RESOLVED`、`APPROVAL_STATE_CONFLICT` 或
 `APPROVAL_EXPIRED`；422 `INVALID_APPROVAL_REQUEST` 或 `APPROVAL_ARGUMENTS_INVALID`；500
 `INTERNAL_ERROR`。错误响应不包含堆栈或完整业务参数。
 
-## 阶段 13 任务管理接口
+## 任务管理接口
 
-API 与 CLI 都调用同一个 `NaturalLanguageTaskService` / `ArtifactService`。Route 不直接调用
-LangGraph、Tool、Repository 或文件路径。当前执行模型为请求内同步：普通提交到达终态后返回
-`201 Created`；Graph 已持久化并进入 `WAITING_APPROVAL` 时返回 `202 Accepted`。仓库没有后台
-任务队列，因此不会对普通提交返回虚假的异步接受语义。
+API 与 CLI 调用 acceptance/query service 和 `ArtifactService`。Route 不直接调用 LangGraph、
+Tool、Queue adapter、Repository 或文件路径。独立 Worker 从 PostgreSQL Queue v1 接收 dispatch，
+取得数据库 lease 后复用现有受治理 Graph。`TaskStatus` 是业务状态；`runtime_status` 是独立的执行
+投影。`WAITING_APPROVAL` 映射为 `SUSPENDED`，不占 Worker 或 lease。
 
 | Method | Path | Request | Response | Success |
 |---|---|---|---|---:|
-| POST | `/v1/tasks` | `NaturalLanguageTaskSubmission` | `TaskSubmissionResponse` | 201/202 |
+| POST | `/v1/tasks` | `NaturalLanguageTaskSubmission` | `TaskSubmissionResponse` | 202 |
 | GET | `/v1/tasks` | `status?`, `limit`, `offset` | `TaskListResponse` | 200 |
 | GET | `/v1/tasks/{task_id}` | — | `TaskResponse` | 200 |
 | GET | `/v1/tasks/{task_id}/steps` | — | `TaskStepsResponse` | 200 |
 | GET | `/v1/tasks/{task_id}/evidence` | — | `TaskEvidenceListResponse` | 200 |
 | GET | `/v1/tasks/{task_id}/artifacts` | — | `ArtifactListResponse` | 200 |
 | GET | `/v1/tasks/{task_id}/artifacts/{artifact_id}` | — | streamed bytes | 200 |
-| POST | `/v1/tasks/{task_id}/cancel` | — | `TaskResponse` | 200 |
+| POST | `/v1/tasks/{task_id}/cancel` | — | `TaskResponse` | 202 |
 
 查询示例：
 
@@ -109,8 +112,8 @@ curl -OJ http://127.0.0.1:8000/v1/tasks/TASK_ID/artifacts/ARTIFACT_ID
 
 取消使用冻结状态机的 `CANCEL_REQUESTED` 事件。等待审批、执行、重试、重规划和验证状态可取消；
 `CANCELLED` 重复取消幂等；`COMPLETED`/`FAILED` 返回 `409 TASK_NOT_CANCELLABLE`。取消会撤销待决
-审批，使旧审批不能恢复 Graph。取消是 cooperative cancellation，不承诺强制中断已经进行中的外部
-调用。
+审批，使旧审批不能恢复 Graph，并移除当前 lease。Worker heartbeat/Tool token 只用于加速观察；
+fencing 阻止迟到结果提交。取消是 cooperative cancellation，不承诺强制中断已经进行中的外部调用。
 
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/tasks/TASK_ID/cancel
@@ -133,6 +136,7 @@ curl -X POST http://127.0.0.1:8000/v1/tasks/TASK_ID/cancel
 
 主要映射：400 非法业务请求；401 未认证；403 权限拒绝；404 Task/Artifact 不存在；409 状态冲突；
 410 Artifact Metadata 存在但文件不可用；422 请求 Schema 校验失败；500 未预期错误；503 依赖不可用；
-504 依赖超时。响应不包含 Stack Trace、本地路径、完整 SQL、Token、Prompt 或未过滤第三方响应。
+504 依赖超时。Queue capacity 超限返回 `429` 和 `Retry-After`，且不产生半提交 Task。响应不包含
+Stack Trace、本地路径、完整 SQL、Token、Prompt 或未过滤第三方响应。
 
-当前身份适配器是本地 Demo Identity，仅用于开发和测试；生产部署必须替换为可信认证适配器。
+本地默认身份适配器是 Demo Identity，仅用于开发和测试；生产配置强制使用可信网关签名身份。

@@ -13,6 +13,7 @@ export type EvidenceType = components["schemas"]["EvidenceType"];
 export type Health = components["schemas"]["HealthResponse"];
 export type Liveness = components["schemas"]["LivenessResponse"];
 export type Readiness = components["schemas"]["ReadinessResponse"];
+export type RuntimeStatus = components["schemas"]["RuntimeStatus"];
 export type Step = components["schemas"]["TaskStepResponse"];
 export type StepList = components["schemas"]["TaskStepsResponse"];
 export type StepStatus = components["schemas"]["PublicStepStatus"];

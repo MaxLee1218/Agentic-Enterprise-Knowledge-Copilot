@@ -21,6 +21,7 @@ from copilot.persistence.identifiers import SequentialIdentifierFactory
 from copilot.security.identity import DemoIdentityProvider
 from copilot.services.task_intake import TrustedCallerContext
 from copilot.tools.database.ap_seed import seed_accounts_payable_demo_database
+from tests.async_runtime_helpers import execute_accepted_task
 from tests.workflow_helpers import fixed_clock
 
 pytestmark = pytest.mark.integration
@@ -97,6 +98,7 @@ def _client(tmp_path: Path) -> tuple[TestClient, WorkflowContainer]:
     )
     app = create_app(
         task_service=container.task_service,
+        task_submission_service=container.task_submission_service,
         artifact_service=container.artifact_service,
         approval_service=container.approval_service,
         settings=settings,
@@ -132,9 +134,9 @@ def test_public_selector_runs_ap_and_exposes_existing_task_resources(tmp_path: P
                     "output_format": "json",
                 },
             )
-            assert created.status_code == 201, created.text
-            assert created.json()["status"] == "COMPLETED", created.json()
+            assert created.status_code == 202, created.text
             task_id = created.json()["task_id"]
+            execute_accepted_task(container, task_id, tenant_id="TENANT-DEMO")
             task = client.get(f"/v1/tasks/{task_id}")
             history = client.get("/v1/tasks")
             steps = client.get(f"/v1/tasks/{task_id}/steps")
@@ -179,9 +181,11 @@ def test_finance_assignment_and_download_scope_fail_closed(tmp_path: Path) -> No
                     "output_format": "json",
                 },
             )
-            assert created.json()["status"] == "COMPLETED", created.json()
             task_id = created.json()["task_id"]
-            artifact_id = created.json()["artifacts"][0]["artifact_id"]
+            execute_accepted_task(container, task_id, tenant_id="TENANT-DEMO")
+            artifact_id = client.get(f"/v1/tasks/{task_id}/artifacts").json()["artifacts"][0][
+                "artifact_id"
+            ]
             auditor = owner.model_copy(
                 update={
                     "user_id": "U-FINANCE-AUDITOR",

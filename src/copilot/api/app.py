@@ -40,6 +40,7 @@ from copilot.services.observability import (
 )
 from copilot.services.task_intake import TaskIntakeValidationError
 from copilot.services.task_service import NaturalLanguageTaskService, TaskServiceError
+from copilot.services.task_submission import TaskSubmissionService
 
 
 class HealthResponse(BaseModel):
@@ -65,6 +66,7 @@ class ReadinessResponse(BaseModel):
 def create_app(
     *,
     task_service: NaturalLanguageTaskService | None = None,
+    task_submission_service: TaskSubmissionService | None = None,
     approval_service: ApprovalService | None = None,
     artifact_service: ArtifactService | None = None,
     settings: Settings | None = None,
@@ -81,6 +83,8 @@ def create_app(
     )
     if task_service is not None:
         application.state.task_service = task_service
+    if task_submission_service is not None:
+        application.state.task_submission_service = task_submission_service
     if approval_service is not None:
         application.state.approval_service = approval_service
     if artifact_service is not None:

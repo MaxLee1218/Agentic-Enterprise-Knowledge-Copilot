@@ -51,7 +51,7 @@ def test_fresh_database_upgrade_reaches_head_and_safe_downgrade(
         )
         with engine.connect() as connection:
             revision = MigrationContext.configure(connection).get_current_revision()
-            assert revision == "20260812_0004"
+            assert revision == "20260826_0006"
         step_uniques = {
             tuple(item["column_names"])
             for item in inspector.get_unique_constraints("workflow_step_results")
@@ -60,6 +60,31 @@ def test_fresh_database_upgrade_reaches_head_and_safe_downgrade(
         assert ("step_id",) not in step_uniques
         mcp_tables = {"mcp_connections", "mcp_sessions", "mcp_invocations"}
         assert mcp_tables.issubset(inspect(engine).get_table_names())
+        runtime_tables = {
+            "task_dispatches",
+            "task_runtime_attempts",
+            "task_submission_idempotency",
+            "workflow_task_runtime",
+        }
+        assert runtime_tables.issubset(inspect(engine).get_table_names())
+        lease_columns = {item["name"] for item in inspector.get_columns("workflow_leases")}
+        assert {
+            "dispatch_id",
+            "execution_generation",
+            "task_version",
+            "worker_id",
+            "lease_id",
+            "fencing_token",
+            "acquired_at",
+            "heartbeat_at",
+            "expires_at",
+        }.issubset(lease_columns)
+        assert "owner_id" not in lease_columns
+        assert any(
+            item["constrained_columns"] == ["tenant_id", "task_id", "dispatch_id"]
+            and item["referred_table"] == "task_dispatches"
+            for item in inspector.get_foreign_keys("workflow_leases")
+        )
 
         with engine.begin() as connection:
             connection.execute(text("PRAGMA foreign_keys = ON"))
@@ -142,7 +167,7 @@ def test_existing_stage17_rows_are_backfilled_and_unknown_ownership_is_quarantin
             "T-UNKNOWN": "TENANT-LEGACY-UNSCOPED",
         }
         assert child_tenant == "TENANT-A"
-        assert revision == "20260812_0004"
+        assert revision == "20260826_0006"
     finally:
         engine.dispose()
         get_settings.cache_clear()
@@ -216,6 +241,84 @@ def test_step_result_downgrade_refuses_cross_task_step_id_reuse(
                 connection.execute(text("SELECT count(*) FROM workflow_step_results")).scalar_one()
                 == 2
             )
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()
+
+
+def test_async_runtime_migration_backfills_and_restores_legacy_lease(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = f"sqlite:///{tmp_path / 'legacy-lease-upgrade.db'}"
+    _configure_migration_environment(monkeypatch, database_url)
+    configuration = Config(str(PROJECT_ROOT / "alembic.ini"))
+    command.upgrade(configuration, "20260812_0004")
+    engine = create_engine(database_url)
+    state_json = (
+        '{"task_id":"T-LEASE","state":"EXECUTING","version":4,'
+        '"updated_at":"2026-08-26T08:00:00Z","last_event_id":"EVT-LEASE"}'
+    )
+    request_json = (
+        '{"id":"REQ-LEASE","user_id":"U-LEASE","raw_input":"resume",'
+        '"created_at":"2026-08-26T08:00:00Z","metadata":{}}'
+    )
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO workflow_tasks "
+                    "(task_id, tenant_id, request_json, contract_json, plan_json, state_json) "
+                    "VALUES ('T-LEASE', 'TENANT-LEASE', :request_json, NULL, NULL, :state_json)"
+                ),
+                {"request_json": request_json, "state_json": state_json},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO workflow_leases (tenant_id, task_id, owner_id, expires_at) "
+                    "VALUES ('TENANT-LEASE', 'T-LEASE', 'W-LEGACY', "
+                    "'2026-08-26 08:10:00+00:00')"
+                )
+            )
+        engine.dispose()
+
+        command.upgrade(configuration, "head")
+        engine = create_engine(database_url)
+        with engine.connect() as connection:
+            lease = connection.execute(
+                text(
+                    "SELECT worker_id, task_version, execution_generation, fencing_token "
+                    "FROM workflow_leases WHERE task_id = 'T-LEASE'"
+                )
+            ).one()
+            runtime = connection.execute(
+                text(
+                    "SELECT runtime_status, current_dispatch_id, fencing_counter "
+                    "FROM workflow_task_runtime WHERE task_id = 'T-LEASE'"
+                )
+            ).one()
+            dispatch_count = connection.execute(
+                text("SELECT count(*) FROM task_dispatches WHERE task_id = 'T-LEASE'")
+            ).scalar_one()
+        assert tuple(lease) == ("W-LEGACY", 4, 1, 1)
+        assert tuple(runtime)[0] == "LEASED"
+        assert tuple(runtime)[1] is not None
+        assert tuple(runtime)[2] == 1
+        assert dispatch_count == 1
+
+        command.downgrade(configuration, "20260812_0004")
+        engine.dispose()
+        engine = create_engine(database_url)
+        with engine.connect() as connection:
+            restored = connection.execute(
+                text(
+                    "SELECT tenant_id, task_id, owner_id FROM workflow_leases "
+                    "WHERE task_id = 'T-LEASE'"
+                )
+            ).one()
+            revision = MigrationContext.configure(connection).get_current_revision()
+        assert tuple(restored) == ("TENANT-LEASE", "T-LEASE", "W-LEGACY")
+        assert revision == "20260812_0004"
     finally:
         engine.dispose()
         get_settings.cache_clear()

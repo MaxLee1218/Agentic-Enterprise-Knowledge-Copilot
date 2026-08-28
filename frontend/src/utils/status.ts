@@ -1,4 +1,4 @@
-import type { StepStatus, TaskStatus } from "../api/types";
+import type { RuntimeStatus, StepStatus, TaskStatus } from "../api/types";
 
 export const taskStatuses: readonly TaskStatus[] = [
   "CREATED",
@@ -73,4 +73,19 @@ export function pollingInterval(
 ): number | false {
   if (!status || terminalTaskStatuses.has(status)) return false;
   return status === "WAITING_APPROVAL" ? 10_000 : 2_000;
+}
+
+export function runtimeLabel(
+  taskStatus: TaskStatus,
+  runtimeStatus: RuntimeStatus,
+): string {
+  if (taskStatus === "WAITING_APPROVAL") return "Waiting approval";
+  if (taskStatus === "COMPLETED") return "Completed";
+  if (taskStatus === "FAILED") return "Failed";
+  if (taskStatus === "CANCELLED") return "Cancelled";
+  if (runtimeStatus === "READY") return "Queued";
+  if (runtimeStatus === "LEASED") return "Running";
+  if (runtimeStatus === "WAITING_RETRY") return "Retry scheduled";
+  if (runtimeStatus === "SUSPENDED") return "Suspended";
+  return "Finalizing";
 }
