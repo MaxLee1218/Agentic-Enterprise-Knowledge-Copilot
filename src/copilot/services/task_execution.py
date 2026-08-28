@@ -165,7 +165,7 @@ class TaskExecutionService:
                 status=RuntimeAttemptStatus.LOST,
                 error_code="LEASE_LOST",
             )
-            if self._terminal_after_authority_loss(delivery):
+            if self._terminal_after_authority_loss(delivery, lease=heartbeat.lease):
                 return "NO_OP_TERMINAL"
             LOGGER.warning(
                 "Worker execution authority lost",
@@ -181,7 +181,7 @@ class TaskExecutionService:
                 status=RuntimeAttemptStatus.FAILED,
                 error_code=error_code,
             )
-            if self._terminal_after_authority_loss(delivery):
+            if self._terminal_after_authority_loss(delivery, lease=current_lease):
                 return "NO_OP_TERMINAL"
             completed_attempts = max(1, snapshot.recovery_attempt_count + 1)
             delay = runtime_retry_delay_seconds(self._retry_policy, completed_attempts)
@@ -208,28 +208,35 @@ class TaskExecutionService:
         )
         return "SUCCEEDED"
 
-    def _terminal_after_authority_loss(self, delivery: QueueDelivery) -> bool:
+    def _terminal_after_authority_loss(
+        self,
+        delivery: QueueDelivery,
+        *,
+        lease: ExecutionLease,
+    ) -> bool:
         """Turn cancellation/terminal races into durable no-ops without scheduling recovery."""
         dispatch = delivery.dispatch
-        latest = self._runtime.snapshot(dispatch.task_id, tenant_id=dispatch.tenant_id)
-        if latest.task_status not in _TERMINAL and latest.cancellation is None:
+        latest = self._tasks.state_for(dispatch.task_id, tenant_id=dispatch.tenant_id)
+        if latest.state not in _TERMINAL:
             return False
-        if latest.cancellation is not None:
+        if latest.state is TaskStatus.CANCELLED:
             self._runtime.observe_cancellation(
                 dispatch.task_id,
                 tenant_id=dispatch.tenant_id,
                 worker_id=self._worker.worker_id,
             )
-        if (
-            latest.current_dispatch_id == dispatch.dispatch_id
-            and latest.dispatch_status is DispatchStatus.ENQUEUED
-        ):
-            self._runtime.acknowledge_dispatch(dispatch)
+        # A heartbeat can observe the terminal Task after the Graph commits its result but
+        # before the normal success path releases the lease. Release only the exact fenced
+        # identity here; a replacement lease or cancellation-owned deletion remains untouched.
+        self._runtime.release(lease)
+        self._runtime.acknowledge_dispatch(dispatch)
         self._queue.ack(delivery)
         LOGGER.info(
             "Terminal Task won the Worker execution race",
             extra={
-                "event": "cancel_observed" if latest.cancellation is not None else "task_finalized",
+                "event": (
+                    "cancel_observed" if latest.state is TaskStatus.CANCELLED else "task_finalized"
+                ),
                 "tenant_id": dispatch.tenant_id,
                 "task_id": dispatch.task_id,
                 "trace_id": dispatch.trace_id,

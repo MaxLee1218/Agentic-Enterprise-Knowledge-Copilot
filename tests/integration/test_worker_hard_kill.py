@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 from time import monotonic, sleep
 from typing import cast
@@ -218,10 +219,15 @@ def _worker_environment(settings: Settings) -> dict[str, str]:
 
 def _start_worker(environment: dict[str, str]) -> subprocess.Popen[bytes]:
     return subprocess.Popen(
-        [str(PROJECT_ROOT / ".venv/bin/python"), "-m", "copilot.worker"],
+        _worker_command(),
         cwd=PROJECT_ROOT,
         env=environment,
     )
+
+
+def _worker_command() -> tuple[str, str, str]:
+    """Use the active test interpreter in virtualenv, CI, and system installs alike."""
+    return (sys.executable, "-m", "copilot.worker")
 
 
 def _wait_for_completed_steps(

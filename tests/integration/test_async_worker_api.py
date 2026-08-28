@@ -33,6 +33,7 @@ from copilot.persistence.models import (
     WorkflowTaskRow,
 )
 from copilot.security.identity import DemoIdentityProvider
+from copilot.services.task_execution import LeaseHeartbeat
 from copilot.services.task_intake import TrustedCallerContext
 from copilot.tools.base import ToolExecutionContext, ToolExecutionOutput
 from copilot.tools.database.ap_seed import seed_accounts_payable_demo_database
@@ -440,3 +441,30 @@ def test_completed_dispatch_redelivery_after_ack_loss_is_an_authoritative_noop(
     assert terminal["status"] == "COMPLETED"
     assert terminal["artifact_count"] == 1
     assert harness.worker.container.knowledge_tool.call_count == calls_before
+
+
+def test_terminal_heartbeat_race_releases_exact_worker_lease(
+    harness: AsyncHarness,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A terminal commit racing with heartbeat loss must still finish runtime hosting."""
+    monkeypatch.setattr(LeaseHeartbeat, "authority_lost", property(lambda _self: True))
+    submitted = harness.client.post("/v1/tasks", json={"task": TASK_TEXT})
+    task_id = submitted.json()["task_id"]
+
+    completed = harness.run_until(task_id, {"COMPLETED"})
+
+    assert completed["runtime_status"] == "FINISHED"
+    assert harness.api.persistence_database is not None
+    with harness.api.persistence_database.session() as session:
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(WorkflowLeaseRow)
+                .where(
+                    WorkflowLeaseRow.tenant_id == harness.tenant_id,
+                    WorkflowLeaseRow.task_id == task_id,
+                )
+            )
+            == 0
+        )

@@ -4,20 +4,24 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from time import sleep
 from uuid import uuid4
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, delete, inspect, text
 from sqlalchemy.exc import IntegrityError
 
 from copilot.agent.graph import WorkflowInterrupted
 from copilot.bootstrap.container import build_application
+from copilot.bootstrap.worker import build_worker_application
 from copilot.config import PROJECT_ROOT, Settings, get_settings
 from copilot.contracts import ApprovalResolutionAction, ApprovalStatus, TaskStatus
 from copilot.persistence.checkpoint import migrate_postgres_checkpoints
+from copilot.persistence.database import PersistenceDatabase
 from copilot.persistence.mcp_connection_repository import MCPConnectionRepository
+from copilot.persistence.models import MCPConnectionRow, WorkflowTaskRow
 from copilot.services.approval_service import ApprovalResolutionCommand
 from copilot.services.task_intake import (
     NaturalLanguageTaskCommand,
@@ -123,9 +127,10 @@ def test_postgres_migration_round_trip_and_restart_recovery(
         artifact_dir=tmp_path / "artifacts",
         checkpoint_enabled=True,
     )
+    tenant_id = f"TENANT-POSTGRES-{uuid4().hex}"
     caller = TrustedCallerContext(
         user_id="U-POSTGRES",
-        tenant_id="TENANT-POSTGRES",
+        tenant_id=tenant_id,
         data_scope=("quality.v1", "supplier-quality-policy-v1"),
         roles=("quality_data_approver",),
         authentication_source="postgres_integration_test",
@@ -137,87 +142,122 @@ def test_postgres_migration_round_trip_and_restart_recovery(
         source=RequestSource.INTERNAL,
     )
 
-    with build_application(settings) as first:
-        mcp_connections = MCPConnectionRepository(
-            first.persistence_database, initialize_schema=False
-        )
-        mcp_connection = stdio_connection()
-        mcp_connections.save(mcp_connection, tenant_id=caller.tenant_id)
-        assert (
-            mcp_connections.get(mcp_connection.connection_id, tenant_id=caller.tenant_id)
-            == mcp_connection
-        )
-        with pytest.raises(KeyError):
-            mcp_connections.get(mcp_connection.connection_id, tenant_id="TENANT-POSTGRES-OTHER")
-        with pytest.raises(WorkflowInterrupted) as captured:
-            first.task_service.submit(command_input, caller)
-        task_id = captured.value.task_id
-        approval_id = captured.value.approval_id
-        assert approval_id is not None
-        assert (
-            first.approval_repository.get(approval_id, tenant_id=caller.tenant_id).status
-            is ApprovalStatus.PENDING
-        )
-        assert first.evidence.list(task_id, tenant_id=caller.tenant_id)
-        assert first.workflow_audit.list(tenant_id=caller.tenant_id)
+    try:
+        with build_application(settings) as first:
+            mcp_connections = MCPConnectionRepository(
+                first.persistence_database, initialize_schema=False
+            )
+            mcp_connection = stdio_connection()
+            mcp_connections.save(mcp_connection, tenant_id=caller.tenant_id)
+            assert (
+                mcp_connections.get(mcp_connection.connection_id, tenant_id=caller.tenant_id)
+                == mcp_connection
+            )
+            with pytest.raises(KeyError):
+                mcp_connections.get(
+                    mcp_connection.connection_id,
+                    tenant_id="TENANT-POSTGRES-OTHER",
+                )
+            with pytest.raises(WorkflowInterrupted) as captured:
+                first.task_service.submit(command_input, caller)
+            task_id = captured.value.task_id
+            approval_id = captured.value.approval_id
+            assert approval_id is not None
+            assert (
+                first.approval_repository.get(approval_id, tenant_id=caller.tenant_id).status
+                is ApprovalStatus.PENDING
+            )
+            assert first.evidence.list(task_id, tenant_id=caller.tenant_id)
+            assert first.workflow_audit.list(tenant_id=caller.tenant_id)
 
-    with build_application(settings) as restarted:
-        assert (
-            restarted.approval_repository.get(approval_id, tenant_id=caller.tenant_id).status
-            is ApprovalStatus.PENDING
-        )
-        result = restarted.approval_service.resolve(
-            ApprovalResolutionCommand(
-                task_id=task_id,
-                approval_id=approval_id,
-                action=ApprovalResolutionAction.APPROVE,
-                reason="PostgreSQL restart recovery verification",
-            ),
-            caller,
-        )
-        assert result.task_status is TaskStatus.COMPLETED
-        assert restarted.artifacts.list_by_task(task_id, tenant_id=caller.tenant_id)
-        assert restarted.engine.get_state(task_id, caller.tenant_id)["task_id"] == task_id
+        with build_application(settings) as restarted:
+            assert (
+                restarted.approval_repository.get(
+                    approval_id,
+                    tenant_id=caller.tenant_id,
+                ).status
+                is ApprovalStatus.PENDING
+            )
+            result = restarted.approval_service.resolve(
+                ApprovalResolutionCommand(
+                    task_id=task_id,
+                    approval_id=approval_id,
+                    action=ApprovalResolutionAction.APPROVE,
+                    reason="PostgreSQL restart recovery verification",
+                ),
+                caller,
+            )
+            assert result.task_status is TaskStatus.EXECUTING
+            assert result.execution is None
 
-    with build_application(settings) as recovered:
-        task = recovered.task_service.get_task(task_id, caller)
-        assert task.status == TaskStatus.COMPLETED.value
-        task_page = recovered.task_service.list_tasks(
-            caller,
-            status=TaskStatus.COMPLETED,
-            limit=20,
-            offset=0,
-        )
-        assert task_page.total == 1
-        assert tuple(item.task_id for item in task_page.items) == (task_id,)
-        assert recovered.repository.task_result_for(task_id, tenant_id=caller.tenant_id) is not None
-        assert (
-            recovered.approval_repository.get(approval_id, tenant_id=caller.tenant_id).status
-            is ApprovalStatus.APPROVED
-        )
-        assert recovered.engine.get_state(task_id, caller.tenant_id)["task_id"] == task_id
+        with build_worker_application(settings) as worker:
+            for _attempt in range(500):
+                worker.runtime.run_once()
+                state = worker.container.repository.state_for(
+                    task_id,
+                    tenant_id=caller.tenant_id,
+                )
+                if state.state is TaskStatus.COMPLETED:
+                    break
+                sleep(0.02)
+            else:
+                raise AssertionError("Worker did not resume the approved PostgreSQL Task")
 
-        intruder = TrustedCallerContext(
-            user_id="U-POSTGRES-INTRUDER",
-            tenant_id="TENANT-POSTGRES-OTHER",
-            data_scope=caller.data_scope,
-            roles=caller.roles,
-            scopes=caller.scopes,
-            authentication_source="postgres_integration_test",
-            authenticated=True,
-            is_demo_identity=False,
-        )
-        with pytest.raises(TaskNotFoundError):
-            recovered.task_service.get_task(task_id, intruder)
-        with pytest.raises(KeyError):
-            recovered.repository.state_for(task_id, tenant_id=intruder.tenant_id)
-        assert recovered.evidence.list(task_id, tenant_id=intruder.tenant_id) == ()
-        assert recovered.artifacts.list_by_task(task_id, tenant_id=intruder.tenant_id) == ()
-        with pytest.raises(KeyError):
-            recovered.approval_repository.get(approval_id, tenant_id=intruder.tenant_id)
-        assert recovered.tool_audit.list(tenant_id=intruder.tenant_id) == ()
-        assert recovered.workflow_audit.list(tenant_id=intruder.tenant_id) == ()
-        with pytest.raises(ValueError, match="checkpoint was not found"):
-            recovered.engine.get_state(task_id, intruder.tenant_id)
+        with build_application(settings) as recovered:
+            task = recovered.task_service.get_task(task_id, caller)
+            assert task.status == TaskStatus.COMPLETED.value
+            task_page = recovered.task_service.list_tasks(
+                caller,
+                status=TaskStatus.COMPLETED,
+                limit=20,
+                offset=0,
+            )
+            assert task_page.total == 1
+            assert tuple(item.task_id for item in task_page.items) == (task_id,)
+            assert (
+                recovered.repository.task_result_for(task_id, tenant_id=caller.tenant_id)
+                is not None
+            )
+            assert (
+                recovered.approval_repository.get(
+                    approval_id,
+                    tenant_id=caller.tenant_id,
+                ).status
+                is ApprovalStatus.APPROVED
+            )
+            assert recovered.artifacts.list_by_task(task_id, tenant_id=caller.tenant_id)
+            assert recovered.engine.get_state(task_id, caller.tenant_id)["task_id"] == task_id
 
-    get_settings.cache_clear()
+            intruder = TrustedCallerContext(
+                user_id="U-POSTGRES-INTRUDER",
+                tenant_id="TENANT-POSTGRES-OTHER",
+                data_scope=caller.data_scope,
+                roles=caller.roles,
+                scopes=caller.scopes,
+                authentication_source="postgres_integration_test",
+                authenticated=True,
+                is_demo_identity=False,
+            )
+            with pytest.raises(TaskNotFoundError):
+                recovered.task_service.get_task(task_id, intruder)
+            with pytest.raises(KeyError):
+                recovered.repository.state_for(task_id, tenant_id=intruder.tenant_id)
+            assert recovered.evidence.list(task_id, tenant_id=intruder.tenant_id) == ()
+            assert recovered.artifacts.list_by_task(task_id, tenant_id=intruder.tenant_id) == ()
+            with pytest.raises(KeyError):
+                recovered.approval_repository.get(approval_id, tenant_id=intruder.tenant_id)
+            assert recovered.tool_audit.list(tenant_id=intruder.tenant_id) == ()
+            assert recovered.workflow_audit.list(tenant_id=intruder.tenant_id) == ()
+            with pytest.raises(ValueError, match="checkpoint was not found"):
+                recovered.engine.get_state(task_id, intruder.tenant_id)
+    finally:
+        cleanup = PersistenceDatabase(POSTGRES_URL)
+        with cleanup.session() as session:
+            session.execute(
+                delete(WorkflowTaskRow).where(WorkflowTaskRow.tenant_id == caller.tenant_id)
+            )
+            session.execute(
+                delete(MCPConnectionRow).where(MCPConnectionRow.tenant_id == caller.tenant_id)
+            )
+        cleanup.dispose()
+        get_settings.cache_clear()
