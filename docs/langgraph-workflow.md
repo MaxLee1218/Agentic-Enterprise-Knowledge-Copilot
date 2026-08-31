@@ -79,6 +79,7 @@ records preserve successful predecessors, so they are not replayed after restart
 - `WORKFLOW_MAX_RETRIES` is layered under each frozen `RetryPolicy`.
 - `MAX_REPLAN_COUNT` is enforced, although Stage 10 never creates a replacement plan.
 - `MAX_PLAN_REPAIR_ATTEMPTS` separately bounds pre-execution candidate repair.
+- `MAX_STRUCTURED_OUTPUT_RETRIES` independently bounds incomplete/invalid Planner JSON recovery.
 - `MAX_TOTAL_EXECUTION_SECONDS` creates the Task deadline checked before governed work.
 - `GRAPH_RECURSION_LIMIT` is a final graph-level loop guard.
 - Only idempotent, recoverable technical failures/timeouts with allowlisted error codes retry.

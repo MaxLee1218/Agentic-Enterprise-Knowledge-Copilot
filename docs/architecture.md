@@ -179,9 +179,10 @@ User or approved protocol client
   -> LangGraph validate_request
   -> Task understanding and classification
   -> TaskContract
-  -> Planner and plan validator
+  -> lightweight LLM ProposedPlan
+  -> deterministic PlanCompiler (Domain Manifest + Registry + canonical domain factory)
+  -> existing TaskPlan and deterministic plan validator
   -> centralized role/tool permission matrix
-  -> TaskPlan
   -> Policy check and approval gate
   -> WAITING_APPROVAL + durable checkpoint, when required
   -> ApprovalService authorize/resolve/resume
@@ -263,7 +264,8 @@ The public entry point deliberately keeps four objects distinct:
 | `NaturalLanguageTaskSubmission` | API/CLI transport | external caller | Raw task plus a few tightening-only execution options |
 | `TaskRequest` | Domain/application | Task Intake | Immutable authenticated original text and audit starting point |
 | `TaskContract` | Domain | `understand_task` | Structured business scope derived by LLM output plus trusted authorization constraints |
-| `TaskPlan` | Domain | `create_plan` | Versioned executable DAG restricted to the ToolRegistry manifest |
+| `ProposedPlan` | Domain-internal Planner boundary | `create_plan` only | Transient, non-executable capability suggestion with no authorization metadata |
+| `TaskPlan` | Domain | `PlanCompiler` | Versioned executable DAG restricted to the selected manifest and exact Registry profiles |
 
 `NaturalLanguageTaskSubmission != TaskRequest != TaskContract != TaskPlan`. Identity, tenant,
 roles, data scope, read-only enforcement, approval requirements, deadlines, and system limits

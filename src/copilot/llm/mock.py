@@ -10,7 +10,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
-from copilot.llm.structured_output import parse_structured_output
+from copilot.llm.structured_output import parse_structured_output, structured_output_fingerprint
 from copilot.services.llm import (
     LLMCallContext,
     LLMGenerationOptions,
@@ -82,6 +82,7 @@ class MockLLM:
         if isinstance(response, LLMProviderError):
             raise response
         parsed = parse_structured_output(response, output_schema)
+        raw_output_chars, raw_output_hash = structured_output_fingerprint(response)
         latency_ms = max(0, round((perf_counter() - started) * 1000))
         return StructuredLLMResult[TModel](
             parsed_output=parsed,
@@ -92,6 +93,8 @@ class MockLLM:
             finish_reason="stop",
             request_id=f"mock-{len(self.calls)}",
             attempts=1,
+            raw_output_chars=raw_output_chars,
+            raw_output_hash=raw_output_hash,
         )
 
 

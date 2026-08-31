@@ -21,7 +21,7 @@ from copilot.contracts import (
     ApprovalResolutionAction,
     Artifact,
     JsonObject,
-    TaskPlan,
+    ProposedPlan,
     TaskType,
 )
 from copilot.llm.offline_mock import OfflineMockLLM
@@ -76,11 +76,9 @@ class RecordingEvaluationLLM(LLMProvider):
         self,
         *,
         plan_fault: str | None = None,
-        task_type: TaskType = TaskType.SUPPLIER_QUALITY_ANALYSIS_V1,
     ) -> None:
         self._delegate = OfflineMockLLM()
         self._plan_fault = plan_fault
-        self._task_type = task_type
         self.records: list[LLMUsageRecord] = []
 
     def generate_structured(
@@ -97,44 +95,26 @@ class RecordingEvaluationLLM(LLMProvider):
             context=context,
             options=options,
         )
-        if output_schema is TaskPlan and context.node_name == "create_plan":
-            if self._plan_fault in {
-                "cycle",
-                "missing_database_step",
-                "missing_detection_dependency",
-                "summary_missing_input",
-            }:
-                raise LLMSchemaValidationError("LLM output failed TaskPlan dependency validation")
-            if self._plan_fault in {"unregistered_tool", "database_write", "wrong_tool"}:
-                plan = cast(TaskPlan, result.parsed_output)
-                invalid_name = (
-                    "unregistered_tool" if self._plan_fault == "wrong_tool" else self._plan_fault
-                )
-                invalid_step = plan.steps[0].model_copy(update={"tool_name": invalid_name})
-                invalid_plan = plan.model_copy(update={"steps": (invalid_step, *plan.steps[1:])})
-                result = result.model_copy(update={"parsed_output": invalid_plan})
-            elif self._plan_fault in {
-                "unsupported_operation_profile",
-                "supplier_template",
-            }:
-                result = result.model_copy(
-                    update={
-                        "parsed_output": self._mutate_plan(
-                            cast(TaskPlan, result.parsed_output), self._plan_fault
-                        )
-                    }
-                )
+        if (
+            output_schema is ProposedPlan
+            and context.node_name == "create_plan"
+            and self._plan_fault is not None
+        ):
+            # These evaluation cases previously mutated executable TaskPlan fields. Those fields
+            # are no longer model-controlled, so inject the equivalent failure at the untrusted
+            # proposal/schema boundary and prove that no canonical plan or tool call escapes.
+            if self._plan_fault == "cycle":
+                raise LLMSchemaValidationError("Injected cyclic ProposedPlan for evaluation")
+            proposal = cast(ProposedPlan, result.parsed_output)
+            incomplete = proposal.model_copy(update={"steps": proposal.steps[:-1]})
+            result = result.model_copy(update={"parsed_output": incomplete})
         usage = LLMUsage(input_tokens=120, output_tokens=80, total_tokens=200)
         result = result.model_copy(update={"usage": usage})
         self.records.append(
             LLMUsageRecord(
                 node_name=context.node_name,
                 provider=result.provider,
-                model=(
-                    "offline-accounts-payable-eval-v1"
-                    if self._task_type is TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1
-                    else "offline-supplier-quality-eval-v1"
-                ),
+                model=result.model,
                 input_tokens=usage.input_tokens,
                 output_tokens=usage.output_tokens,
                 total_tokens=usage.total_tokens,
@@ -142,38 +122,6 @@ class RecordingEvaluationLLM(LLMProvider):
             )
         )
         return result
-
-    @staticmethod
-    def _mutate_plan(plan: TaskPlan, fault: str) -> TaskPlan:
-        steps = list(plan.steps)
-        if fault == "missing_database_step":
-            steps = [
-                item
-                for item in steps
-                if not (
-                    item.tool_name == "database_query"
-                    and item.step_id.endswith("ap-invoice-population")
-                )
-            ]
-        elif fault in {"missing_detection_dependency", "summary_missing_input"}:
-            suffix = (
-                "detect-exact-duplicate-invoices"
-                if fault == "missing_detection_dependency"
-                else "aggregate-ap-exception-summary"
-            )
-            index = next(i for i, item in enumerate(steps) if item.step_id.endswith(suffix))
-            steps[index] = steps[index].model_copy(update={"dependency": ()})
-        elif fault == "unsupported_operation_profile":
-            index = next(i for i, item in enumerate(steps) if item.tool_name == "analysis_engine")
-            steps[index] = steps[index].model_copy(
-                update={"contract_profile": "accounts_payable_analytics.v999"}
-            )
-        elif fault == "supplier_template":
-            index = next(i for i, item in enumerate(steps) if item.tool_name == "report_generator")
-            steps[index] = steps[index].model_copy(
-                update={"contract_profile": "supplier_quality_report.v1"}
-            )
-        return plan.model_copy(update={"steps": tuple(steps)})
 
 
 class EvaluationHarness:
@@ -194,7 +142,6 @@ class EvaluationHarness:
         harness_error: str | None = None
         provider = RecordingEvaluationLLM(
             plan_fault=self._plan_fault(case),
-            task_type=case.task_input.task_type,
         )
         fixtures = self._load_fixtures(case)
         settings = self._settings(case, work_directory)

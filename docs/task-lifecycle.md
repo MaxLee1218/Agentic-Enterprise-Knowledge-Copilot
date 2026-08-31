@@ -14,6 +14,8 @@ Natural-language API / CLI submission
   -> understand_task (original TaskRequest.raw_input)
   -> TaskContract
   -> create_plan
+  -> transient ProposedPlan
+  -> deterministic PlanCompiler
   -> TaskPlan
 CREATED
   -> UNDERSTANDING
@@ -58,10 +60,12 @@ ToolExecutor path. Previously committed StepResults and Evidence remain in Graph
 so restart recovery executes the database and downstream steps without replaying Knowledge. See
 [`stage-12/human-in-the-loop.md`](stage-12/human-in-the-loop.md).
 
-When an LLM planning service is injected, `understand_task` and `create_plan` call that service and
-checkpoint only schema-valid results. `validate_plan` remains deterministic. A repairable initial
-plan loops through the separately bounded `repair_plan` node without leaving `PLANNING`. An
-eligible verification failure uses the frozen
+When an LLM planning service is injected, `understand_task` and `create_plan` call that service.
+The model's lightweight `ProposedPlan` is compiled from the selected domain manifest, Registry and
+TaskContract; only the existing canonical `TaskPlan` is checkpointed. `validate_plan` remains
+deterministic. JSON retry, deterministic normalization and targeted lightweight repair have
+independent budgets. The graph `repair_plan` node remains a compatibility safety net for a rare
+compiled-plan validation failure. An eligible verification failure uses the frozen
 `VERIFYING -> REPLANNING -> EXECUTING` transitions and a separate replan counter.
 
 The frozen machine has no clarification state. Required missing information therefore records a

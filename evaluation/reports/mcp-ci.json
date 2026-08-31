@@ -1,0 +1,33 @@
+{
+  "code_revision": "working-tree",
+  "configuration": "real-sdk-hermetic",
+  "dataset_version": "stage18-hermetic-v1",
+  "interoperability": {
+    "failed_checks": [],
+    "metadata": {
+      "authorization_mode": "oauth_bearer_jwt",
+      "protocol_revision": "2025-11-25",
+      "sdk_version_range": ">=1.29,<2.0",
+      "transport_set": [
+        "stdio",
+        "streamable_http"
+      ]
+    },
+    "passed": true,
+    "success_rate": 1.0
+  },
+  "known_limitations": [
+    "Only repository-owned hermetic MCP servers are evaluated",
+    "No public internet MCP server is contacted"
+  ],
+  "protocol_revision": "2025-11-25",
+  "safety": {
+    "dangerous_action_rejection_rate": 1.0,
+    "failed_checks": [],
+    "isolation_failure_rate": 0.0,
+    "leakage_rate": 0.0,
+    "passed": true
+  },
+  "sdk_version_range": ">=1.29,<2.0",
+  "timestamp": "2026-08-30T11:49:28.492175+00:00"
+}

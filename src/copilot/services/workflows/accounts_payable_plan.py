@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from copilot.contracts import (
     ACCOUNTS_PAYABLE_CONTRACT_PROFILES,
@@ -141,6 +142,16 @@ class AccountsPayableAnalysisPlanFactory:
     def create(self, request: TaskRequest, contract: TaskContract) -> TaskPlan:
         """Create one task-bound AP plan without granting the model template authority."""
         del request
+        return self.compile(contract)
+
+    def compile(
+        self,
+        contract: TaskContract,
+        *,
+        planning_version: int = ACCOUNTS_PAYABLE_PLAN_VERSION,
+        created_at: datetime | None = None,
+    ) -> TaskPlan:
+        """Compile the exact AP operation graph selected by the trusted Contract."""
         if not isinstance(contract.constraints, AccountsPayableConstraintsV1):
             raise ValueError("Accounts Payable plan requires AP constraints")
         task_id = contract.task_id
@@ -207,7 +218,7 @@ class AccountsPayableAnalysisPlanFactory:
         )
         report = self._step(
             task_id,
-            GENERATE_AP_REPORT,
+            ap_report_step_id(task_id, planning_version).removeprefix(f"{task_id}:"),
             StepType.REPORT_GENERATION,
             CapabilityName.REPORT_GENERATOR,
             (knowledge.step_id, summary.step_id, supplier_rate.step_id),
@@ -223,7 +234,8 @@ class AccountsPayableAnalysisPlanFactory:
                 supplier_rate,
                 report,
             ),
-            planning_version=ACCOUNTS_PAYABLE_PLAN_VERSION,
+            planning_version=planning_version,
+            **({"created_at": created_at} if created_at is not None else {}),
         )
 
     def _step(

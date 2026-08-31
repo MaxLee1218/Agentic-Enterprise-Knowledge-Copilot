@@ -92,7 +92,7 @@ What becomes easier or harder, including operational and migration effects?
 |---|---|---|---|
 | [ADR-001](ADR-001-package-and-layer-boundary.md) | Accepted | 2026-07-21 | Use one `copilot` production package with explicit conceptual layer and dependency boundaries |
 | [ADR-002](ADR-002-langgraph-orchestration.md) | Accepted | 2026-07-28 | Use LangGraph orchestration with separate SQLite checkpoints, business facts, and execution leases |
-| [ADR-003](ADR-003-llm-provider-and-structured-output.md) | Accepted | 2026-07-31 | Use replaceable structured LLM providers with deterministic validation, repair, and replan gates |
+| [ADR-003](ADR-003-llm-provider-and-structured-output.md) | Superseded by ADR-018 | 2026-07-31 | Use replaceable structured LLM providers with deterministic validation, repair, and replan gates |
 | [ADR-004](ADR-004-approval-edit-resolution.md) | Accepted | 2026-08-02 | Resolve bounded approval edits with complete replacement arguments and checkpoint resume |
 | [ADR-005](ADR-005-local-observability-boundary.md) | Accepted | 2026-08-06 | Use injected provider-independent observability with bounded local logs, spans, metrics, and analysis |
 | [ADR-006](ADR-006-deployment-persistence-boundary.md) | Accepted | 2026-08-07 | Separate Copilot PostgreSQL persistence from the enterprise business database and use explicit migrations |
@@ -107,3 +107,4 @@ What becomes easier or harder, including operational and migration effects?
 | [ADR-015](ADR-015-checkpoint-recovery-authority.md) | Accepted | 2026-08-25 | Keep Task DB authoritative and require fail-closed checkpoint recovery reconciliation |
 | [ADR-016](ADR-016-runtime-graph-retry-ownership.md) | Accepted | 2026-08-25 | Separate Queue/runtime recovery from Graph and Tool business retry ownership |
 | [ADR-017](ADR-017-postgresql-backed-queue-v1.md) | Accepted | 2026-08-26 | Use PostgreSQL-backed at-least-once Queue v1 behind the existing transactional outbox |
+| [ADR-018](ADR-018-deterministic-plan-compilation.md) | Accepted | 2026-08-30 | Compile lightweight untrusted ProposedPlans into existing canonical TaskPlans using deterministic authorities |

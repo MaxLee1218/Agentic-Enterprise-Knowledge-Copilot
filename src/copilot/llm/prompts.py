@@ -7,17 +7,23 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel
 
-from copilot.contracts import TaskContract, TaskPlan, TaskRequest
-from copilot.llm.schemas import PlannerToolManifest
+from copilot.contracts import (
+    AccountsPayableConstraintsV1,
+    ProposedPlan,
+    SupplierQualityConstraintsV1,
+    TaskContract,
+    TaskPlan,
+    TaskRequest,
+)
+from copilot.llm.schemas import PlannerCapabilityManifest
 from copilot.security import ContentSourceType, PromptInjectionDetector
 from copilot.security.redaction import redact_text
 from copilot.services.llm import LLMMessage
-from copilot.services.workflows.validation import PlanValidationIssue
 
 TASK_UNDERSTANDING_PROMPT_VERSION = "task-understanding-v2"
-PLANNER_PROMPT_VERSION = "planner-v2"
-PLAN_REPAIR_PROMPT_VERSION = "plan-repair-v2"
-REPLAN_PROMPT_VERSION = "replan-v2"
+PLANNER_PROMPT_VERSION = "planner-v3"
+PLAN_REPAIR_PROMPT_VERSION = "plan-repair-v3"
+REPLAN_PROMPT_VERSION = "replan-v3"
 
 
 def task_understanding_messages(
@@ -78,20 +84,18 @@ The workflow is read-only. Output one JSON object matching the supplied schema a
 def planner_messages(
     *,
     contract: TaskContract,
-    manifest: PlannerToolManifest,
+    manifest: PlannerCapabilityManifest,
     max_steps: int,
 ) -> tuple[LLMMessage, ...]:
-    """Build a candidate plan prompt constrained to exact Registry definitions."""
+    """Build a short semantic-planning prompt with no executable tool contracts."""
     system = """
-Create one candidate TaskPlan for the supplied immutable TaskContract.
-Use only tools in the trusted manifest. Copy each selected tool's exact tool_version,
-contract_profile, input_schema and output_schema into its TaskStep. Do not create tools,
-arguments, SQL, Python, approvals, policy
-exceptions, permissions, or additional scope. TaskStep has no arguments field: runtime inputs are
-built deterministically later. Use unique task-bound step_id values, an acyclic dependency graph,
-and no more than max_steps. Follow the task-type-specific canonical template/operation step IDs
-and dependency rules encoded in the trusted Contract and validator. The final and only report
-step must have the complete governed Evidence dependencies. Output only the TaskPlan JSON schema.
+Suggest one lightweight ProposedPlan for the supplied business task.
+Use every allowed capability exactly once and no other capability. Use short unique step_id values.
+Represent the semantic flow database_query -> analysis_engine and
+knowledge_search + analysis_engine -> report_generator. Arguments are optional semantic hints;
+never include tool/version/profile/schema/risk/approval/permission/tenant/role/retry/timeout facts.
+The proposal is not executable: deterministic code will expand domain operations, bind runtime
+inputs and compile the strict TaskPlan. Output only one ProposedPlan JSON object and no prose.
 """.strip()
     return (
         LLMMessage(role="system", content=system),
@@ -99,10 +103,10 @@ step must have the complete governed Evidence dependencies. Output only the Task
             role="user",
             content=_data_message(
                 {
-                    "trusted_task_contract": contract.model_dump(mode="json"),
-                    "trusted_tool_manifest": manifest.model_dump(mode="json"),
-                    "trusted_max_steps": max_steps,
-                    "task_plan_schema": TaskPlan.model_json_schema(),
+                    "task_context": _planner_contract_view(contract),
+                    "allowed_capabilities": manifest.model_dump(mode="json"),
+                    "max_proposed_steps": min(max_steps, len(manifest.capabilities)),
+                    "proposed_plan_schema": ProposedPlan.model_json_schema(),
                 }
             ),
         ),
@@ -112,17 +116,16 @@ step must have the complete governed Evidence dependencies. Output only the Task
 def plan_repair_messages(
     *,
     contract: TaskContract,
-    manifest: PlannerToolManifest,
-    invalid_plan: TaskPlan,
-    errors: Sequence[PlanValidationIssue],
+    manifest: PlannerCapabilityManifest,
+    invalid_candidate: object,
+    errors: Sequence[dict[str, object]],
     max_steps: int,
 ) -> tuple[LLMMessage, ...]:
-    """Build bounded repair feedback for a parseable but invalid candidate plan."""
+    """Build targeted feedback for one lightweight suggestion defect."""
     system = """
-Repair only the deterministic validation errors in the candidate TaskPlan.
-Do not change the task goal or TaskContract, expand scope, add a tool, increase max_steps, remove
-required capabilities/deliverables, create approvals, or bypass policy. Use exact manifest schemas.
-Output only a complete corrected TaskPlan JSON object.
+Repair only the listed defect in the lightweight ProposedPlan.
+Keep the business task unchanged, use every allowed capability exactly once, preserve scope, and
+do not add execution metadata or authorization claims. Output only the corrected ProposedPlan.
 """.strip()
     return (
         LLMMessage(role="system", content=system),
@@ -130,21 +133,12 @@ Output only a complete corrected TaskPlan JSON object.
             role="user",
             content=_data_message(
                 {
-                    "trusted_task_contract": contract.model_dump(mode="json"),
-                    "trusted_tool_manifest": manifest.model_dump(mode="json"),
-                    "trusted_max_steps": max_steps,
-                    "untrusted_invalid_candidate": invalid_plan.model_dump(mode="json"),
-                    "trusted_validation_errors": [
-                        {
-                            "error_code": issue.error_code,
-                            "step_id": issue.step_id,
-                            "field": issue.field,
-                            "message": issue.message,
-                            "repair_hint": issue.repair_hint,
-                        }
-                        for issue in errors
-                    ],
-                    "task_plan_schema": TaskPlan.model_json_schema(),
+                    "task_context": _planner_contract_view(contract),
+                    "allowed_capabilities": manifest.model_dump(mode="json"),
+                    "max_proposed_steps": min(max_steps, len(manifest.capabilities)),
+                    "untrusted_invalid_candidate": invalid_candidate,
+                    "validation_errors": list(errors)[:8],
+                    "proposed_plan_schema": ProposedPlan.model_json_schema(),
                 }
             ),
         ),
@@ -155,18 +149,17 @@ def replan_messages(
     *,
     contract: TaskContract,
     current_plan: TaskPlan,
-    manifest: PlannerToolManifest,
+    manifest: PlannerCapabilityManifest,
     execution_summary: dict[str, object],
     remaining_steps: int,
     next_version: int,
 ) -> tuple[LLMMessage, ...]:
     """Build a replan prompt that preserves committed results and evidence."""
     system = """
-Produce a revised remaining TaskPlan only for the stated recoverable execution gap.
-Completed step results and evidence are immutable facts. Do not delete them, repeat successful
-steps without an explicit supplied reason, expand scope, add tools, bypass approval/policy, or
-exceed remaining_steps. Keep the TaskContract unchanged and set exactly next_version.
-Output only a complete TaskPlan JSON object.
+Suggest a revised lightweight ProposedPlan only for the stated recoverable execution gap.
+Completed results and evidence are immutable facts. Do not expand scope, add capabilities, bypass
+approval/policy, or include executable metadata. Deterministic compilation owns next_version and
+preserves successful canonical steps. Output only a complete ProposedPlan JSON object.
 """.strip()
     return (
         LLMMessage(role="system", content=system),
@@ -174,13 +167,13 @@ Output only a complete TaskPlan JSON object.
             role="user",
             content=_data_message(
                 {
-                    "trusted_task_contract": contract.model_dump(mode="json"),
-                    "trusted_current_plan": current_plan.model_dump(mode="json"),
-                    "trusted_tool_manifest": manifest.model_dump(mode="json"),
+                    "task_context": _planner_contract_view(contract),
+                    "current_plan_summary": _plan_summary(current_plan),
+                    "allowed_capabilities": manifest.model_dump(mode="json"),
                     "untrusted_minimized_execution_summary": execution_summary,
                     "trusted_remaining_steps": remaining_steps,
                     "trusted_next_version": next_version,
-                    "task_plan_schema": TaskPlan.model_json_schema(),
+                    "proposed_plan_schema": ProposedPlan.model_json_schema(),
                 }
             ),
         ),
@@ -189,6 +182,47 @@ Output only a complete TaskPlan JSON object.
 
 def _data_message(value: dict[str, object]) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def _planner_contract_view(contract: TaskContract) -> dict[str, object]:
+    """Expose only business fields that materially affect semantic planning."""
+    common: dict[str, object] = {
+        "task_type": contract.task_type.value,
+        "business_goal": contract.goal,
+        "output": {
+            "artifact_type": contract.expected_output.artifact_type.value,
+            "language": contract.expected_output.language.value,
+        },
+    }
+    constraints = contract.constraints
+    if isinstance(constraints, SupplierQualityConstraintsV1):
+        common["scope"] = {
+            "year": constraints.year,
+            "quarter": constraints.quarter,
+            "metrics": list(constraints.metrics),
+        }
+    elif isinstance(constraints, AccountsPayableConstraintsV1):
+        common["scope"] = {
+            "start_date": constraints.time_range.start_date.isoformat(),
+            "end_date": constraints.time_range.end_date.isoformat(),
+            "exception_types": [item.value for item in constraints.exception_types],
+            "include_policy_comparison": constraints.include_policy_comparison,
+        }
+    return common
+
+
+def _plan_summary(plan: TaskPlan) -> dict[str, object]:
+    return {
+        "planning_version": plan.planning_version,
+        "steps": [
+            {
+                "step_id": step.step_id,
+                "capability": step.tool_name,
+                "depends_on": list(step.dependency),
+            }
+            for step in plan.steps
+        ],
+    }
 
 
 __all__ = [

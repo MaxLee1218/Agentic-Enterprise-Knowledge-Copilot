@@ -9,10 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from copilot.contracts import (
     APExceptionType,
     ArtifactType,
-    JsonObject,
+    CapabilityName,
     MoneyThreshold,
     ReportLanguage,
-    RiskLevel,
     TaskType,
 )
 
@@ -146,35 +145,29 @@ class APTaskUnderstandingOutput(BaseModel):
         return self
 
 
-class PlannerToolManifestEntry(BaseModel):
-    """Minimized deterministic ToolRegistry view exposed to the planner."""
+class PlannerCapabilityManifestEntry(BaseModel):
+    """Semantic capability view with all executable Registry metadata removed."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    name: str
-    tool_version: str
-    contract_profile: str
+    capability: CapabilityName
     description: str
-    input_schema: JsonObject
-    output_schema: JsonObject
-    risk_level: RiskLevel
-    read_only: bool
-    requires_approval: bool
-    idempotent: bool
+    semantic_arguments: tuple[str, ...] = ()
 
 
-class PlannerToolManifest(BaseModel):
-    """Stable sorted manifest plus an explicit schema version."""
+class PlannerCapabilityManifest(BaseModel):
+    """Stable domain-filtered capability suggestion boundary."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: str = "planner-tool-manifest-v2"
-    tools: tuple[PlannerToolManifestEntry, ...]
+    schema_version: str = "planner-capability-manifest-v3"
+    task_type: TaskType
+    capabilities: tuple[PlannerCapabilityManifestEntry, ...]
 
 
 __all__ = [
-    "PlannerToolManifest",
-    "PlannerToolManifestEntry",
+    "PlannerCapabilityManifest",
+    "PlannerCapabilityManifestEntry",
     "APDateRangeCandidate",
     "APDeliverableCandidate",
     "APTaskUnderstandingOutput",

@@ -52,6 +52,35 @@ class LLMUsage(BaseModel):
     total_tokens: int = Field(default=0, ge=0)
 
 
+class LLMValidationIssue(BaseModel):
+    """Bounded schema failure detail that never contains the rejected value."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    field_path: str = Field(min_length=1, max_length=500)
+    error_type: str = Field(min_length=1, max_length=100)
+    expected: str | None = Field(default=None, max_length=200)
+    received_type: str | None = Field(default=None, max_length=100)
+
+
+class LLMResponseDiagnostics(BaseModel):
+    """Safe provider-response forensics with hashes instead of raw content."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    provider: str | None = Field(default=None, max_length=100)
+    model: str | None = Field(default=None, max_length=200)
+    latency_ms: int | None = Field(default=None, ge=0)
+    usage: LLMUsage = Field(default_factory=LLMUsage)
+    finish_reason: str | None = Field(default=None, max_length=100)
+    request_id: str | None = Field(default=None, max_length=500)
+    raw_output_chars: int = Field(default=0, ge=0)
+    raw_output_hash: str | None = Field(default=None, max_length=100)
+    parse_status: Literal["not_attempted", "passed", "failed"] = "not_attempted"
+    schema_status: Literal["not_attempted", "passed", "failed"] = "not_attempted"
+    validation_errors: tuple[LLMValidationIssue, ...] = ()
+
+
 class LLMProviderMetadata(BaseModel):
     """Stable provider identity without credentials or transport details."""
 
@@ -74,6 +103,8 @@ class StructuredLLMResult(BaseModel, Generic[TModel]):
     finish_reason: str | None = None
     request_id: str | None = None
     attempts: int = Field(default=1, ge=1)
+    raw_output_chars: int = Field(default=0, ge=0)
+    raw_output_hash: str | None = Field(default=None, max_length=100)
 
 
 class LLMErrorCode(StrEnum):
@@ -97,9 +128,24 @@ class LLMProviderError(RuntimeError):
     code = LLMErrorCode.INTERNAL
     retryable = False
 
-    def __init__(self, message: str, *, attempts: int = 1) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        attempts: int = 1,
+        diagnostics: LLMResponseDiagnostics | None = None,
+        raw_output: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.attempts = attempts
+        self.diagnostics = diagnostics
+        # This bounded in-memory value exists only for targeted repair. Providers and loggers must
+        # never serialize it; durable diagnostics retain only length/hash and validation summaries.
+        self.raw_output = raw_output
+
+    def attach_diagnostics(self, diagnostics: LLMResponseDiagnostics) -> None:
+        """Attach safe provider metadata before the error crosses the infrastructure boundary."""
+        self.diagnostics = diagnostics
 
 
 class LLMConfigurationError(LLMProviderError):

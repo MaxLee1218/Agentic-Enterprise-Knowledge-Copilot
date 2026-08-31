@@ -446,8 +446,10 @@ def build_workflow_container(
                 temperature=settings.llm_temperature,
                 max_output_tokens=settings.llm_max_output_tokens,
             ),
+            max_structured_output_retries=settings.max_structured_output_retries,
             max_plan_repair_attempts=settings.max_plan_repair_attempts,
             domain_manifests=domain_manifests,
+            clock=clock,
         )
         if effective_llm_provider is not None
         else None

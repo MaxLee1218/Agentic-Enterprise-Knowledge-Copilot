@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded
+
+Superseded by [ADR-018](ADR-018-deterministic-plan-compilation.md).
 
 ## Date
 
@@ -45,8 +47,9 @@ business payloads are excluded.
 ## Consequences
 
 Provider replacement and rollback occur at the composition root. CI can cover all paths without
-network access. Prompt changes and schemas are versioned and testable. The planner must emit the
-verbose frozen TaskStep schemas, and Task Understanding cannot independently bootstrap trusted
+network access. Prompt changes and schemas are versioned and testable. ADR-018 removes verbose
+executable `TaskStep` output from the model while retaining this ADR's provider, understanding and
+deterministic validation boundaries. Task Understanding cannot independently bootstrap trusted
 identity or authorization fields; those remain deterministic inputs as intended.
 
 ## Related Documents
@@ -55,4 +58,3 @@ identity or authorization fields; those remain deterministic inputs as intended.
 - [Task Understanding and Planning](../task-understanding-and-planning.md)
 - [Frozen design baseline](../design/design_baseline.md)
 - [LangGraph orchestration ADR](ADR-002-langgraph-orchestration.md)
-

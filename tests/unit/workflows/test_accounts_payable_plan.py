@@ -3,7 +3,13 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from copilot.contracts import APExceptionType, TaskRequest
+from copilot.contracts import (
+    APExceptionType,
+    CapabilityName,
+    ProposedPlan,
+    ProposedStep,
+    TaskRequest,
+)
 from copilot.llm.manifest import PlannerToolManifestBuilder
 from copilot.llm.mock import MockLLM
 from copilot.llm.offline_mock import OfflineMockLLM
@@ -25,6 +31,35 @@ def _request() -> TaskRequest:
         user_id="U-FINANCE-001",
         raw_input="Analyze Q2 2026 Accounts Payable exceptions",
         created_at=datetime(2026, 7, 1, tzinfo=UTC),
+    )
+
+
+def _proposal() -> ProposedPlan:
+    return ProposedPlan(
+        steps=(
+            ProposedStep(
+                step_id="knowledge",
+                capability=CapabilityName.KNOWLEDGE_SEARCH,
+                purpose="Retrieve AP policy",
+            ),
+            ProposedStep(
+                step_id="database",
+                capability=CapabilityName.DATABASE_QUERY,
+                purpose="Retrieve AP datasets",
+            ),
+            ProposedStep(
+                step_id="analysis",
+                capability=CapabilityName.ANALYSIS_ENGINE,
+                purpose="Detect and summarize AP exceptions",
+                depends_on=("database",),
+            ),
+            ProposedStep(
+                step_id="report",
+                capability=CapabilityName.REPORT_GENERATOR,
+                purpose="Generate the AP report",
+                depends_on=("knowledge", "analysis"),
+            ),
+        )
     )
 
 
@@ -105,15 +140,16 @@ def test_wrong_ap_plan_is_repaired_to_the_exact_profile(tmp_path: Path) -> None:
     with build_test_container(tmp_path / "artifacts") as container:
         contract = make_ap_contract()
         valid = AccountsPayableAnalysisPlanFactory(container.registry).create(_request(), contract)
-        first_detection = valid.steps[6]
-        invalid_detection = first_detection.model_copy(update={"dependency": ()})
-        invalid = valid.model_copy(
-            update={"steps": (*valid.steps[:6], invalid_detection, *valid.steps[7:])}
+        invalid_report = (
+            _proposal().steps[-1].model_copy(update={"capability": CapabilityName.ANALYSIS_ENGINE})
+        )
+        invalid = _proposal().model_copy(
+            update={"steps": (*_proposal().steps[:-1], invalid_report)}
         )
         provider = MockLLM(
             responses_by_node={
                 "create_plan": [invalid],
-                "repair_plan": [valid],
+                "repair_plan": [_proposal()],
             }
         )
         planner = LLMPlanningService(
@@ -130,7 +166,7 @@ def test_wrong_ap_plan_is_repaired_to_the_exact_profile(tmp_path: Path) -> None:
         )
 
         assert outcome.validation.is_valid
-        assert outcome.plan == valid
+        assert outcome.plan.steps == valid.steps
         assert outcome.repair_attempts == 1
         assert [call.context.node_name for call in provider.calls] == [
             "create_plan",

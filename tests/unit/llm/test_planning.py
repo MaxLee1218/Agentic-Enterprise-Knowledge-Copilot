@@ -5,11 +5,18 @@ from pathlib import Path
 import pytest
 
 from copilot.agent.graph import WorkflowInterrupted
-from copilot.contracts import StepResult, StepResultStatus
+from copilot.contracts import (
+    CapabilityName,
+    ProposedPlan,
+    ProposedStep,
+    StepResult,
+    StepResultStatus,
+)
 from copilot.llm.manifest import PlannerToolManifestBuilder
 from copilot.llm.mock import MockLLM
 from copilot.llm.planning import LLMPlanningService, _enforce_token_budget
-from copilot.services.llm import LLMSchemaValidationError, LLMTokenBudgetExceededError
+from copilot.services.llm import LLMTokenBudgetExceededError
+from copilot.services.workflows.errors import PlannerSchemaValidationError
 from copilot.services.workflows.models import SupplierQualityCommand
 from copilot.services.workflows.validation import PlanValidator
 from tests.workflow_helpers import build_test_container
@@ -21,6 +28,35 @@ COMMAND = SupplierQualityCommand(
 )
 
 
+def _proposal() -> ProposedPlan:
+    return ProposedPlan(
+        steps=(
+            ProposedStep(
+                step_id="knowledge",
+                capability=CapabilityName.KNOWLEDGE_SEARCH,
+                purpose="Retrieve policy",
+            ),
+            ProposedStep(
+                step_id="database",
+                capability=CapabilityName.DATABASE_QUERY,
+                purpose="Retrieve data",
+            ),
+            ProposedStep(
+                step_id="analysis",
+                capability=CapabilityName.ANALYSIS_ENGINE,
+                purpose="Analyze data",
+                depends_on=("database",),
+            ),
+            ProposedStep(
+                step_id="report",
+                capability=CapabilityName.REPORT_GENERATOR,
+                purpose="Generate report",
+                depends_on=("knowledge", "analysis"),
+            ),
+        )
+    )
+
+
 def test_replan_requires_allowlisted_reason_and_increments_version(tmp_path: Path) -> None:
     with build_test_container(
         tmp_path / "artifacts",
@@ -29,8 +65,7 @@ def test_replan_requires_allowlisted_reason_and_increments_version(tmp_path: Pat
         with pytest.raises(WorkflowInterrupted):
             container.service.execute(COMMAND)
         state = container.engine.get_state("T-0001", "TENANT-DEMO")
-        revised = state["plan"].model_copy(update={"planning_version": 2})
-        provider = MockLLM(responses_by_node={"replan": [revised]})
+        provider = MockLLM(responses_by_node={"replan": [_proposal()]})
         planner = LLMPlanningService(
             provider=provider,
             manifest_builder=PlannerToolManifestBuilder(container.registry),
@@ -53,7 +88,7 @@ def test_replan_requires_allowlisted_reason_and_increments_version(tmp_path: Pat
 
         assert outcome.plan.planning_version == 2
         assert outcome.validation.is_valid
-        assert provider.calls[0].context.prompt_version == "replan-v2"
+        assert provider.calls[0].context.prompt_version == "replan-v3"
         assert "E-1" in provider.calls[0].messages[1].content
 
 
@@ -88,7 +123,7 @@ def test_replan_rejects_security_or_permission_reason_without_model_call(
         assert provider.calls == []
 
 
-def test_replan_cannot_change_a_successful_non_report_step(tmp_path: Path) -> None:
+def test_replan_rejects_executable_task_plan_output_as_schema_escape(tmp_path: Path) -> None:
     with build_test_container(
         tmp_path / "artifacts",
         interrupt_after=("validate_plan",),
@@ -97,18 +132,12 @@ def test_replan_cannot_change_a_successful_non_report_step(tmp_path: Path) -> No
             container.service.execute(COMMAND)
         state = container.engine.get_state("T-0001", "TENANT-DEMO")
         first = state["plan"].steps[0]
-        changed = first.model_copy(update={"tool_name": "database_query"})
-        revised = state["plan"].model_copy(
-            update={
-                "planning_version": 2,
-                "steps": (changed, *state["plan"].steps[1:]),
-            }
-        )
-        provider = MockLLM(responses_by_node={"replan": [revised]})
+        provider = MockLLM(responses_by_node={"replan": [state["plan"]]})
         planner = LLMPlanningService(
             provider=provider,
             manifest_builder=PlannerToolManifestBuilder(container.registry),
             validator=PlanValidator(registry=container.registry, max_task_steps=10),
+            max_plan_repair_attempts=0,
         )
         successful = StepResult(
             step_id=first.step_id,
@@ -117,7 +146,7 @@ def test_replan_cannot_change_a_successful_non_report_step(tmp_path: Path) -> No
             error=None,
         )
 
-        with pytest.raises(LLMSchemaValidationError, match="successful non-report step"):
+        with pytest.raises(PlannerSchemaValidationError):
             planner.replan(
                 contract=state["contract"],
                 current_plan=state["plan"],

@@ -124,7 +124,8 @@ flowchart TB
 - 保存原始 `TaskRequest`，并将用户文本与可信身份/租户上下文分离；
 - 将自然语言收敛为版本化 `TaskContract`；
 - 按任务类型解析 deny-by-default `DomainCapabilityManifest`；
-- 生成结构化 `TaskPlan`，校验 DAG、依赖、工具 Schema、Profile、步骤上限和权限；
+- 生成轻量、非可执行 `ProposedPlan`，由确定性 `PlanCompiler` 绑定 Registry/Profile/Schema
+  并生成既有 `TaskPlan`，随后校验 DAG、依赖、步骤上限和权限；
 - 对可修复的计划输出进行有界 plan repair；
 - 每个步骤前执行策略检查，每个实际工具尝试由 Executor 再次授权；
 - 对瞬时、可重试且幂等的技术故障执行有界重试；
@@ -600,4 +601,3 @@ API/CLI/前端和可选 MCP 已形成真实可运行链路。
 仍需保持边界清晰：它现在支持的是两个冻结、只读、证据驱动的分析场景，而不是任意企业任务；
 AP 仍未获生产发布；MCP 不是自动扩权机制；真实身份、数据、模型、恢复、留存、容量和正式治理证据
 是下一阶段比新增工具更重要的工作。
-

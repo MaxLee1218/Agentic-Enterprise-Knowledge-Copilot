@@ -6,7 +6,9 @@ from copilot.services.llm import (
     LLMMessage,
     LLMProvider,
     LLMProviderMetadata,
+    LLMResponseDiagnostics,
     LLMUsage,
+    LLMValidationIssue,
     StructuredLLMResult,
 )
 
@@ -16,6 +18,8 @@ __all__ = [
     "LLMMessage",
     "LLMProvider",
     "LLMProviderMetadata",
+    "LLMResponseDiagnostics",
     "LLMUsage",
+    "LLMValidationIssue",
     "StructuredLLMResult",
 ]

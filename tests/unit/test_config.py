@@ -44,6 +44,7 @@ def test_settings_load_defaults_and_normalize_paths(
     assert settings.max_replan_count == 2
     assert settings.max_total_execution_seconds == 300
     assert settings.graph_recursion_limit == 100
+    assert settings.max_structured_output_retries == 1
     assert settings.checkpoint_database_path.is_absolute()
     assert (
         settings.ap_policy_bundle_dir
@@ -72,6 +73,7 @@ def test_example_governance_limits_match_runtime_defaults(
     assert int(template["MAX_DATABASE_ROWS"]) == settings.max_database_rows
     assert int(template["REPORT_MAX_SIZE_BYTES"]) == settings.report_max_size_bytes
     assert int(template["MAX_TASK_STEPS"]) == settings.max_task_steps
+    assert int(template["MAX_STRUCTURED_OUTPUT_RETRIES"]) == settings.max_structured_output_retries
 
 
 def test_get_settings_returns_singleton(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from copilot.contracts import ToolDefinition
-from copilot.llm.schemas import PlannerToolManifest, PlannerToolManifestEntry
+from copilot.contracts import CapabilityName, ToolDefinition
+from copilot.llm.schemas import PlannerCapabilityManifest, PlannerCapabilityManifestEntry
 from copilot.services.domains import DomainCapabilityManifest, builtin_domain_manifest_registry
 from copilot.tools.registry import ToolRegistry
 
@@ -26,8 +26,15 @@ class PlannerToolManifestBuilder:
         self._visibility = visibility or (lambda _definition: True)
         self._max_description_length = max_description_length
 
-    def build(self, domain_manifest: DomainCapabilityManifest | None = None) -> PlannerToolManifest:
-        """Return enabled visible definitions in the Registry's stable name order."""
+    @property
+    def registry(self) -> ToolRegistry:
+        """Expose the injected Registry for deterministic PlanCompiler composition."""
+        return self._registry
+
+    def build(
+        self, domain_manifest: DomainCapabilityManifest | None = None
+    ) -> PlannerCapabilityManifest:
+        """Return only semantic descriptions for enabled domain capabilities."""
         selected = domain_manifest or builtin_domain_manifest_registry().resolve(
             "supplier_quality_analysis.v1"
         )
@@ -42,31 +49,25 @@ class PlannerToolManifestBuilder:
             ).definition
             if not self._visibility(definition):
                 continue
-            side_effects = definition.idempotency.side_effects.strip().lower()
-            read_only = (
-                side_effects.startswith("none")
-                or "read-only" in side_effects
-                or "read only" in side_effects
-                or "no business-data mutation" in side_effects
-            )
             entries.append(
-                PlannerToolManifestEntry(
-                    name=definition.tool_name,
-                    tool_version=definition.tool_version,
-                    contract_profile=profile,
+                PlannerCapabilityManifestEntry(
+                    capability=capability,
                     description=definition.description[: self._max_description_length],
-                    input_schema=definition.input_schema,
-                    output_schema=definition.output_schema,
-                    risk_level=definition.risk_level,
-                    read_only=read_only,
-                    requires_approval=bool(
-                        definition.approval_policy.trigger_conditions
-                        or definition.approval_policy.approver_role
-                    ),
-                    idempotent=definition.idempotency.idempotent,
+                    semantic_arguments=_SEMANTIC_ARGUMENTS[capability],
                 )
             )
-        return PlannerToolManifest(tools=tuple(entries))
+        return PlannerCapabilityManifest(
+            task_type=selected.task_type,
+            capabilities=tuple(entries),
+        )
+
+
+_SEMANTIC_ARGUMENTS = {
+    CapabilityName.KNOWLEDGE_SEARCH: ("optional topic hint",),
+    CapabilityName.DATABASE_QUERY: (),
+    CapabilityName.ANALYSIS_ENGINE: (),
+    CapabilityName.REPORT_GENERATOR: ("optional requested format echo",),
+}
 
 
 __all__ = ["PlannerToolManifestBuilder", "ToolVisibility"]

@@ -6,7 +6,9 @@ from copilot.llm.base import (
     LLMMessage,
     LLMProvider,
     LLMProviderMetadata,
+    LLMResponseDiagnostics,
     LLMUsage,
+    LLMValidationIssue,
     StructuredLLMResult,
 )
 from copilot.llm.deepseek import DeepSeekProvider
@@ -19,7 +21,9 @@ __all__ = [
     "LLMMessage",
     "LLMProvider",
     "LLMProviderMetadata",
+    "LLMResponseDiagnostics",
     "LLMUsage",
+    "LLMValidationIssue",
     "MockLLM",
     "MockLLMCall",
     "StructuredLLMResult",

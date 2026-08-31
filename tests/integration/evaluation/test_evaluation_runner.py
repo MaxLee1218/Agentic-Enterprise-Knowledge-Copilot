@@ -99,7 +99,7 @@ def test_complete_accounts_payable_dataset_passes_frozen_stage10_gates(
     assert metrics["ap_analytics_latency_p95_ms"].status is MetricStatus.PASS
     assert metrics["ap_analytics_latency_p95_ms"].direction is MetricDirection.INFORMATIONAL
     assert run.provider == "mock"
-    assert run.model == "offline-accounts-payable-eval-v1"
+    assert run.model == "offline-governed-domains-v2"
     assert run.rule_versions == ("ap_rules.2026.1",)
 
 

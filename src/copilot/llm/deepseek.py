@@ -10,7 +10,7 @@ from typing import TypeVar
 import httpx
 from pydantic import BaseModel
 
-from copilot.llm.structured_output import parse_structured_output
+from copilot.llm.structured_output import parse_structured_output, structured_output_fingerprint
 from copilot.services.llm import (
     LLMAuthenticationError,
     LLMCallContext,
@@ -21,6 +21,7 @@ from copilot.services.llm import (
     LLMMessage,
     LLMProviderError,
     LLMRateLimitError,
+    LLMResponseDiagnostics,
     LLMTimeoutError,
     LLMUnavailableError,
     LLMUsage,
@@ -126,9 +127,25 @@ class DeepSeekProvider:
                 last_error = self._http_error(exc.response.status_code, attempt)
                 cause = exc
             except LLMProviderError as exc:
+                exc.attempts = attempt
+                if exc.diagnostics is None:
+                    exc.attach_diagnostics(
+                        LLMResponseDiagnostics(
+                            provider="deepseek",
+                            model=self._model,
+                            latency_ms=max(0, round((perf_counter() - started) * 1000)),
+                        )
+                    )
                 self._log(context, error=exc)
                 raise
             if not last_error.retryable or attempt >= attempts:
+                last_error.attach_diagnostics(
+                    LLMResponseDiagnostics(
+                        provider="deepseek",
+                        model=self._model,
+                        latency_ms=max(0, round((perf_counter() - started) * 1000)),
+                    )
+                )
                 self._log(context, error=last_error)
                 raise last_error from cause
             delay = self._retry_base_delay * (2 ** (attempt - 1))
@@ -167,7 +184,6 @@ class DeepSeekProvider:
             ) from exc
         if not isinstance(content, str):
             raise LLMInvalidResponseError("DeepSeek structured message was not text")
-        parsed = parse_structured_output(content, output_schema)
         usage_raw = body.get("usage", {})
         if not isinstance(usage_raw, dict):
             usage_raw = {}
@@ -176,17 +192,56 @@ class DeepSeekProvider:
             output_tokens=_safe_int(usage_raw.get("completion_tokens")),
             total_tokens=_safe_int(usage_raw.get("total_tokens")),
         )
+        finish_reason = (
+            str(choice["finish_reason"]) if choice.get("finish_reason") is not None else None
+        )
+        request_id = str(body["id"]) if body.get("id") is not None else None
+        model = str(body.get("model") or self._model)
+        raw_output_chars, raw_output_hash = structured_output_fingerprint(content)
+        latency_ms = max(0, round((perf_counter() - started) * 1000))
+        try:
+            parsed = parse_structured_output(content, output_schema)
+        except LLMProviderError as exc:
+            parser_diagnostics = exc.diagnostics
+            exc.attach_diagnostics(
+                LLMResponseDiagnostics(
+                    provider="deepseek",
+                    model=model,
+                    latency_ms=latency_ms,
+                    usage=usage,
+                    finish_reason=finish_reason,
+                    request_id=request_id,
+                    raw_output_chars=raw_output_chars,
+                    raw_output_hash=raw_output_hash,
+                    parse_status=(
+                        parser_diagnostics.parse_status
+                        if parser_diagnostics is not None
+                        else "failed"
+                    ),
+                    schema_status=(
+                        parser_diagnostics.schema_status
+                        if parser_diagnostics is not None
+                        else "not_attempted"
+                    ),
+                    validation_errors=(
+                        parser_diagnostics.validation_errors
+                        if parser_diagnostics is not None
+                        else ()
+                    ),
+                )
+            )
+            raise
         return StructuredLLMResult[TModel](
             parsed_output=parsed,
             provider="deepseek",
-            model=str(body.get("model") or self._model),
-            latency_ms=max(0, round((perf_counter() - started) * 1000)),
+            model=model,
+            latency_ms=latency_ms,
             usage=usage,
-            finish_reason=(
-                str(choice["finish_reason"]) if choice.get("finish_reason") is not None else None
-            ),
-            request_id=str(body["id"]) if body.get("id") is not None else None,
+            finish_reason=finish_reason,
+            request_id=request_id,
             attempts=attempts,
+            raw_output_chars=raw_output_chars,
+            raw_output_hash=raw_output_hash,
         )
 
     @staticmethod
@@ -214,6 +269,7 @@ class DeepSeekProvider:
         result: StructuredLLMResult[TModel] | None = None,
         error: LLMProviderError | None = None,
     ) -> None:
+        diagnostics = error.diagnostics if error is not None else None
         fields = {
             "task_id": context.task_id,
             "trace_id": context.trace_id,
@@ -225,9 +281,53 @@ class DeepSeekProvider:
             "status": "error" if error else "success",
             "error_type": error.code.value if error else None,
             "provider": result.provider if result else "deepseek",
-            "model": result.model if result else None,
-            "latency_ms": result.latency_ms if result else None,
-            "token_usage": result.usage.model_dump() if result else None,
+            "model": result.model if result else diagnostics.model if diagnostics else None,
+            "latency_ms": (
+                result.latency_ms if result else diagnostics.latency_ms if diagnostics else None
+            ),
+            "finish_reason": (
+                result.finish_reason
+                if result
+                else diagnostics.finish_reason
+                if diagnostics
+                else None
+            ),
+            "token_usage": (
+                result.usage.model_dump()
+                if result
+                else diagnostics.usage.model_dump()
+                if diagnostics
+                else None
+            ),
+            "raw_output_chars": (
+                result.raw_output_chars
+                if result
+                else diagnostics.raw_output_chars
+                if diagnostics
+                else 0
+            ),
+            "raw_output_hash": (
+                result.raw_output_hash
+                if result
+                else diagnostics.raw_output_hash
+                if diagnostics
+                else None
+            ),
+            "parse_status": (
+                "passed" if result else diagnostics.parse_status if diagnostics else "not_attempted"
+            ),
+            "schema_status": (
+                "passed"
+                if result
+                else diagnostics.schema_status
+                if diagnostics
+                else "not_attempted"
+            ),
+            "validation_errors": (
+                [item.model_dump(mode="json") for item in diagnostics.validation_errors]
+                if diagnostics
+                else []
+            ),
         }
         LOGGER.info("structured_llm_call", extra={"llm": fields})
 

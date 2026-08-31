@@ -37,7 +37,7 @@ from copilot.services.llm import LLMErrorCode, LLMProviderError
 from copilot.services.observability import NoopObservability, ObservabilityPort
 from copilot.services.workflows.deadlines import tool_attempt_deadline
 from copilot.services.workflows.dependency import DependencyChecker
-from copilot.services.workflows.errors import StepInputError
+from copilot.services.workflows.errors import PlannerError, PlannerErrorCode, StepInputError
 from copilot.services.workflows.inputs import StepInputBuilder, summarize_payload
 from copilot.services.workflows.models import (
     StepExecutionRecord,
@@ -411,10 +411,14 @@ class GraphNodeRuntime:
                     trace_id=state["trace_id"],
                     max_steps=state["intake_context"].max_steps,
                 )
-            except LLMProviderError as exc:
-                error = self._llm_error(state, exc, "create_plan")
+            except (LLMProviderError, PlannerError) as exc:
+                error = (
+                    self._planner_error(state, exc, "create_plan")
+                    if isinstance(exc, PlannerError)
+                    else self._llm_error(state, exc, "create_plan")
+                )
                 domain_state = self._transition(state, domain_state, "PLAN_INVALID", error.message)
-                self._emit(state, "PLAN_REPAIR_EXHAUSTED", status=exc.code.value)
+                self._emit(state, "PLAN_REPAIR_EXHAUSTED", status=error.error_code)
                 return self._node_result(
                     state,
                     "create_plan",
@@ -669,12 +673,16 @@ class GraphNodeRuntime:
                 max_steps=self._max_task_steps,
                 attempt=attempt,
             )
-        except LLMProviderError as exc:
-            error = self._llm_error(state, exc, "repair_plan")
+        except (LLMProviderError, PlannerError) as exc:
+            error = (
+                self._planner_error(state, exc, "repair_plan")
+                if isinstance(exc, PlannerError)
+                else self._llm_error(state, exc, "repair_plan")
+            )
             domain_state = self._transition(
                 state, state["domain_state"], "PLAN_INVALID", error.message
             )
-            self._emit(state, "PLAN_REPAIR_EXHAUSTED", status=exc.code.value)
+            self._emit(state, "PLAN_REPAIR_EXHAUSTED", status=error.error_code)
             return self._node_result(
                 state,
                 "repair_plan",
@@ -745,9 +753,11 @@ class GraphNodeRuntime:
                 trace_id=state["trace_id"],
                 remaining_steps=remaining_steps,
             )
-        except (LLMProviderError, ValueError) as exc:
+        except (LLMProviderError, PlannerError, ValueError) as exc:
             error = (
-                self._llm_error(state, exc, "replan")
+                self._planner_error(state, exc, "replan")
+                if isinstance(exc, PlannerError)
+                else self._llm_error(state, exc, "replan")
                 if isinstance(exc, LLMProviderError)
                 else self._error(
                     state,
@@ -1246,6 +1256,39 @@ class GraphNodeRuntime:
             error_type,
             f"Structured LLM call failed in {node_name}",
             recoverable=False,
+        )
+
+    def _planner_error(
+        self,
+        state: AgentGraphState,
+        error: PlannerError,
+        node_name: str,
+    ) -> TaskError:
+        error_type = (
+            ErrorType.TIMEOUT
+            if error.code is PlannerErrorCode.TIMEOUT
+            else ErrorType.TECHNICAL
+            if error.code is PlannerErrorCode.PROVIDER
+            else ErrorType.VALIDATION
+        )
+        public_code = {
+            PlannerErrorCode.INVALID_JSON: LLMErrorCode.INVALID_RESPONSE.value,
+            PlannerErrorCode.SCHEMA_VALIDATION: LLMErrorCode.SCHEMA_VALIDATION.value,
+            PlannerErrorCode.TIMEOUT: LLMErrorCode.TIMEOUT.value,
+        }.get(error.code, "PLAN_INVALID")
+        return self._error(
+            state,
+            public_code,
+            error_type,
+            f"Planner failed in {node_name}",
+            recoverable=False,
+            details=JsonObject(
+                {
+                    "planner_error_code": error.code.value,
+                    "planning_attempts": error.attempts,
+                    "node_name": node_name,
+                }
+            ),
         )
 
     def persist_result(self, state: AgentGraphState) -> dict[str, object]:
@@ -1882,6 +1925,7 @@ class GraphNodeRuntime:
         *,
         recoverable: bool = False,
         step_id: str | None = None,
+        details: JsonObject | None = None,
     ) -> TaskError:
         return TaskError(
             error_code=code,
@@ -1891,6 +1935,7 @@ class GraphNodeRuntime:
             timestamp=self._clock(),
             task_id=state["task_id"],
             step_id=step_id,
+            details=details or JsonObject({}),
         )
 
     def _exception_result(self, call: ToolCall, attempt: int, exc: ToolRuntimeError) -> ToolResult:

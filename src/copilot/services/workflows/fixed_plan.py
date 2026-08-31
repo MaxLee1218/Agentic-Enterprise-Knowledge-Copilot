@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from copilot.contracts import (
     SUPPLIER_QUALITY_CONTRACT_PROFILES,
     CapabilityName,
@@ -37,6 +39,16 @@ class SupplierQualityAnalysisPlanFactory:
     def create(self, request: TaskRequest, contract: TaskContract) -> TaskPlan:
         """Create a deterministic task-bound plan without model planning."""
         del request
+        return self.compile(contract)
+
+    def compile(
+        self,
+        contract: TaskContract,
+        *,
+        planning_version: int = SUPPLIER_QUALITY_PLAN_VERSION,
+        created_at: datetime | None = None,
+    ) -> TaskPlan:
+        """Compile one canonical plan version entirely from trusted definitions."""
         task_id = contract.task_id
         kb = self._step(
             task_id=task_id,
@@ -74,9 +86,14 @@ class SupplierQualityAnalysisPlanFactory:
                 retryable_error_codes=("ANALYSIS_ENGINE_FAILURE", "ANALYSIS_TIMEOUT"),
             ),
         )
+        report_suffix = (
+            GENERATE_REPORT
+            if planning_version == SUPPLIER_QUALITY_PLAN_VERSION
+            else f"{GENERATE_REPORT}-v{planning_version}"
+        )
         report = self._step(
             task_id=task_id,
-            template_id=GENERATE_REPORT,
+            template_id=report_suffix,
             step_type=StepType.REPORT_GENERATION,
             tool_name=CapabilityName.REPORT_GENERATOR,
             dependencies=(kb.step_id, analytics.step_id),
@@ -89,7 +106,8 @@ class SupplierQualityAnalysisPlanFactory:
         return TaskPlan(
             task_id=task_id,
             steps=(kb, database, analytics, report),
-            planning_version=SUPPLIER_QUALITY_PLAN_VERSION,
+            planning_version=planning_version,
+            **({"created_at": created_at} if created_at is not None else {}),
         )
 
     def _step(

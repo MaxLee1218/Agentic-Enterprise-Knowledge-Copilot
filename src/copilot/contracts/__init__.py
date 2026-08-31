@@ -143,6 +143,7 @@ from copilot.contracts.profiles import (
     ACCOUNTS_PAYABLE_CONTRACT_PROFILES,
     SUPPLIER_QUALITY_CONTRACT_PROFILES,
 )
+from copilot.contracts.proposed_plans import ProposedPlan, ProposedStep
 from copilot.contracts.tasks import (
     AccountsPayableConstraintsV1,
     ApprovalRequirement,
@@ -277,6 +278,8 @@ __all__ = [
     "PerformanceWarning",
     "PolicyChunkDescriptorV1",
     "PublishedPolicyDocumentV1",
+    "ProposedPlan",
+    "ProposedStep",
     "QueueDelivery",
     "QueueUnavailableError",
     "RecoveryAction",

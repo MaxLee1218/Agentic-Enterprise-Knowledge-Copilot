@@ -15,8 +15,11 @@ from pydantic import BaseModel, JsonValue
 from copilot.contracts import (
     APExceptionType,
     ArtifactType,
+    CapabilityName,
     JsonObject,
     MoneyThreshold,
+    ProposedPlan,
+    ProposedStep,
     ReportLanguage,
     RetryPolicy,
     StepType,
@@ -86,12 +89,18 @@ class OfflineMockLLM:
             parsed = cast(TModel, self._understand(payload))
         elif output_schema is APTaskUnderstandingOutput:
             parsed = cast(TModel, self._understand_accounts_payable(payload))
+        elif output_schema is ProposedPlan:
+            parsed = cast(TModel, self._propose(payload))
         elif output_schema is TaskPlan:
             parsed = cast(TModel, self._plan(payload, context.node_name))
         else:
             raise LLMSchemaValidationError(
                 f"Offline mock does not support schema {output_schema.__name__}"
             )
+        serialized = parsed.model_dump_json()
+        from copilot.llm.structured_output import structured_output_fingerprint
+
+        raw_output_chars, raw_output_hash = structured_output_fingerprint(serialized)
         return StructuredLLMResult[TModel](
             parsed_output=parsed,
             provider="mock",
@@ -101,6 +110,50 @@ class OfflineMockLLM:
             finish_reason="stop",
             request_id=f"offline-{context.task_id}-{context.node_name}",
             attempts=1,
+            raw_output_chars=raw_output_chars,
+            raw_output_hash=raw_output_hash,
+        )
+
+    @staticmethod
+    def _propose(payload: dict[str, object]) -> ProposedPlan:
+        """Return the shared semantic flow; domain expansion belongs to PlanCompiler."""
+        context = cast(dict[str, object], payload.get("task_context", {}))
+        task_type = str(context.get("task_type", "supplier_quality_analysis.v1"))
+        output = cast(dict[str, object], context.get("output", {}))
+        report_arguments: dict[str, JsonValue] = (
+            {"format": str(output["artifact_type"])} if output else {}
+        )
+        domain_label = (
+            "Accounts Payable"
+            if task_type == TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1.value
+            else "supplier quality"
+        )
+        return ProposedPlan(
+            steps=(
+                ProposedStep(
+                    step_id="knowledge",
+                    capability=CapabilityName.KNOWLEDGE_SEARCH,
+                    purpose=f"Retrieve controlled policy evidence for {domain_label}",
+                ),
+                ProposedStep(
+                    step_id="database",
+                    capability=CapabilityName.DATABASE_QUERY,
+                    purpose=f"Retrieve governed {domain_label} business data",
+                ),
+                ProposedStep(
+                    step_id="analysis",
+                    capability=CapabilityName.ANALYSIS_ENGINE,
+                    purpose=f"Calculate deterministic {domain_label} findings",
+                    depends_on=("database",),
+                ),
+                ProposedStep(
+                    step_id="report",
+                    capability=CapabilityName.REPORT_GENERATOR,
+                    purpose="Generate the requested internal evidence-backed report",
+                    arguments=JsonObject(report_arguments),
+                    depends_on=("knowledge", "analysis"),
+                ),
+            )
         )
 
     @staticmethod

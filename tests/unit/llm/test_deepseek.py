@@ -4,7 +4,7 @@ import json
 
 import httpx
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from copilot.llm.deepseek import DeepSeekProvider
 from copilot.services.llm import (
@@ -14,12 +14,15 @@ from copilot.services.llm import (
     LLMInvalidResponseError,
     LLMMessage,
     LLMRateLimitError,
+    LLMSchemaValidationError,
     LLMTimeoutError,
     LLMUnavailableError,
 )
 
 
 class Output(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     answer: str
 
 
@@ -67,7 +70,68 @@ def test_deepseek_decodes_usage_and_structured_output() -> None:
     client = httpx.Client(transport=httpx.MockTransport(handler))
     provider = DeepSeekProvider(api_key="secret", model="deepseek-chat", client=client)
 
-    assert _call(provider) == Output(answer="ok")
+    result = provider.generate_structured(
+        messages=[LLMMessage(role="user", content="untrusted task data")],
+        output_schema=Output,
+        context=_context(),
+        options=LLMGenerationOptions(),
+    )
+
+    assert result.parsed_output == Output(answer="ok")
+    assert result.finish_reason == "stop"
+    assert result.usage.total_tokens == 12
+    assert result.raw_output_chars == len('{"answer":"ok"}')
+    assert result.raw_output_hash is not None
+    assert result.raw_output_hash.startswith("sha256:")
+
+
+def test_deepseek_schema_failure_retains_only_safe_diagnostics() -> None:
+    sensitive_value = "SUPPLIER-SENSITIVE-001"
+    provider = DeepSeekProvider(
+        api_key="secret",
+        model="deepseek-chat",
+        client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda _request: httpx.Response(
+                    200,
+                    json={
+                        "id": "REQ-BAD-SCHEMA",
+                        "model": "deepseek-chat",
+                        "choices": [
+                            {
+                                "message": {
+                                    "content": json.dumps(
+                                        {"answer": sensitive_value, "extra": True}
+                                    )
+                                },
+                                "finish_reason": "stop",
+                            }
+                        ],
+                        "usage": {
+                            "prompt_tokens": 11,
+                            "completion_tokens": 7,
+                            "total_tokens": 18,
+                        },
+                    },
+                )
+            )
+        ),
+    )
+
+    with pytest.raises(LLMSchemaValidationError) as raised:
+        _call(provider)
+
+    diagnostics = raised.value.diagnostics
+    assert diagnostics is not None
+    assert diagnostics.finish_reason == "stop"
+    assert diagnostics.parse_status == "passed"
+    assert diagnostics.schema_status == "failed"
+    assert diagnostics.usage.total_tokens == 18
+    assert diagnostics.raw_output_chars > 0
+    assert diagnostics.raw_output_hash is not None
+    assert diagnostics.validation_errors[0].field_path == "extra"
+    assert sensitive_value not in diagnostics.model_dump_json()
+    assert sensitive_value not in str(raised.value)
 
 
 def test_deepseek_retries_429_then_succeeds() -> None:

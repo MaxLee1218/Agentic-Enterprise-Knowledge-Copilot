@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from calendar import monthrange
-from datetime import date, timedelta
+from collections.abc import Callable, Sequence
+from datetime import UTC, date, datetime, timedelta
 
 from copilot.contracts import (
     AccountsPayableConstraintsV1,
@@ -15,6 +18,7 @@ from copilot.contracts import (
     DateRange,
     ExpectedOutput,
     MoneyThreshold,
+    ProposedPlan,
     StepResult,
     StepResultStatus,
     StepType,
@@ -35,7 +39,11 @@ from copilot.llm.prompts import (
     replan_messages,
     task_understanding_messages,
 )
-from copilot.llm.schemas import APTaskUnderstandingOutput, TaskUnderstandingOutput
+from copilot.llm.schemas import (
+    APTaskUnderstandingOutput,
+    PlannerCapabilityManifest,
+    TaskUnderstandingOutput,
+)
 from copilot.services.domains import (
     DomainCapabilityManifestRegistry,
     builtin_domain_manifest_registry,
@@ -43,13 +51,30 @@ from copilot.services.domains import (
 from copilot.services.llm import (
     LLMCallContext,
     LLMGenerationOptions,
+    LLMInvalidResponseError,
+    LLMMessage,
     LLMProvider,
+    LLMProviderError,
     LLMSchemaValidationError,
+    LLMTimeoutError,
     LLMTokenBudgetExceededError,
+    StructuredLLMResult,
 )
 from copilot.services.task_intake import TrustedTaskContext
+from copilot.services.workflows.errors import (
+    PlannerCompilationError,
+    PlannerError,
+    PlannerInvalidJsonError,
+    PlannerProviderError,
+    PlannerRepairExhaustedError,
+    PlannerSchemaValidationError,
+    PlannerTimeoutError,
+    PlannerUnsupportedCapabilityError,
+)
+from copilot.services.workflows.plan_compiler import PlanCompiler
 from copilot.services.workflows.planning import (
     PlanGenerationOutcome,
+    PlannerModelCall,
     TaskUnderstandingOutcome,
 )
 from copilot.services.workflows.validation import (
@@ -64,6 +89,8 @@ _ALLOWED_REPLAN_REASONS = {
     "KNOWLEDGE_EVIDENCE_INSUFFICIENT",
     "RECOVERABLE_TOOL_FAILURE_EXHAUSTED",
 }
+LOGGER = logging.getLogger(__name__)
+_PROPOSED_PLAN_SCHEMA_VERSION = "proposed-plan.v1"
 
 _AP_REQUIRED_SECTIONS = (
     "scope",
@@ -93,16 +120,27 @@ class LLMPlanningService:
         validator: PlanValidator,
         options: LLMGenerationOptions | None = None,
         max_plan_repair_attempts: int = 2,
+        max_structured_output_retries: int = 1,
         domain_manifests: DomainCapabilityManifestRegistry | None = None,
+        compiler: PlanCompiler | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         if max_plan_repair_attempts < 0:
             raise ValueError("max_plan_repair_attempts must not be negative")
+        if max_structured_output_retries < 0:
+            raise ValueError("max_structured_output_retries must not be negative")
         self._provider = provider
         self._manifest_builder = manifest_builder
         self._validator = validator
         self._options = options or LLMGenerationOptions()
         self._max_repairs = max_plan_repair_attempts
+        self._max_structured_retries = max_structured_output_retries
         self._domain_manifests = domain_manifests or builtin_domain_manifest_registry()
+        self._compiler = compiler or PlanCompiler(
+            manifest_builder.registry,
+            domain_manifests=self._domain_manifests,
+        )
+        self._clock = clock or (lambda: datetime.now(UTC))
 
     def understand(
         self,
@@ -420,32 +458,12 @@ class LLMPlanningService:
         trace_id: str,
         max_steps: int,
     ) -> PlanGenerationOutcome:
-        """Generate then repair only parseable deterministic validation failures."""
+        """Generate, compile, and fully validate through the layered repair boundary."""
         del request
-        outcome = self.create_plan(
+        return self.create_plan(
             contract=contract,
             trace_id=trace_id,
             max_steps=max_steps,
-        )
-        plan = outcome.plan
-        validation = outcome.validation
-        repairs = 0
-        while not validation.is_valid and validation.is_repairable and repairs < self._max_repairs:
-            repairs += 1
-            outcome = self.repair_plan(
-                contract=contract,
-                invalid_plan=plan,
-                errors=validation.errors,
-                trace_id=trace_id,
-                max_steps=max_steps,
-                attempt=repairs,
-            )
-            plan = outcome.plan
-            validation = outcome.validation
-        return PlanGenerationOutcome(
-            plan=plan,
-            validation=validation,
-            repair_attempts=repairs,
         )
 
     def create_plan(
@@ -455,36 +473,23 @@ class LLMPlanningService:
         trace_id: str,
         max_steps: int,
     ) -> PlanGenerationOutcome:
-        """Generate exactly one candidate so LangGraph can checkpoint it."""
+        """Generate a lightweight suggestion and compile one canonical TaskPlan."""
         domain_manifest = self._domain_manifests.require_execution(contract)
         manifest = self._manifest_builder.build(domain_manifest)
-        result = self._provider.generate_structured(
+        return self._generate_and_compile(
+            contract=contract,
+            trace_id=trace_id,
+            manifest=manifest,
             messages=planner_messages(
                 contract=contract,
                 manifest=manifest,
                 max_steps=max_steps,
             ),
-            output_schema=TaskPlan,
-            context=LLMCallContext(
-                task_id=contract.task_id,
-                trace_id=trace_id,
-                node_name="create_plan",
-                attempt=1,
-                prompt_version=PLANNER_PROMPT_VERSION,
-                schema_version=domain_manifest.plan_profile,
-            ),
-            options=self._options,
-        )
-        _enforce_token_budget(
-            result.usage.output_tokens,
-            self._options.max_output_tokens,
-            attempts=result.attempts,
-        )
-        plan = result.parsed_output
-        validation = self._validator.evaluate(plan, contract)
-        return PlanGenerationOutcome(
-            plan=plan,
-            validation=validation,
+            node_name="create_plan",
+            prompt_version=PLANNER_PROMPT_VERSION,
+            planning_version=1,
+            max_steps=max_steps,
+            targeted_repair_budget=self._max_repairs,
         )
 
     def repair_plan(
@@ -497,38 +502,27 @@ class LLMPlanningService:
         max_steps: int,
         attempt: int,
     ) -> PlanGenerationOutcome:
-        """Perform one model repair and immediately run the complete validator."""
+        """Repair a rare compiler/validator escape without re-sending executable schemas."""
         domain_manifest = self._domain_manifests.require_execution(contract)
         manifest = self._manifest_builder.build(domain_manifest)
-        repaired = self._provider.generate_structured(
+        return self._generate_and_compile(
+            contract=contract,
+            trace_id=trace_id,
+            manifest=manifest,
             messages=plan_repair_messages(
                 contract=contract,
                 manifest=manifest,
-                invalid_plan=invalid_plan,
-                errors=errors,
+                invalid_candidate=_task_plan_summary(invalid_plan),
+                errors=_plan_validation_error_dicts(errors),
                 max_steps=max_steps,
             ),
-            output_schema=TaskPlan,
-            context=LLMCallContext(
-                task_id=contract.task_id,
-                trace_id=trace_id,
-                node_name="repair_plan",
-                attempt=attempt,
-                prompt_version=PLAN_REPAIR_PROMPT_VERSION,
-                schema_version=domain_manifest.plan_profile,
-            ),
-            options=self._options,
-        )
-        _enforce_token_budget(
-            repaired.usage.output_tokens,
-            self._options.max_output_tokens,
-            attempts=repaired.attempts,
-        )
-        plan = repaired.parsed_output
-        return PlanGenerationOutcome(
-            plan=plan,
-            validation=self._validator.evaluate(plan, contract),
-            repair_attempts=attempt,
+            node_name="repair_plan",
+            prompt_version=PLAN_REPAIR_PROMPT_VERSION,
+            planning_version=invalid_plan.planning_version,
+            max_steps=max_steps,
+            targeted_repair_budget=0,
+            initial_repair_type="targeted_plan_repair",
+            reported_repair_attempts=attempt,
         )
 
     def replan(
@@ -557,7 +551,10 @@ class LLMPlanningService:
             ],
             "evidence_ids": list(evidence_ids),
         }
-        generated = self._provider.generate_structured(
+        outcome = self._generate_and_compile(
+            contract=contract,
+            trace_id=trace_id,
+            manifest=manifest,
             messages=replan_messages(
                 contract=contract,
                 current_plan=current_plan,
@@ -566,25 +563,13 @@ class LLMPlanningService:
                 remaining_steps=remaining_steps,
                 next_version=next_version,
             ),
-            output_schema=TaskPlan,
-            context=LLMCallContext(
-                task_id=contract.task_id,
-                trace_id=trace_id,
-                node_name="replan",
-                attempt=1,
-                prompt_version=REPLAN_PROMPT_VERSION,
-                schema_version=domain_manifest.plan_profile,
-            ),
-            options=self._options,
+            node_name="replan",
+            prompt_version=REPLAN_PROMPT_VERSION,
+            planning_version=next_version,
+            max_steps=len(current_plan.steps) + remaining_steps,
+            targeted_repair_budget=self._max_repairs,
         )
-        _enforce_token_budget(
-            generated.usage.output_tokens,
-            self._options.max_output_tokens,
-            attempts=generated.attempts,
-        )
-        plan = generated.parsed_output
-        if plan.planning_version != next_version:
-            raise LLMSchemaValidationError("Replan returned an invalid planning_version")
+        plan = outcome.plan
         successful_ids = {
             item.step_id for item in step_results if item.status is StepResultStatus.SUCCESS
         }
@@ -595,14 +580,378 @@ class LLMPlanningService:
         }
         revised = {step.step_id: step for step in plan.steps}
         if any(revised.get(step_id) != step for step_id, step in protected.items()):
-            raise LLMSchemaValidationError(
+            raise PlannerCompilationError(
                 "Replan changed or removed an already successful non-report step"
             )
         new_work = [step for step in plan.steps if step.step_id not in protected]
         if len(new_work) > remaining_steps:
-            raise LLMSchemaValidationError("Replan exceeded the remaining step budget")
-        validation = self._validator.evaluate(plan, contract)
-        return PlanGenerationOutcome(plan=plan, validation=validation)
+            raise PlannerCompilationError("Replan exceeded the remaining step budget")
+        return outcome
+
+    def _generate_and_compile(
+        self,
+        *,
+        contract: TaskContract,
+        trace_id: str,
+        manifest: PlannerCapabilityManifest,
+        messages: Sequence[LLMMessage],
+        node_name: str,
+        prompt_version: str,
+        planning_version: int,
+        max_steps: int,
+        targeted_repair_budget: int,
+        initial_repair_type: str | None = None,
+        reported_repair_attempts: int = 0,
+    ) -> PlanGenerationOutcome:
+        """Apply syntax retry, targeted semantic repair, compilation, and validation."""
+        current_messages = tuple(messages)
+        current_node = node_name
+        current_prompt_version = prompt_version
+        repair_type = initial_repair_type
+        structured_retries = 0
+        targeted_repairs = 0
+        calls: list[PlannerModelCall] = []
+        while True:
+            call_number = len(calls) + 1
+            prompt_chars = sum(len(message.content) for message in current_messages)
+            context = LLMCallContext(
+                task_id=contract.task_id,
+                trace_id=trace_id,
+                node_name=current_node,
+                attempt=call_number,
+                prompt_version=current_prompt_version,
+                schema_version=_PROPOSED_PLAN_SCHEMA_VERSION,
+            )
+            try:
+                result = self._provider.generate_structured(
+                    messages=current_messages,
+                    output_schema=ProposedPlan,
+                    context=context,
+                    options=self._options,
+                )
+                _enforce_token_budget(
+                    result.usage.output_tokens,
+                    self._options.max_output_tokens,
+                    attempts=result.attempts,
+                )
+            except LLMInvalidResponseError as exc:
+                calls.append(
+                    _failed_model_call(
+                        exc,
+                        context=context,
+                        prompt_chars=prompt_chars,
+                        repair_type=repair_type,
+                    )
+                )
+                if structured_retries < self._max_structured_retries:
+                    structured_retries += 1
+                    repair_type = "structured_output_retry"
+                    self._log_planner_stage(
+                        contract,
+                        trace_id,
+                        repair_type=repair_type,
+                        attempt=call_number,
+                        error_code=exc.code.value,
+                    )
+                    continue
+                if targeted_repairs:
+                    raise PlannerRepairExhaustedError(
+                        "Planner repair budget was exhausted after invalid JSON",
+                        attempts=call_number,
+                    ) from exc
+                raise PlannerInvalidJsonError(
+                    "Planner did not return complete JSON within the structured-output budget",
+                    attempts=call_number,
+                ) from exc
+            except LLMSchemaValidationError as exc:
+                calls.append(
+                    _failed_model_call(
+                        exc,
+                        context=context,
+                        prompt_chars=prompt_chars,
+                        repair_type=repair_type,
+                    )
+                )
+                if targeted_repairs < targeted_repair_budget:
+                    targeted_repairs += 1
+                    current_messages = plan_repair_messages(
+                        contract=contract,
+                        manifest=manifest,
+                        invalid_candidate=_invalid_candidate(exc),
+                        errors=_llm_validation_error_dicts(exc),
+                        max_steps=max_steps,
+                    )
+                    current_node = "repair_plan"
+                    current_prompt_version = PLAN_REPAIR_PROMPT_VERSION
+                    repair_type = "targeted_plan_repair"
+                    self._log_planner_stage(
+                        contract,
+                        trace_id,
+                        repair_type=repair_type,
+                        attempt=call_number,
+                        error_code=exc.code.value,
+                    )
+                    continue
+                error_type: type[PlannerError] = (
+                    PlannerRepairExhaustedError
+                    if targeted_repairs
+                    else PlannerSchemaValidationError
+                )
+                raise error_type(
+                    "Planner ProposedPlan failed schema validation",
+                    attempts=call_number,
+                ) from exc
+            except LLMTimeoutError as exc:
+                calls.append(
+                    _failed_model_call(
+                        exc,
+                        context=context,
+                        prompt_chars=prompt_chars,
+                        repair_type=repair_type,
+                    )
+                )
+                raise PlannerTimeoutError(
+                    "Planner provider timed out after its bounded retry budget",
+                    attempts=exc.attempts,
+                ) from exc
+            except LLMProviderError as exc:
+                calls.append(
+                    _failed_model_call(
+                        exc,
+                        context=context,
+                        prompt_chars=prompt_chars,
+                        repair_type=repair_type,
+                    )
+                )
+                raise PlannerProviderError(
+                    "Planner provider failed before a proposal was available",
+                    attempts=exc.attempts,
+                ) from exc
+
+            calls.append(
+                _successful_model_call(
+                    result,
+                    context=context,
+                    prompt_chars=prompt_chars,
+                    repair_type=repair_type,
+                )
+            )
+            proposed = result.parsed_output
+            try:
+                compilation = self._compiler.compile(
+                    proposed,
+                    contract,
+                    planning_version=planning_version,
+                    max_steps=max_steps,
+                    created_at=self._clock(),
+                )
+            except (PlannerCompilationError, PlannerUnsupportedCapabilityError) as exc:
+                if targeted_repairs < targeted_repair_budget:
+                    targeted_repairs += 1
+                    current_messages = plan_repair_messages(
+                        contract=contract,
+                        manifest=manifest,
+                        invalid_candidate=proposed.model_dump(mode="json"),
+                        errors=[
+                            {
+                                "error_type": exc.code.value,
+                                "field_path": "steps",
+                                "message": str(exc),
+                            }
+                        ],
+                        max_steps=max_steps,
+                    )
+                    current_node = "repair_plan"
+                    current_prompt_version = PLAN_REPAIR_PROMPT_VERSION
+                    repair_type = "targeted_plan_repair"
+                    self._log_planner_stage(
+                        contract,
+                        trace_id,
+                        repair_type=repair_type,
+                        attempt=call_number,
+                        error_code=exc.code.value,
+                    )
+                    continue
+                if targeted_repairs:
+                    raise PlannerRepairExhaustedError(
+                        "Planner repair budget was exhausted during deterministic compilation",
+                        attempts=call_number,
+                    ) from exc
+                raise
+
+            validation = self._validator.evaluate(compilation.plan, contract)
+            if not validation.is_valid and targeted_repairs < targeted_repair_budget:
+                targeted_repairs += 1
+                current_messages = plan_repair_messages(
+                    contract=contract,
+                    manifest=manifest,
+                    invalid_candidate=proposed.model_dump(mode="json"),
+                    errors=_plan_validation_error_dicts(validation.errors),
+                    max_steps=max_steps,
+                )
+                current_node = "repair_plan"
+                current_prompt_version = PLAN_REPAIR_PROMPT_VERSION
+                repair_type = "targeted_plan_repair"
+                self._log_planner_stage(
+                    contract,
+                    trace_id,
+                    repair_type=repair_type,
+                    attempt=call_number,
+                    error_code=validation.errors[0].error_code,
+                )
+                continue
+            if not validation.is_valid and targeted_repairs:
+                raise PlannerRepairExhaustedError(
+                    "Planner repair budget was exhausted after final plan validation",
+                    attempts=call_number,
+                )
+            self._log_planner_stage(
+                contract,
+                trace_id,
+                repair_type=repair_type,
+                attempt=call_number,
+                compile_status="passed",
+            )
+            return PlanGenerationOutcome(
+                plan=compilation.plan,
+                validation=validation,
+                repair_attempts=reported_repair_attempts + targeted_repairs,
+                structured_output_retries=structured_retries,
+                compilation_diagnostics=compilation.diagnostics,
+                model_calls=tuple(calls),
+            )
+
+    @staticmethod
+    def _log_planner_stage(
+        contract: TaskContract,
+        trace_id: str,
+        *,
+        repair_type: str | None,
+        attempt: int,
+        error_code: str | None = None,
+        compile_status: str | None = None,
+    ) -> None:
+        LOGGER.info(
+            "planner_stage",
+            extra={
+                "planning": {
+                    "task_id": contract.task_id,
+                    "trace_id": trace_id,
+                    "operation": "planning",
+                    "attempt": attempt,
+                    "repair_type": repair_type,
+                    "error_code": error_code,
+                    "compile_status": compile_status,
+                }
+            },
+        )
+
+
+def _successful_model_call(
+    result: StructuredLLMResult[ProposedPlan],
+    *,
+    context: LLMCallContext,
+    prompt_chars: int,
+    repair_type: str | None,
+) -> PlannerModelCall:
+    return PlannerModelCall(
+        node_name=context.node_name,
+        attempt=context.attempt,
+        provider_attempts=result.attempts,
+        prompt_chars=prompt_chars,
+        provider=result.provider,
+        model=result.model,
+        latency_ms=result.latency_ms,
+        finish_reason=result.finish_reason,
+        input_tokens=result.usage.input_tokens,
+        output_tokens=result.usage.output_tokens,
+        total_tokens=result.usage.total_tokens,
+        raw_output_chars=result.raw_output_chars,
+        raw_output_hash=result.raw_output_hash,
+        parse_status="passed",
+        schema_status="passed",
+        repair_type=repair_type,
+    )
+
+
+def _failed_model_call(
+    error: LLMProviderError,
+    *,
+    context: LLMCallContext,
+    prompt_chars: int,
+    repair_type: str | None,
+) -> PlannerModelCall:
+    diagnostics = error.diagnostics
+    usage = diagnostics.usage if diagnostics is not None else None
+    return PlannerModelCall(
+        node_name=context.node_name,
+        attempt=context.attempt,
+        provider_attempts=error.attempts,
+        prompt_chars=prompt_chars,
+        provider=diagnostics.provider if diagnostics is not None else None,
+        model=diagnostics.model if diagnostics is not None else None,
+        latency_ms=diagnostics.latency_ms if diagnostics is not None else None,
+        finish_reason=diagnostics.finish_reason if diagnostics is not None else None,
+        input_tokens=usage.input_tokens if usage is not None else 0,
+        output_tokens=usage.output_tokens if usage is not None else 0,
+        total_tokens=usage.total_tokens if usage is not None else 0,
+        raw_output_chars=diagnostics.raw_output_chars if diagnostics is not None else 0,
+        raw_output_hash=diagnostics.raw_output_hash if diagnostics is not None else None,
+        parse_status=diagnostics.parse_status if diagnostics is not None else "not_attempted",
+        schema_status=diagnostics.schema_status if diagnostics is not None else "not_attempted",
+        error_code=error.code.value,
+        repair_type=repair_type,
+    )
+
+
+def _invalid_candidate(error: LLMSchemaValidationError) -> object:
+    if error.raw_output is None:
+        return {"candidate": "unavailable"}
+    try:
+        return json.loads(error.raw_output)
+    except json.JSONDecodeError:
+        return {
+            "bounded_raw_candidate": error.raw_output,
+            "representation": "untrusted_text",
+        }
+
+
+def _llm_validation_error_dicts(
+    error: LLMSchemaValidationError,
+) -> list[dict[str, object]]:
+    diagnostics = error.diagnostics
+    if diagnostics is None or not diagnostics.validation_errors:
+        return [{"error_type": error.code.value, "field_path": "root"}]
+    return [item.model_dump(mode="json") for item in diagnostics.validation_errors[:8]]
+
+
+def _plan_validation_error_dicts(
+    errors: Sequence[PlanValidationIssue],
+) -> list[dict[str, object]]:
+    return [
+        {
+            "error_type": issue.error_code,
+            "field_path": issue.field or "root",
+            "step_id": issue.step_id,
+            "message": issue.message,
+            "repair_hint": issue.repair_hint,
+        }
+        for issue in errors[:8]
+    ]
+
+
+def _task_plan_summary(plan: TaskPlan) -> dict[str, object]:
+    return {
+        "planning_version": plan.planning_version,
+        "steps": [
+            {
+                "step_id": step.step_id,
+                "capability": step.tool_name,
+                "depends_on": list(step.dependency),
+            }
+            for step in plan.steps
+        ],
+    }
 
 
 def _quarter_dates(year: int, quarter: int) -> tuple[date, date]:

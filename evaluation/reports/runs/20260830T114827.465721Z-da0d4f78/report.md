@@ -2,15 +2,15 @@
 
 ## Run Metadata
 
-- Run ID: `20260830T115218.487294Z-da0d4f78`
+- Run ID: `20260830T114827.465721Z-da0d4f78`
 - Mode: `mock`
 - Seed: `42`
 - Git commit: `9879b2e6e4b54ddae09fa12668c62f7882a02ba1`
 - Source hash: `sha256:ded694a0eb8250084daac459023ac17a78474ed8d505a67f01dfd5f97fe2645b`
 - Git working tree dirty: `true`
 - Provider/model: `mock` / `offline-governed-domains-v2`
-- Started: `2026-08-30T11:52:18.487294+00:00`
-- Duration: `4306 ms`
+- Started: `2026-08-30T11:48:27.465721+00:00`
+- Duration: `4341 ms`
 - Prompt versions: `task-understanding-v2, planner-v3, plan-repair-v3, replan-v3`
 - Profile versions: `supplier_quality_analysis.v1`
 - Rule versions: `not available`
@@ -75,11 +75,11 @@
 - average_replan_count: 0.03333333333333333333333333333 (0.03333333333333333333333333333/1) [lower_is_better]
 - max_replan_count: 1 (1/1) [informational]
 - replan_exhausted_count: 0 (0/1) [lower_is_better]
-- latency_average_ms: 139.3666666666666666666666667 (139.3666666666666666666666667/1) [informational]
-- latency_p50_ms: 138 (138/1) [informational]
-- latency_p95_ms: 187 (187/1) [informational]
-- latency_min_ms: 98 (98/1) [informational]
-- latency_max_ms: 201 (201/1) [informational]
+- latency_average_ms: 138.7666666666666666666666667 (138.7666666666666666666666667/1) [informational]
+- latency_p50_ms: 141 (141/1) [informational]
+- latency_p95_ms: 188 (188/1) [informational]
+- latency_min_ms: 97 (97/1) [informational]
+- latency_max_ms: 205 (205/1) [informational]
 - total_input_tokens: 6840 (6840/1) [informational]
 - total_output_tokens: 4560 (4560/1) [informational]
 - total_tokens: 11400 (11400/1) [informational]
@@ -168,9 +168,9 @@ numeric_accuracy: 100.00% (4/4) [higher_is_better]
 
 ## Latency, Token Usage and Cost
 
-- latency_average_ms: 139.3666666666666666666666667 (139.3666666666666666666666667/1) [informational]
-- latency_p50_ms: 138 (138/1) [informational]
-- latency_p95_ms: 187 (187/1) [informational]
+- latency_average_ms: 138.7666666666666666666666667 (138.7666666666666666666666667/1) [informational]
+- latency_p50_ms: 141 (141/1) [informational]
+- latency_p95_ms: 188 (188/1) [informational]
 - total_tokens: 11400 (11400/1) [informational]
 - estimated_total_cost: 0 (0/1) [informational]
 

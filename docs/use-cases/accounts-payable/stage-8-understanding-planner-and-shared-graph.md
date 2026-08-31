@@ -20,10 +20,14 @@ Evidence, Audit, Checkpoint, Artifact, Observability or Verification.
   authorized scope, rule-set identity/version/checksum, policy snapshot, materiality and deadline
   never become model authority. Omitted legal entity is accepted only when trusted scope has
   exactly one entity; requested thresholds may tighten but never relax policy.
-- `AccountsPayableAnalysisPlanFactory` and the offline planner emit the same canonical DAG. The
-  full profile has 14 steps: one controlled policy retrieval, five read-only database datasets,
-  five deterministic detections, two deterministic aggregations and one report.
-- `PlanValidator` requires the exact exception-to-template/operation set and exact detection,
+- The Planner emits the shared four-capability non-executable `ProposedPlan`.
+  `PlanCompiler` and `AccountsPayableAnalysisPlanFactory` expand it into the same canonical DAG.
+  The full profile has 14 steps: one controlled policy retrieval, five read-only database
+  datasets, five deterministic detections, two deterministic aggregations and one report.
+- `PlanCompiler` binds all versions, profiles, schemas, Contract-derived inputs and frozen
+  dependencies from deterministic authorities; the model cannot propose AP thresholds, formulas,
+  exception operations, Supplier profiles or execution metadata. `PlanValidator` requires the
+  exact exception-to-template/operation set and exact detection,
   aggregation and report dependencies. A wrong profile, version, schema, template, operation,
   cross-task step or dependency fails before tool execution; eligible structural mistakes enter
   the existing bounded Plan repair path.

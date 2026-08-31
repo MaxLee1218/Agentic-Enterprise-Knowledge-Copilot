@@ -2,65 +2,85 @@
 
 ## Scope
 
-Stage 11 adds an optional structured LLM path for the frozen
-`supplier_quality_analysis.v1` workflow. It does not add a new task type, tool, state, permission
-model, SQL capability, or executor. The deterministic fixed-plan path remains the offline default.
+The structured LLM path supports the two explicitly selected governed domains without changing
+their frozen execution contracts:
 
 ```text
 TaskRequest + trusted scope
   -> Task Understanding candidate
   -> frozen TaskContract
-  -> Planner candidate TaskPlan
-  -> deterministic PlanValidator
-  -> bounded Plan Repair when eligible
-  -> Policy -> ToolRegistry -> ToolExecutor
+  -> lightweight ProposedPlan
+  -> deterministic PlanCompiler
+  -> existing canonical TaskPlan
+  -> existing PlanValidator
+  -> Policy -> Approval -> ToolRegistry -> ToolExecutor
 ```
 
-Provider implementations live under `copilot.llm`. Application code depends on the
-`copilot.services.llm.LLMProvider` port and injects an implementation at composition time. The
-provider has no access to ToolExecutor, Evidence, databases, report rendering, or LangGraph.
+It does not route task types, clarify through multiple turns, discover open-domain/MCP tools,
+create business rules or execute tools directly. Provider implementations under `copilot.llm`
+implement the application-owned `copilot.services.llm.LLMProvider` port and are injected only at
+composition.
 
-## Provider contract
+## Provider and structured-output contract
 
-Every provider accepts versioned messages, a Pydantic output type, correlation context, and
-bounded generation options. It returns `StructuredLLMResult` with parsed output, provider/model,
-latency, usage, finish reason, request ID, and network-attempt count.
+Every provider accepts versioned messages, a Pydantic output type, correlation context and bounded
+generation options. Success returns parsed output plus provider/model, latency, usage,
+`finish_reason`, request ID, provider attempts and response length/hash.
 
-`DeepSeekProvider` uses the configured base URL, model, connect/read timeouts, trace header, User
-Agent, and bounded retry. Only timeout, transport errors, 429, 502, 503, and 504 are retried. 401,
-403, bad configuration, context rejection, invalid JSON, and schema errors are not retried.
-Authorization values and provider response bodies are never placed in exceptions or logs.
+`DeepSeekProvider` uses JSON-object mode as a transport hint, not as strict schema-constrained
+decoding. The shared adapter independently parses JSON and validates the requested Pydantic model.
+It accepts a native mapping/model, plain JSON or one complete JSON Markdown fence. It rejects
+empty, truncated, prose-wrapped, non-object, missing, wrong-type and extra-field results. It never
+guesses missing fields or repairs business semantics.
 
-`MockLLM` is the CI provider. It supports sequential and node-specific outcomes, malformed JSON,
-schema-invalid output, and any typed provider failure. Complete prompts are captured only by this
-test adapter.
+Only timeout, transport errors, 429, 502, 503 and 504 receive provider retries. Parse/schema
+failures return diagnostics to the Planner recovery layer. Logs contain safe correlation and
+diagnostic metadata, never authorization values, prompts or response bodies. Validation summaries
+are limited to eight items and include only field path, error type, bounded expected shape and
+received type.
 
-## Structured output
+`MockLLM` is the deterministic test provider. `OfflineMockLLM` emits the same minimal semantic
+proposal for Supplier and AP; `PlanCompiler` performs domain-specific expansion.
 
-The parser accepts a native mapping, Pydantic instance, plain JSON, or one complete JSON Markdown
-fence. It rejects empty, truncated, prose-wrapped, non-object, missing-field, wrong-type, and
-extra-field results. It never guesses fields or rewrites business data.
+## Planning authority
 
-Task Understanding uses an intermediate LLM schema because the frozen `TaskContract` intentionally
-does not contain `goal`, `entities`, or `missing_information`. Deterministic code then derives
-quarter dates and binds the candidate to the already trusted tenant, data scope, supplier scope,
-deadline, approval, deliverable, read-only rule, and system step limit.
+`ProposedPlan` is untrusted and non-executable. It carries only capability categories, purposes,
+semantic hints and suggested dependencies from the already selected domain manifest. It has no
+versions, profiles, schemas, risk, approval, roles, permission scope, tenant scope, retry, timeout
+or idempotency authority.
 
-Planner output is the existing frozen `TaskPlan`. The frozen `TaskStep` has no `arguments` field;
-runtime tool input is still built by `StepInputBuilder` from validated Contract, prior StepResults,
-and Evidence. Planner therefore selects registered tools, copies exact registered schemas, and
-constructs dependencies only.
+`PlanCompiler` obtains all executable facts from:
 
-## Retry, repair, and replan
+- the validated `TaskContract` for business scope, period and deliverable;
+- `DomainCapabilityManifest` for the exact capability/profile boundary;
+- `ToolRegistry` definitions for exact versions, schemas and runtime metadata;
+- code-owned Supplier/AP plan factories for operation expansion and frozen dependencies;
+- runtime/Policy configuration for authorization and execution controls.
 
-- Provider retry repeats the same network request after an eligible transient provider failure.
-- Plan Repair occurs before tool execution when a parseable plan fails deterministic validation.
-- Replan occurs only after the frozen state machine enters `REPLANNING` for an eligible runtime or
-  verification event.
+Semantic proposal arguments cannot populate executable step input. `StepInputBuilder` continues to
+derive every runtime payload from the Contract, successful StepResults, Evidence and trusted
+execution context. The compiled existing `TaskPlan` is validated and persisted; the proposal is
+not persisted.
 
-The counters and limits are independent. Every repaired or replanned candidate is validated again.
-No candidate plan reaches policy or execution without a valid result.
+## Retry, repair and replan
 
-Prompt versions are `task-understanding-v1`, `planner-v1`, `plan-repair-v1`, and `replan-v1`.
-Schema versions are recorded independently in each `LLMCallContext`.
+- Provider retry repeats only eligible transient transport requests.
+- Structured-output retry repeats an invalid/empty/incomplete JSON response within its own budget.
+- Deterministic normalization handles only duplicate dependency edges and frozen dependency
+  ordering.
+- Targeted Plan Repair sends the small candidate, bounded validation errors, minimal Contract view
+  and allowed capabilities; it never resends executable schemas.
+- Runtime Replan remains separately bounded and only follows an eligible frozen state-machine
+  event. Successful non-report steps and Evidence remain immutable.
 
+All paths compile and validate again. No proposal or failed compilation reaches Policy or tool
+execution. The specific typed Planner cause is preserved in safe Task error details while the
+frozen public lifecycle and error compatibility remain intact.
+
+Prompt versions are `task-understanding-v2`, `planner-v3`, `plan-repair-v3` and `replan-v3`.
+Planning schema context is `proposed-plan.v1`; the compiled Plan retains the existing frozen
+contract/profile versions.
+
+See [ADR-018](adr/ADR-018-deterministic-plan-compilation.md) and
+[Task Understanding and Planning](task-understanding-and-planning.md) for the decision, payload
+measurements, test harness and authority audit.

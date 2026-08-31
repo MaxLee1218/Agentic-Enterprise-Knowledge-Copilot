@@ -13,6 +13,12 @@ from pathlib import Path
 from statistics import median
 
 from copilot import __version__
+from copilot.llm.prompts import (
+    PLAN_REPAIR_PROMPT_VERSION,
+    PLANNER_PROMPT_VERSION,
+    REPLAN_PROMPT_VERSION,
+    TASK_UNDERSTANDING_PROMPT_VERSION,
+)
 from evaluation.baseline import compare_baseline, load_baseline
 from evaluation.config import EvaluationConfig
 from evaluation.contracts import (
@@ -127,8 +133,8 @@ class EvaluationRunner:
             agent_version=__version__,
             provider="mock" if self._config.mode == "mock" else "configured-live-provider",
             model=(
-                "offline-accounts-payable-eval-v1"
-                if dataset.dataset_id == "accounts_payable"
+                "offline-governed-domains-v2"
+                if self._config.mode == "mock"
                 else (
                     self._config.pricing.model
                     if self._config.pricing is not None
@@ -748,9 +754,15 @@ def _accounts_payable_gate_reasons(metrics: tuple[MetricResult, ...]) -> tuple[s
 
 
 def _version_metadata(dataset_id: str) -> dict[str, tuple[str, ...]]:
+    planner_versions = (
+        TASK_UNDERSTANDING_PROMPT_VERSION,
+        PLANNER_PROMPT_VERSION,
+        PLAN_REPAIR_PROMPT_VERSION,
+        REPLAN_PROMPT_VERSION,
+    )
     if dataset_id != "accounts_payable":
         return {
-            "prompt_versions": ("supplier_quality_prompt.v1",),
+            "prompt_versions": planner_versions,
             "profile_versions": ("supplier_quality_analysis.v1",),
             "rule_versions": (),
             "report_versions": ("supplier_quality_report.v1",),
@@ -759,6 +771,7 @@ def _version_metadata(dataset_id: str) -> dict[str, tuple[str, ...]]:
         "prompt_versions": (
             "accounts_payable_understanding.v1",
             "accounts_payable_plan.v1",
+            *planner_versions,
         ),
         "profile_versions": (
             "accounts_payable_policy.v1",

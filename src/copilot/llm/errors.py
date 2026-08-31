@@ -9,9 +9,11 @@ from copilot.services.llm import (
     LLMInvalidResponseError,
     LLMProviderError,
     LLMRateLimitError,
+    LLMResponseDiagnostics,
     LLMSchemaValidationError,
     LLMTimeoutError,
     LLMUnavailableError,
+    LLMValidationIssue,
 )
 
 __all__ = [
@@ -23,7 +25,9 @@ __all__ = [
     "LLMInvalidResponseError",
     "LLMProviderError",
     "LLMRateLimitError",
+    "LLMResponseDiagnostics",
     "LLMSchemaValidationError",
     "LLMTimeoutError",
     "LLMUnavailableError",
+    "LLMValidationIssue",
 ]

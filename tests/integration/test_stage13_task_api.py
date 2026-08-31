@@ -10,7 +10,7 @@ from copilot.api.app import create_app
 from copilot.api.dependencies import get_caller_context, get_task_service
 from copilot.bootstrap.container import WorkflowContainer, build_workflow_container
 from copilot.config import Settings
-from copilot.contracts import SpanKind, SpanStatus, TaskPlan
+from copilot.contracts import SpanKind, SpanStatus
 from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.persistence.identifiers import SequentialIdentifierFactory
 from copilot.security.identity import DemoIdentityProvider
@@ -20,32 +20,6 @@ from tests.async_runtime_helpers import execute_accepted_task
 from tests.workflow_helpers import fixed_clock
 
 TASK_TEXT = "Analyze Q2 2026 supplier quality and generate a JSON report."
-
-
-class _TaskLocalStepIdOfflineMock(OfflineMockLLM):
-    @staticmethod
-    def _plan(payload: dict[str, object], node_name: str) -> TaskPlan:
-        plan = OfflineMockLLM._plan(payload, node_name)
-        identifiers = {
-            "knowledge_search": "step-1-knowledge-search",
-            "database_query": "step-2-database-query",
-            "analysis_engine": "step-3-analysis",
-            "report_generator": "step-4-report",
-        }
-        prior_ids = {step.step_id: identifiers[step.tool_name] for step in plan.steps}
-        return plan.model_copy(
-            update={
-                "steps": tuple(
-                    step.model_copy(
-                        update={
-                            "step_id": identifiers[step.tool_name],
-                            "dependency": tuple(prior_ids[item] for item in step.dependency),
-                        }
-                    )
-                    for step in plan.steps
-                )
-            }
-        )
 
 
 def _client(
@@ -244,10 +218,10 @@ def test_task_history_is_owner_scoped_filtered_and_paginated(tmp_path: Path) -> 
         container.close()
 
 
-def test_two_sequential_tasks_reuse_frozen_step_ids_without_cross_task_reads(
+def test_two_sequential_tasks_use_canonical_task_scoped_steps_without_cross_task_reads(
     tmp_path: Path,
 ) -> None:
-    client, container = _client(tmp_path, llm_provider=_TaskLocalStepIdOfflineMock())
+    client, container = _client(tmp_path, llm_provider=OfflineMockLLM())
     try:
         with client:
             first = client.post(
@@ -283,16 +257,17 @@ def test_two_sequential_tasks_reuse_frozen_step_ids_without_cross_task_reads(
         first_step_ids = {item["step_id"] for item in first_steps}
         second_step_ids = {item["step_id"] for item in second_steps}
         assert first_task.json()["status"] == second_task.json()["status"] == "COMPLETED"
-        assert (
-            first_step_ids
-            == second_step_ids
-            == {
-                "step-1-knowledge-search",
-                "step-2-database-query",
-                "step-3-analysis",
-                "step-4-report",
-            }
-        )
+        expected_suffixes = {
+            "retrieve-quality-policy",
+            "query-supplier-quality-data",
+            "analyze-supplier-quality",
+            "generate-supplier-quality-report",
+        }
+        assert first_step_ids.isdisjoint(second_step_ids)
+        assert all(item.startswith(f"{first_task_id}:") for item in first_step_ids)
+        assert all(item.startswith(f"{second_task_id}:") for item in second_step_ids)
+        assert {item.split(":", 1)[1] for item in first_step_ids} == expected_suffixes
+        assert {item.split(":", 1)[1] for item in second_step_ids} == expected_suffixes
         assert all(item["status"] == "SUCCESS" for item in (*first_steps, *second_steps))
         assert {item["step_id"] for item in first_evidence}.issubset(first_step_ids)
         assert {item["step_id"] for item in second_evidence}.issubset(second_step_ids)

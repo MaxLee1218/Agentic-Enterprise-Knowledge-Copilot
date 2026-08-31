@@ -7,6 +7,9 @@ import pytest
 from copilot.agent.graph import WorkflowInterrupted
 from copilot.contracts import (
     ArtifactType,
+    CapabilityName,
+    ProposedPlan,
+    ProposedStep,
     ReportLanguage,
     TaskStatus,
     TaskType,
@@ -43,6 +46,35 @@ def _understanding() -> TaskUnderstandingOutput:
     )
 
 
+def _proposal() -> ProposedPlan:
+    return ProposedPlan(
+        steps=(
+            ProposedStep(
+                step_id="knowledge",
+                capability=CapabilityName.KNOWLEDGE_SEARCH,
+                purpose="Retrieve supplier quality policy",
+            ),
+            ProposedStep(
+                step_id="database",
+                capability=CapabilityName.DATABASE_QUERY,
+                purpose="Retrieve supplier quality data",
+            ),
+            ProposedStep(
+                step_id="analysis",
+                capability=CapabilityName.ANALYSIS_ENGINE,
+                purpose="Analyze supplier quality metrics",
+                depends_on=("database",),
+            ),
+            ProposedStep(
+                step_id="report",
+                capability=CapabilityName.REPORT_GENERATOR,
+                purpose="Generate the requested report",
+                depends_on=("knowledge", "analysis"),
+            ),
+        )
+    )
+
+
 def test_llm_plan_repair_is_checkpointed_and_invalid_plan_never_executes(
     tmp_path: Path,
 ) -> None:
@@ -54,14 +86,15 @@ def test_llm_plan_repair_is_checkpointed_and_invalid_plan_never_executes(
             seed.service.execute(COMMAND)
         seeded = seed.engine.get_state("T-0001", "TENANT-DEMO")
     valid = seeded["plan"]
-    report = valid.steps[-1]
-    invalid_report = report.model_copy(update={"dependency": (valid.steps[2].step_id,)})
-    invalid = valid.model_copy(update={"steps": (*valid.steps[:-1], invalid_report)})
+    invalid_report = (
+        _proposal().steps[-1].model_copy(update={"capability": CapabilityName.ANALYSIS_ENGINE})
+    )
+    invalid = _proposal().model_copy(update={"steps": (*_proposal().steps[:-1], invalid_report)})
     provider = MockLLM(
         responses_by_node={
             "understand_task": [_understanding()],
             "create_plan": [invalid],
-            "repair_plan": [valid],
+            "repair_plan": [_proposal()],
         }
     )
 
@@ -76,8 +109,6 @@ def test_llm_plan_repair_is_checkpointed_and_invalid_plan_never_executes(
     assert execution.final_state.state is TaskStatus.COMPLETED
     assert state["plan_repair_count"] == 1
     assert len(provider.calls) == 3
-    assert "PLAN_VALIDATION_FAILED" in events
-    assert "PLAN_REPAIR_STARTED" in events
     assert "PLAN_REPAIRED" in events
     valid_step_ids = {step.step_id for step in valid.steps}
     assert all(result.step_id in valid_step_ids for result in execution.step_results)

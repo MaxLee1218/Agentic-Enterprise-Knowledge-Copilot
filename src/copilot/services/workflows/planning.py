@@ -7,6 +7,7 @@ from typing import Protocol
 
 from copilot.contracts import StepResult, TaskContract, TaskPlan, TaskRequest
 from copilot.services.task_intake import TrustedTaskContext
+from copilot.services.workflows.plan_compiler import PlanCompilationDiagnostic
 from copilot.services.workflows.validation import PlanValidationIssue, PlanValidationResult
 
 
@@ -25,6 +26,32 @@ class PlanGenerationOutcome:
     plan: TaskPlan
     validation: PlanValidationResult
     repair_attempts: int = 0
+    structured_output_retries: int = 0
+    compilation_diagnostics: tuple[PlanCompilationDiagnostic, ...] = ()
+    model_calls: tuple[PlannerModelCall, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class PlannerModelCall:
+    """Safe per-call planning telemetry returned to opt-in stability harnesses."""
+
+    node_name: str
+    attempt: int
+    provider_attempts: int
+    prompt_chars: int
+    provider: str | None
+    model: str | None
+    latency_ms: int | None
+    finish_reason: str | None
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    raw_output_chars: int
+    raw_output_hash: str | None
+    parse_status: str
+    schema_status: str
+    error_code: str | None = None
+    repair_type: str | None = None
 
 
 class PlanningService(Protocol):
@@ -92,6 +119,7 @@ class PlanningService(Protocol):
 
 __all__ = [
     "PlanGenerationOutcome",
+    "PlannerModelCall",
     "PlanningService",
     "TaskUnderstandingOutcome",
 ]
