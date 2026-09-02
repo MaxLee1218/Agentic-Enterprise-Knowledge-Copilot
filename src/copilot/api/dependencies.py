@@ -6,6 +6,7 @@ from fastapi import HTTPException, Request
 
 from copilot.services.approval_service import ApprovalService
 from copilot.services.artifact_service import ArtifactService
+from copilot.services.clarification_service import ClarificationService
 from copilot.services.identity import IdentityProvider, IdentityRequest, IdentityResolutionError
 from copilot.services.task_intake import TrustedCallerContext
 from copilot.services.task_service import NaturalLanguageTaskService
@@ -32,6 +33,11 @@ def get_artifact_service(request: Request) -> ArtifactService:
     return cast(ArtifactService, request.app.state.artifact_service)
 
 
+def get_clarification_service(request: Request) -> ClarificationService:
+    """Return the interactive clarification service from the composition root."""
+    return cast(ClarificationService, request.app.state.clarification_service)
+
+
 def get_caller_context(request: Request) -> TrustedCallerContext:
     """Resolve every API caller through the explicitly composed authentication boundary."""
     provider = cast(IdentityProvider, request.app.state.identity_provider)
@@ -47,6 +53,7 @@ def get_caller_context(request: Request) -> TrustedCallerContext:
 __all__ = [
     "get_approval_service",
     "get_artifact_service",
+    "get_clarification_service",
     "get_caller_context",
     "get_task_service",
     "get_task_submission_service",

@@ -38,9 +38,9 @@ Interoperable MCP Client/Server Ecosystem
 
 The repository currently contains an initial project scaffold. Empty modules represent planned boundaries, not completed functionality. MCP is a future Phase 5 extension, not a currently implemented feature. Do not describe an empty module or planned MCP capability as implemented.
 
-### 1.1 Frozen Design Authority for v1.1
+### 1.1 Frozen Design Authority for v1.2
 
-The Supplier Quality Analysis v1.1 design is frozen under `docs/design/`. Before changing contracts, task lifecycle behavior, agent nodes, policies, approvals, tools, evidence, persistence, verification, artifacts, tests, or evaluations for this scenario, contributors and coding agents must read and comply with all of the following documents:
+The Supplier Quality Analysis v1.2 design is frozen under `docs/design/`. Before changing contracts, task lifecycle behavior, agent nodes, policies, approvals, tools, evidence, persistence, verification, artifacts, tests, or evaluations for this scenario, contributors and coding agents must read and comply with all of the following documents:
 
 - `docs/design/business_scope.md`
 - `docs/design/domain_model.md`
@@ -50,7 +50,7 @@ The Supplier Quality Analysis v1.1 design is frozen under `docs/design/`. Before
 - `docs/design/design_review.md`
 - `docs/design/design_baseline.md`
 
-These documents are the sole implementation authority for the Supplier Quality Analysis v1.1 scenario. Do not implement behavior that contradicts them, infer unstated behavior from prompts, silently broaden scope, or bypass their policy, approval, evidence, audit, recovery, and verification requirements.
+These documents are the sole implementation authority for the Supplier Quality Analysis v1.2 scenario. Do not implement behavior that contradicts them, infer unstated behavior from prompts, silently broaden scope, or bypass their policy, approval, evidence, audit, recovery, and verification requirements.
 
 If an implementation request conflicts with the frozen design, stop before implementing the conflicting behavior and report the conflict. A change to the frozen baseline requires an explicit design change: update every affected design document, resolve cross-document conflicts, version the baseline, obtain approval, and only then modify production code. Do not treat the existence of scaffold files as authorization to begin or expand implementation.
 
@@ -306,7 +306,7 @@ The MCP paths above are approved future boundaries. Empty MCP files and director
 
 ## 6. Development Rules
 
-1. For Supplier Quality Analysis v1.1, read and follow the frozen `docs/design/` baseline defined in Section 1.1 before modifying behavior; for all other work, inspect existing contracts, architecture documents, tests, and call sites first.
+1. For Supplier Quality Analysis v1.2, read and follow the frozen `docs/design/` baseline defined in Section 1.1 before modifying behavior; for all other work, inspect existing contracts, architecture documents, tests, and call sites first.
 2. Prefer small, incremental changes over broad rewrites.
 3. Do not create abstractions without at least one concrete use case.
 4. Keep every module focused on one responsibility with explicit inputs and outputs.

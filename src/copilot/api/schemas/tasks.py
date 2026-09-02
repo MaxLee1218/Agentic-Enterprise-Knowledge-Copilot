@@ -8,7 +8,13 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
-from copilot.contracts import ArtifactType, EvidenceType, TaskStatus, TaskType
+from copilot.contracts import (
+    ArtifactType,
+    ClarificationInputType,
+    EvidenceType,
+    TaskStatus,
+    TaskType,
+)
 from copilot.contracts.async_runtime import RuntimeStatus, TaskSubmissionResponse
 from copilot.services.task_intake import TaskOutputFormat
 
@@ -89,6 +95,31 @@ class TaskErrorResponse(BaseModel):
     details: dict[str, JsonValue] = Field(default_factory=dict)
 
 
+class PendingClarificationQuestionResponse(BaseModel):
+    """Frontend-renderable question embedded in a waiting Task response."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    field: str
+    reason: str
+    prompt: str
+    input_type: ClarificationInputType
+    required: bool
+    allowed_values: tuple[str, ...]
+    constraints: dict[str, JsonValue]
+
+
+class PendingClarificationResponse(BaseModel):
+    """Discoverable current clarification interaction for a Task."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    clarification_id: str
+    round: int = Field(ge=1)
+    questions: tuple[PendingClarificationQuestionResponse, ...]
+    created_at: datetime
+
+
 class TaskResponse(BaseModel):
     """Stable public task-management summary."""
 
@@ -106,6 +137,7 @@ class TaskResponse(BaseModel):
     current_step: str | None
     task_summary: str
     pending_approval_id: str | None
+    pending_clarification: PendingClarificationResponse | None
     step_count: int
     evidence_count: int
     artifact_count: int
@@ -183,6 +215,8 @@ class TaskEvidenceListResponse(BaseModel):
 
 __all__ = [
     "NaturalLanguageTaskSubmission",
+    "PendingClarificationQuestionResponse",
+    "PendingClarificationResponse",
     "PublicStepStatus",
     "TaskArtifactResponse",
     "TaskEvidenceListResponse",

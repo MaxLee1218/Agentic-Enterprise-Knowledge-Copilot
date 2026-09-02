@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import Field, field_validator, model_validator
 
 from copilot.contracts.base import ImmutableContractModel
+from copilot.contracts.clarifications import ClarificationStatus
 from copilot.contracts.enums import ApprovalStatus, TaskStatus
 from copilot.contracts.errors import (
     LeaseExpiredError,
@@ -84,6 +85,7 @@ class RecoveryReason(StrEnum):
     CANCELLED_TASK = "CANCELLED_TASK"
     CANCELLATION_INCONSISTENT = "CANCELLATION_INCONSISTENT"
     WAITING_APPROVAL = "WAITING_APPROVAL"
+    WAITING_CLARIFICATION = "WAITING_CLARIFICATION"
     ACTIVE_LEASE = "ACTIVE_LEASE"
     RETRY_NOT_DUE = "RETRY_NOT_DUE"
     READY_WITHOUT_DISPATCH = "READY_WITHOUT_DISPATCH"
@@ -111,6 +113,7 @@ class RuntimeEventName(StrEnum):
     LEASE_EXPIRED = "lease_expired"
     TASK_EXECUTION_STARTED = "task_execution_started"
     TASK_SUSPENDED_FOR_APPROVAL = "task_suspended_for_approval"
+    TASK_SUSPENDED_FOR_CLARIFICATION = "task_suspended_for_clarification"
     TASK_RESUMED = "task_resumed"
     TASK_CANCEL_REQUESTED = "task_cancel_requested"
     TASK_CANCEL_OBSERVED = "task_cancel_observed"
@@ -136,6 +139,7 @@ class RuntimeMetricName(StrEnum):
     TASK_QUEUE_WAIT_SECONDS = "task_queue_wait_seconds"
     TASK_EXECUTION_SECONDS = "task_execution_seconds"
     WAITING_APPROVAL_COUNT = "waiting_approval_count"
+    WAITING_CLARIFICATION_COUNT = "waiting_clarification_count"
     CANCEL_LATENCY_SECONDS = "cancel_latency_seconds"
 
 
@@ -481,13 +485,18 @@ class TaskRuntimeSnapshot(ImmutableContractModel):
     cancellation: CancellationState | None = None
     pending_approval_id: str | None = Field(default=None, min_length=1)
     pending_approval_status: ApprovalStatus | None = None
+    pending_clarification_id: str | None = Field(default=None, min_length=1)
+    pending_clarification_status: ClarificationStatus | None = None
     successful_step_ids: tuple[str, ...] = ()
     recovery_attempt_count: int = Field(default=0, ge=0)
     last_recovery_error: str | None = Field(default=None, min_length=1)
 
     _validate_ids = field_validator("tenant_id", "task_id")(validate_identifier)
     _validate_optional_ids = field_validator(
-        "current_dispatch_id", "resume_checkpoint_id", "pending_approval_id"
+        "current_dispatch_id",
+        "resume_checkpoint_id",
+        "pending_approval_id",
+        "pending_clarification_id",
     )(lambda value: validate_identifier(value) if value is not None else value)
     _validate_retry_time = field_validator("retry_not_before")(
         lambda value: validate_utc_datetime(value) if value is not None else value
@@ -533,10 +542,17 @@ class TaskRuntimeSnapshot(ImmutableContractModel):
                 raise ValueError("WAITING_APPROVAL cannot hold an execution lease")
             if self.pending_approval_status is not ApprovalStatus.PENDING:
                 raise ValueError("WAITING_APPROVAL requires one pending approval")
+        if self.task_status is TaskStatus.WAITING_CLARIFICATION:
+            if self.runtime_status is not RuntimeStatus.SUSPENDED:
+                raise ValueError("WAITING_CLARIFICATION must suspend the runtime")
+            if self.lease is not None:
+                raise ValueError("WAITING_CLARIFICATION cannot hold an execution lease")
+            if self.pending_clarification_status is not ClarificationStatus.PENDING:
+                raise ValueError("WAITING_CLARIFICATION requires one pending clarification")
         if self.runtime_status is RuntimeStatus.SUSPENDED and (
-            self.task_status is not TaskStatus.WAITING_APPROVAL
+            self.task_status not in {TaskStatus.WAITING_APPROVAL, TaskStatus.WAITING_CLARIFICATION}
         ):
-            raise ValueError("SUSPENDED runtime status requires WAITING_APPROVAL")
+            raise ValueError("SUSPENDED runtime status requires an interactive waiting Task")
         if (self.runtime_status is RuntimeStatus.WAITING_RETRY) != (
             self.retry_not_before is not None
         ):
@@ -551,6 +567,8 @@ class TaskRuntimeSnapshot(ImmutableContractModel):
             raise ValueError("only LEASED runtime status may hold an execution lease")
         if (self.pending_approval_id is None) != (self.pending_approval_status is None):
             raise ValueError("pending approval identity and status must be recorded together")
+        if (self.pending_clarification_id is None) != (self.pending_clarification_status is None):
+            raise ValueError("pending clarification identity and status must be recorded together")
         return self
 
 
@@ -640,6 +658,12 @@ def decide_recovery(
         return RecoveryDecision(
             action=RecoveryAction.WAIT,
             reason=RecoveryReason.WAITING_APPROVAL,
+            preserved_step_ids=snapshot.successful_step_ids,
+        )
+    if snapshot.task_status is TaskStatus.WAITING_CLARIFICATION:
+        return RecoveryDecision(
+            action=RecoveryAction.WAIT,
+            reason=RecoveryReason.WAITING_CLARIFICATION,
             preserved_step_ids=snapshot.successful_step_ids,
         )
     if snapshot.lease is not None and snapshot.lease.is_active_at(observed_at):

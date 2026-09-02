@@ -8,6 +8,9 @@ from copilot.api.schemas.tasks import TaskErrorResponse
 from copilot.security.redaction import redact_text
 from copilot.services.approval_service import ApprovalServiceError
 from copilot.services.artifact_service import ArtifactServiceError
+from copilot.services.clarification_service import (
+    ClarificationServiceError,
+)
 from copilot.services.task_intake import TaskIntakeValidationError
 from copilot.services.task_service import TaskServiceError
 
@@ -37,6 +40,13 @@ async def request_validation_handler(
             status_code=400 if invalid_action else 422,
             content=payload.model_dump(mode="json"),
         )
+    if "/clarifications/" in request.url.path:
+        payload = TaskErrorResponse(
+            error_code="CLARIFICATION_INPUT_INVALID",
+            message="Clarification response failed validation.",
+            trace_id=_trace_id(request),
+        )
+        return JSONResponse(status_code=422, content=payload.model_dump(mode="json"))
     payload = TaskErrorResponse(
         error_code="INVALID_TASK_INPUT",
         message="Task submission failed validation.",
@@ -62,6 +72,27 @@ async def approval_service_error_handler(
     )
     return JSONResponse(
         status_code=approval_error.status_code,
+        content=payload.model_dump(mode="json"),
+    )
+
+
+async def clarification_service_error_handler(
+    request: Request,
+    error: Exception,
+) -> JSONResponse:
+    """Map safe clarification failures without reflecting response content."""
+    clarification_error = (
+        error
+        if isinstance(error, ClarificationServiceError)
+        else ClarificationServiceError("Clarification could not be processed")
+    )
+    payload = TaskErrorResponse(
+        error_code=clarification_error.code,
+        message=redact_text(str(clarification_error)),
+        trace_id=_trace_id(request),
+    )
+    return JSONResponse(
+        status_code=clarification_error.status_code,
         content=payload.model_dump(mode="json"),
     )
 
@@ -160,6 +191,7 @@ async def internal_error_handler(request: Request, _error: Exception) -> JSONRes
 __all__ = [
     "approval_service_error_handler",
     "artifact_service_error_handler",
+    "clarification_service_error_handler",
     "internal_error_handler",
     "pydantic_validation_handler",
     "request_validation_handler",

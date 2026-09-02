@@ -56,8 +56,9 @@ npm run build
 ```
 
 Vitest component tests use MSW only at the HTTP boundary. They cover task validation and
-submission, lifecycle and failure states, steps, Evidence, Artifacts, approval authorization and
-conflicts, edit restrictions, rejection, and cancellation.
+submission, lifecycle and failure states, steps, Evidence, Artifacts, clarification questions,
+typed controls, partial/free-form answers, stale conflicts, waiting cancellation, approval
+authorization and conflicts, edit restrictions, rejection, and cancellation.
 
 Install Playwright's browser once, then run the real E2E suite:
 
@@ -70,7 +71,9 @@ Playwright starts a hermetic FastAPI application backed by the real Task Service
 Evidence ledger, Approval Service, Artifact Service, and offline deterministic adapters. It also
 starts Vite, so the happy path verifies browser → `/api` proxy → FastAPI → Agent workflow →
 Evidence → downloadable Artifact. Separate tests cover approval, rejection, cancellation, and a
-typed failure response.
+typed failure response. A browser interaction test also exercises AP task creation, two
+clarification rounds under one Task ID, resume, completion, and PDF presentation; backend
+PostgreSQL recovery/concurrency remains covered by the backend integration suite.
 
 ## OpenAPI types
 

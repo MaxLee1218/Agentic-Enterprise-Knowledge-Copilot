@@ -17,6 +17,7 @@ from starlette.responses import Response
 from copilot.api.error_handlers import (
     approval_service_error_handler,
     artifact_service_error_handler,
+    clarification_service_error_handler,
     internal_error_handler,
     pydantic_validation_handler,
     request_validation_handler,
@@ -25,11 +26,13 @@ from copilot.api.error_handlers import (
 )
 from copilot.api.routes.approvals import router as approvals_router
 from copilot.api.routes.artifacts import router as artifacts_router
+from copilot.api.routes.clarifications import router as clarifications_router
 from copilot.api.routes.tasks import router as tasks_router
 from copilot.config import Settings
 from copilot.contracts import SpanKind, SpanStatus
 from copilot.services.approval_service import ApprovalService, ApprovalServiceError
 from copilot.services.artifact_service import ArtifactService, ArtifactServiceError
+from copilot.services.clarification_service import ClarificationService, ClarificationServiceError
 from copilot.services.health import ReadinessService
 from copilot.services.identity import IdentityProvider
 from copilot.services.observability import (
@@ -69,6 +72,7 @@ def create_app(
     task_submission_service: TaskSubmissionService | None = None,
     approval_service: ApprovalService | None = None,
     artifact_service: ArtifactService | None = None,
+    clarification_service: ClarificationService | None = None,
     settings: Settings | None = None,
     observability: ObservabilityPort | None = None,
     readiness: ReadinessService | None = None,
@@ -89,6 +93,8 @@ def create_app(
         application.state.approval_service = approval_service
     if artifact_service is not None:
         application.state.artifact_service = artifact_service
+    if clarification_service is not None:
+        application.state.clarification_service = clarification_service
     if settings is not None:
         application.state.settings = settings
     if identity_provider is not None:
@@ -201,10 +207,15 @@ def create_app(
     application.include_router(tasks_router)
     application.include_router(artifacts_router)
     application.include_router(approvals_router)
+    application.include_router(clarifications_router)
     application.add_exception_handler(RequestValidationError, request_validation_handler)
     application.add_exception_handler(ValidationError, pydantic_validation_handler)
     application.add_exception_handler(TaskIntakeValidationError, task_intake_validation_handler)
     application.add_exception_handler(ApprovalServiceError, approval_service_error_handler)
+    application.add_exception_handler(
+        ClarificationServiceError,
+        clarification_service_error_handler,
+    )
     application.add_exception_handler(TaskServiceError, task_service_error_handler)
     application.add_exception_handler(ArtifactServiceError, artifact_service_error_handler)
     application.add_exception_handler(Exception, internal_error_handler)

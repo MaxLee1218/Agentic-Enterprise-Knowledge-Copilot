@@ -1,6 +1,6 @@
 # Security Model
 
-The frozen Supplier Quality Analysis v1.1 design remains authoritative for identity, task state,
+The frozen Supplier Quality Analysis v1.2 design remains authoritative for identity, task state,
 policy, approval, tool execution, Evidence, and verification. Stage 17.1 hardens those boundaries;
 it does not add business capabilities or change the frozen four-tool scope. Stage 18 separately
 adds a governed optional MCP boundary documented in `mcp-security.md`.
@@ -72,7 +72,8 @@ never synthesizes a privileged/default context. A missing context is a call-sign
 unauthenticated or mismatched context raises a stable authorization error before tool execution.
 
 Tenant isolation is enforced at persistence boundaries. Tenant-owned tables include Task, Task
-State and events, plan/result/step/tool data, Evidence, Approval and history, Artifact metadata,
+State and events, plan/result/step/tool data, Evidence, Approval and history, Clarification and
+history, Artifact metadata,
 tool/workflow Audit, execution lease, and checkpoint state. Repository reads and writes require a
 tenant, SQL statements filter by it, indexed composite keys support those filters, and composite
 foreign keys prevent cross-tenant child/task associations. A wrong tenant receives not-found or an
@@ -94,7 +95,24 @@ and tool actions. Unknown roles, purposes, tools, resources, and operations are 
 
 Neither role can execute database writes, arbitrary SQL/Python, email, procurement, CAPA, record
 deletion, an unregistered tool, a new enterprise connector, or MCP. A high-privilege role never
-overrides the system-level v1.1 allowlist.
+overrides the system-level v1.2 allowlist.
+
+## Clarification authorization boundary
+
+Clarification is a governed human-input boundary. Reading or answering requires the original Task
+owner, matching tenant and task, an allowed task type, and current `RESPOND_CLARIFICATION`
+permission. Cross-tenant identifiers are hidden as not found. Legal-entity and other select choices
+come only from current trusted identity scope; the LLM and tenant-wide database are not choice
+authorities. Structured values are type checked, free text is bounded and scanned as untrusted
+content, and neither can supply roles, scopes, tenant, policy, approval, or tool authority.
+
+The response transaction stores a refreshed server context and binds the response to the exact
+suspended checkpoint and predecessor execution generation. The Worker validates that binding under
+a new lease and fencing token before returning to Understanding. A checkpoint is not an
+authorization grant. Deployments must ensure the identity adapter supplies fresh IAM facts at
+response time; a later external IAM change after the accepted response remains subject to that
+adapter's freshness/revocation guarantees. Logs and metric labels contain interaction IDs, round,
+field names, outcomes, and safe codes—not raw answers.
 
 Authorization is enforced at plan validation, policy check, `ToolExecutor`, the database adapter,
 approval service, task service, and Artifact service. `ToolExecutor` rechecks the current explicit

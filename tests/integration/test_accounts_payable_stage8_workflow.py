@@ -170,19 +170,20 @@ def test_ap_full_workflow_retries_once_and_verifies_end_to_end(
         assert any(item.attempt_count == 2 for item in database_steps)
 
 
-def test_ap_missing_date_fails_before_planning_or_tools(tmp_path: Path) -> None:
+def test_ap_missing_date_waits_before_planning_or_tools(tmp_path: Path) -> None:
     with _container(tmp_path) as container:
-        execution = container.task_service.submit(
-            NaturalLanguageTaskCommand(
-                task="Analyze Accounts Payable exceptions for LE-CN-01",
-                output_format=TaskOutputFormat.JSON,
-                source=RequestSource.INTERNAL,
-            ),
-            _caller(),
-        )
+        with pytest.raises(WorkflowInterrupted) as captured:
+            container.task_service.submit(
+                NaturalLanguageTaskCommand(
+                    task="Analyze Accounts Payable exceptions for LE-CN-01",
+                    output_format=TaskOutputFormat.JSON,
+                    source=RequestSource.INTERNAL,
+                ),
+                _caller(),
+            )
 
-        assert execution.task_result.final_status is TaskStatus.FAILED
-        assert any(error.error_code == "TASK_INFORMATION_MISSING" for error in execution.errors)
+        assert captured.value.status == TaskStatus.WAITING_CLARIFICATION.value
+        assert container.repository.plan_for(captured.value.task_id, tenant_id=TENANT_ID) is None
         assert container.ap_knowledge_tool.call_count == 0
         assert container.ap_database_tool.call_count == 0
         assert container.ap_analytics_tool.call_count == 0

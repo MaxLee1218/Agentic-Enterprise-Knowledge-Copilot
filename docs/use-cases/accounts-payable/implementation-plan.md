@@ -197,14 +197,24 @@ claimed.
 - **Likely files:** `llm/{schemas,prompts,planning}.py`, `services/workflows/`, `agent/runtime.py`,
   `bootstrap/container.py`, permission/approval services.
 - **Contracts:** planning/repair prompt versions and AP Plan profile.
-- **Tests:** natural language, missing information FAILED path, wrong Plan repair, approval pause/
-  edit/resume, retries/replan, empty path and end-to-end Evidence.
+- **Tests:** natural language, missing information clarification path, wrong Plan repair, approval
+  pause/edit/resume, retries/replan, empty path and end-to-end Evidence.
 - **Migration:** checkpoint upcaster from Stage 1.
 - **Security:** trusted scope never enters model authority; profile/template/operation escape denied.
 - **Backward compatibility:** full UC1 graph and approval replay regression.
 - **Acceptance:** AP synthetic tasks reach correct terminal state through one Graph.
 - **Artifacts:** execution traces and audit records.
 - **Out of scope:** API/frontend changes.
+
+## Cross-stage v1.1 amendment — Interactive Clarification & Resume
+
+**Status:** `IMPLEMENTED SUBJECT TO FULL RELEASE GATES — 2026-09-01`
+
+ADR-019 adds shared contracts, persistence migration, Understanding routing, asynchronous
+suspension/resume, current-scope authorization, API/OpenAPI, console controls, audit/metrics,
+Supplier/AP regression tests, PostgreSQL concurrency/restart tests, and a separate clarification
+evaluation dataset. It does not reopen Stages 2–7 finance data, formula, policy, Evidence, report,
+or verification decisions and does not change the Stage 12 `NOT READY` production decision.
 
 ## Stage 9 — Permission, API and frontend integration
 

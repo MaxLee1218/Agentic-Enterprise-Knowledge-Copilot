@@ -21,6 +21,7 @@ export const task: Task = {
   task_summary:
     "Analyze supplier quality for Q2 2026 and generate a PDF report.",
   pending_approval_id: null,
+  pending_clarification: null,
   step_count: 2,
   evidence_count: 3,
   artifact_count: 2,
@@ -34,6 +35,42 @@ export const waitingTask: Task = {
   completed_at: null,
   current_step: "S-DB-01",
   pending_approval_id: "AP-TEST-001",
+  artifact_count: 0,
+};
+
+export const clarificationTask: Task = {
+  ...task,
+  status: "WAITING_CLARIFICATION",
+  runtime_status: "SUSPENDED",
+  completed_at: null,
+  task_type: "accounts_payable_analysis.v1",
+  pending_clarification: {
+    clarification_id: "CLAR-TEST-001",
+    round: 1,
+    created_at: "2026-08-13T08:00:02Z",
+    questions: [
+      {
+        field: "time_range",
+        reason: "An explicit Accounts Payable invoice date range is required.",
+        prompt: "What exact start and end dates should be analyzed?",
+        input_type: "date_range",
+        required: true,
+        allowed_values: [],
+        constraints: {},
+      },
+      {
+        field: "legal_entity_ids",
+        reason: "The caller has more than one authorized legal entity.",
+        prompt: "Select an authorized legal entity.",
+        input_type: "single_select",
+        required: true,
+        allowed_values: ["LE-CN-01", "LE-DE-01"],
+        constraints: {},
+      },
+    ],
+  },
+  step_count: 0,
+  evidence_count: 0,
   artifact_count: 0,
 };
 

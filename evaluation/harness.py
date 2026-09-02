@@ -20,9 +20,18 @@ from copilot.config import Settings
 from copilot.contracts import (
     ApprovalResolutionAction,
     Artifact,
+    ClarificationResponse,
     JsonObject,
     ProposedPlan,
+    TaskStatus,
     TaskType,
+)
+from copilot.contracts.async_runtime import (
+    DispatchStatus,
+    LeaseTimingPolicy,
+    QueueDelivery,
+    TaskDispatch,
+    WorkerIdentity,
 )
 from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.persistence.identifiers import SequentialIdentifierFactory
@@ -32,6 +41,7 @@ from copilot.services.approval_service import (
     ApprovalServiceError,
 )
 from copilot.services.artifact_service import ArtifactServiceError
+from copilot.services.clarification_service import ClarificationServiceError
 from copilot.services.llm import (
     LLMCallContext,
     LLMGenerationOptions,
@@ -41,6 +51,7 @@ from copilot.services.llm import (
     LLMUsage,
     StructuredLLMResult,
 )
+from copilot.services.task_execution import TaskExecutionService
 from copilot.services.task_intake import (
     NaturalLanguageTaskCommand,
     RequestSource,
@@ -67,6 +78,37 @@ _FIXED_NOW = datetime(2026, 8, 3, 0, 0, tzinfo=UTC)
 
 class _FaultInjectableTool(Protocol):
     execute: Callable[[JsonObject, ToolExecutionContext], ToolExecutionOutput]
+
+
+class _EvaluationQueue:
+    """Minimal receipt adapter; durable dispatch state remains repository-authoritative."""
+
+    def enqueue(self, dispatch: TaskDispatch) -> None:
+        del dispatch
+
+    def receive(
+        self, *, max_messages: int, visibility_timeout_seconds: int
+    ) -> tuple[QueueDelivery, ...]:
+        del max_messages, visibility_timeout_seconds
+        return ()
+
+    def ack(self, delivery: QueueDelivery) -> None:
+        del delivery
+
+    def nack(
+        self,
+        delivery: QueueDelivery,
+        *,
+        retry_at: datetime | None,
+        reason_code: str,
+    ) -> None:
+        del delivery, retry_at, reason_code
+
+    def health(self) -> bool:
+        return True
+
+    def shutdown(self) -> None:
+        return None
 
 
 class RecordingEvaluationLLM(LLMProvider):
@@ -169,35 +211,44 @@ class EvaluationHarness:
                 metadata=case.task_input.metadata,
                 source=RequestSource.INTERNAL,
             )
-            try:
-                execution = container.task_service.submit(command, caller)
-                task_id = execution.task_result.task_id
-            except WorkflowInterrupted as exc:
-                interrupted = True
-                task_id = exc.task_id
-                action = case.execution_config.approval_action
-                if action and action != "pause" and exc.approval_id:
-                    try:
-                        if "restart_resume" in case.tags:
-                            container.close()
-                            container = self._build_container(
-                                settings, case, fixtures, provider, ids
+            if self._has_scripted_clarification(case):
+                task_id, interrupted = self._execute_scripted_clarification(
+                    container,
+                    case,
+                    command,
+                    caller,
+                )
+            else:
+                try:
+                    execution = container.task_service.submit(command, caller)
+                    task_id = execution.task_result.task_id
+                except WorkflowInterrupted as exc:
+                    interrupted = True
+                    task_id = exc.task_id
+                    action = case.execution_config.approval_action
+                    if action and action != "pause" and exc.approval_id:
+                        try:
+                            if "restart_resume" in case.tags:
+                                container.close()
+                                container = self._build_container(
+                                    settings, case, fixtures, provider, ids
+                                )
+                                if self._is_accounts_payable(case):
+                                    self._install_ap_faults(container, case)
+                            resolution = self._resolve_approval(
+                                container,
+                                case,
+                                caller,
+                                task_id,
+                                exc.approval_id,
                             )
-                            if self._is_accounts_payable(case):
-                                self._install_ap_faults(container, case)
-                        resolution = self._resolve_approval(
-                            container,
-                            case,
-                            caller,
-                            task_id,
-                            exc.approval_id,
-                        )
-                        execution = resolution.execution
-                        interrupted = execution is None
-                    except ApprovalServiceError:
-                        # Expected authorization denials remain Agent outcomes, not harness errors.
-                        execution = None
-                        interrupted = True
+                            execution = resolution.execution
+                            interrupted = execution is None
+                        except ApprovalServiceError:
+                            # Expected authorization denials remain Agent outcomes,
+                            # rather than harness errors.
+                            execution = None
+                            interrupted = True
         except (
             Exception
         ) as exc:  # captured as harness/evaluator data, never treated as Agent success
@@ -248,6 +299,113 @@ class EvaluationHarness:
             report_behavior=EvaluationHarness._report_behavior(case, fixtures),
             llm_provider=provider,
         )
+
+    @staticmethod
+    def _has_scripted_clarification(case: EvaluationCase) -> bool:
+        config = case.execution_config
+        return bool(
+            config.clarification_responses or config.cancel_on_clarification_round is not None
+        )
+
+    def _execute_scripted_clarification(
+        self,
+        container: WorkflowContainer,
+        case: EvaluationCase,
+        command: NaturalLanguageTaskCommand,
+        caller: TrustedCallerContext,
+    ) -> tuple[str, bool]:
+        """Drive production async contracts through a deterministic SQLite test Queue."""
+        submission = container.task_submission_service
+        runtime = container.async_runtime_repository
+        cancellations = container.cancellations
+        if submission is None or runtime is None or cancellations is None:
+            raise RuntimeError("Scripted clarification evaluation requires durable runtime")
+        accepted = submission.submit(command, caller, idempotency_key=None)
+        task_id = accepted.task_id
+        self._process_current_dispatch(container, task_id, caller.tenant_id)
+        responses = iter(case.execution_config.clarification_responses)
+        while True:
+            state = container.repository.state_for(task_id, tenant_id=caller.tenant_id)
+            if state.state is not TaskStatus.WAITING_CLARIFICATION:
+                return task_id, state.state is TaskStatus.WAITING_APPROVAL
+            pending = container.clarification_repository.get_pending_for_task(
+                task_id,
+                tenant_id=caller.tenant_id,
+            )
+            if pending is None:
+                raise RuntimeError("WAITING_CLARIFICATION has no pending interaction")
+            if case.execution_config.cancel_on_clarification_round == pending.round:
+                container.task_service.cancel_task(task_id, caller, trace_id="TRACE-EVAL-CANCEL")
+                return task_id, False
+            try:
+                response = next(responses)
+            except StopIteration:
+                return task_id, True
+            try:
+                container.clarification_service.respond(
+                    task_id,
+                    pending.clarification_id,
+                    ClarificationResponse(
+                        answers=JsonObject(response.answers),
+                        message=response.message,
+                    ),
+                    caller,
+                    trace_id="TRACE-EVAL-CLARIFICATION",
+                )
+            except ClarificationServiceError:
+                return task_id, True
+            self._process_current_dispatch(container, task_id, caller.tenant_id)
+
+    @staticmethod
+    def _process_current_dispatch(
+        container: WorkflowContainer,
+        task_id: str,
+        tenant_id: str,
+    ) -> None:
+        runtime = container.async_runtime_repository
+        cancellations = container.cancellations
+        if runtime is None or cancellations is None:
+            raise RuntimeError("Evaluation Worker dependencies are unavailable")
+        snapshot = runtime.snapshot(task_id, tenant_id=tenant_id)
+        record = runtime.get(snapshot.current_dispatch_id or "", tenant_id=tenant_id)
+        if record.status is DispatchStatus.PENDING:
+            record = runtime.compare_and_set_status(
+                record.dispatch.dispatch_id,
+                tenant_id=tenant_id,
+                expected=DispatchStatus.PENDING,
+                replacement=DispatchStatus.ENQUEUED,
+                observed_at=_FIXED_NOW,
+            )
+        queue = _EvaluationQueue()
+        execution = TaskExecutionService(
+            runtime=runtime,
+            tasks=container.repository,
+            approvals=container.approval_repository,
+            clarifications=container.clarification_repository,
+            queue=queue,
+            engine=container.engine,
+            worker=WorkerIdentity(
+                worker_id="WORKER-EVALUATION",
+                deployment_id="DEPLOYMENT-EVALUATION",
+                started_at=_FIXED_NOW,
+            ),
+            cancellations=cancellations,
+            clock=lambda: _FIXED_NOW,
+            lease_timing=LeaseTimingPolicy(
+                heartbeat_interval_seconds=1,
+                lease_ttl_seconds=5,
+            ),
+        )
+        disposition = execution.process(
+            QueueDelivery(
+                delivery_id=f"DELIVERY-{record.dispatch.dispatch_id}",
+                dispatch=record.dispatch,
+                received_at=_FIXED_NOW,
+                delivery_attempt=1,
+            )
+        )
+        if disposition not in {"SUCCEEDED", "SUSPENDED", "NO_OP_TERMINAL"}:
+            raise RuntimeError(f"Evaluation Worker disposition was {disposition}")
 
     def _capture(
         self,
@@ -484,6 +642,7 @@ class EvaluationHarness:
         work_directory.mkdir(parents=True, exist_ok=True)
         plan_fault = any(item.target == "planner" for item in case.fault_injection)
         is_ap = case.task_input.task_type is TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1
+        needs_runtime = is_ap or EvaluationHarness._has_scripted_clarification(case)
         return Settings(
             app_env="test",
             database_url=(
@@ -493,7 +652,7 @@ class EvaluationHarness:
             ),
             database_provider="mock",
             persistence_database_url=(
-                f"sqlite:///{work_directory / 'runtime.db'}" if is_ap else None
+                f"sqlite:///{work_directory / 'runtime.db'}" if needs_runtime else None
             ),
             artifact_dir=work_directory / "artifacts",
             checkpoint_database_path=work_directory / "workflow.db",

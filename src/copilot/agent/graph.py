@@ -37,8 +37,10 @@ from copilot.contracts import (
     ApprovalRequest,
     ApprovalResolutionAction,
     ApprovalStatus,
+    ClarificationStatus,
     SpanKind,
     SpanStatus,
+    TaskClarification,
     TaskContract,
     TaskPlan,
     TaskRequest,
@@ -70,6 +72,7 @@ class WorkflowInterrupted(RuntimeError):
         status: str = "",
         created_at: datetime | None = None,
         approval_id: str | None = None,
+        clarification_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.task_id = task_id
@@ -77,6 +80,7 @@ class WorkflowInterrupted(RuntimeError):
         self.status = status
         self.created_at = created_at
         self.approval_id = approval_id
+        self.clarification_id = clarification_id
 
 
 def build_agent_graph(
@@ -92,6 +96,7 @@ def build_agent_graph(
     node_functions = {
         "validate_request": nodes.validate_request,
         "understand_task": nodes.understand_task,
+        "request_clarification": nodes.request_clarification,
         "classify_task": nodes.classify_task,
         "create_plan": nodes.create_plan,
         "validate_plan": nodes.validate_plan,
@@ -115,6 +120,7 @@ def build_agent_graph(
     builder.add_edge(START, "validate_request")
     builder.add_conditional_edges("validate_request", route_after_validate)
     builder.add_conditional_edges("understand_task", route_after_understanding)
+    builder.add_edge("request_clarification", "understand_task")
     builder.add_conditional_edges("classify_task", route_after_classification)
     builder.add_conditional_edges("create_plan", route_after_plan_creation)
     builder.add_conditional_edges("validate_plan", route_after_plan_validation)
@@ -128,7 +134,7 @@ def build_agent_graph(
     builder.add_edge("persist_result", END)
     return builder.compile(
         checkpointer=checkpointer,
-        interrupt_after=list(interrupt_after) or None,
+        interrupt_after=list(dict.fromkeys(("request_clarification", *interrupt_after))),
         name="governed-enterprise-analysis",
     )
 
@@ -455,6 +461,68 @@ class LangGraphWorkflowEngine:
         )
         return self._execution(output)
 
+    def resume_clarification_dispatched(
+        self,
+        clarification: TaskClarification,
+        refreshed_context: TrustedTaskContext,
+        tenant_id: str,
+        *,
+        execution_generation: int,
+    ) -> WorkflowExecution:
+        """Resume the suspended checkpoint at task understanding under Worker authority."""
+        config = self._config(clarification.task_id, tenant_id)
+        snapshot = self._graph.get_state(config)
+        if not snapshot.values:
+            raise WorkflowRecoveryError("workflow checkpoint was not found")
+        current = cast(AgentGraphState, snapshot.values)
+        if (
+            current["task_id"] != clarification.task_id
+            or current["intake_context"].tenant_id != tenant_id
+            or current.get("clarification_id") != clarification.clarification_id
+            or current.get("clarification_round") != clarification.round
+        ):
+            raise WorkflowRecoveryError("clarification does not match the workflow checkpoint")
+        if current["domain_state"].state is not TaskStatus.WAITING_CLARIFICATION:
+            raise WorkflowRecoveryError("checkpoint is not waiting for clarification")
+        if current.get("execution_generation", 1) != execution_generation - 1:
+            raise WorkflowRecoveryError("clarification checkpoint is not the immediate predecessor")
+        if current.get("contract") is not None or current.get("plan") is not None:
+            raise WorkflowRecoveryError("clarification checkpoint already contains planning state")
+        if clarification.status is not ClarificationStatus.SUBMITTED:
+            raise WorkflowRecoveryError("clarification response is not submitted")
+        if clarification.response is None or clarification.resume_context is None:
+            raise WorkflowRecoveryError("clarification resume payload is incomplete")
+        if (
+            refreshed_context.task_id != clarification.task_id
+            or refreshed_context.tenant_id != tenant_id
+            or refreshed_context.task_type is not current["intake_context"].task_type
+        ):
+            raise WorkflowRecoveryError("refreshed clarification authority is out of scope")
+        authoritative = self._repository.state_for(clarification.task_id, tenant_id=tenant_id)
+        if authoritative.state is not TaskStatus.UNDERSTANDING:
+            raise WorkflowRecoveryError("clarification response Task is not in understanding")
+        self._graph.update_state(
+            config,
+            {
+                "domain_state": authoritative,
+                "intake_context": refreshed_context,
+                "clarification_context": clarification.context,
+                "clarification_response": clarification.response,
+                "route": "clarification_submitted",
+                "route_reason": "Clarification response submitted for validation",
+                "resume_count": current["resume_count"] + 1,
+                "execution_generation": execution_generation,
+            },
+            as_node="request_clarification",
+        )
+        output = self._invoke_graph(
+            None,
+            config,
+            intake_context=refreshed_context,
+            resumed=True,
+        )
+        return self._execution(output)
+
     def checkpoint_identity(self, task_id: str, tenant_id: str) -> CheckpointIdentity | None:
         """Return minimized tenant-qualified checkpoint facts for reconciliation."""
         snapshot = self._graph.get_state(self._config(task_id, tenant_id))
@@ -497,6 +565,24 @@ class LangGraphWorkflowEngine:
             "step_id": step_id,
             "planning_version": state["plan"].planning_version,
             "target_executed": any(call.step_id == step_id for call in state["tool_calls"]),
+            "checkpoint_id": identity.checkpoint_id,
+            "execution_generation": identity.execution_generation,
+        }
+
+    def clarification_state(self, task_id: str, tenant_id: str) -> dict[str, object]:
+        """Return minimized checkpoint facts required for a response CAS."""
+        state = self.get_state(task_id, tenant_id)
+        identity = self.checkpoint_identity(task_id, tenant_id)
+        if identity is None:
+            raise ValueError("workflow checkpoint was not found")
+        return {
+            "task_status": state["domain_state"].state.value,
+            "tenant_id": state["intake_context"].tenant_id,
+            "trace_id": state["trace_id"],
+            "clarification_id": state.get("clarification_id"),
+            "clarification_round": state.get("clarification_round", 0),
+            "contract_present": state.get("contract") is not None,
+            "plan_present": state.get("plan") is not None,
             "checkpoint_id": identity.checkpoint_id,
             "execution_generation": identity.execution_generation,
         }
@@ -674,6 +760,7 @@ class LangGraphWorkflowEngine:
                 status=state["domain_state"].state.value,
                 created_at=state["request"].created_at,
                 approval_id=state["approval_id"],
+                clarification_id=state.get("clarification_id"),
             )
         completed_at = self._clock()
         results = {item.step_id: item for item in state["step_results"]}
@@ -699,7 +786,7 @@ class LangGraphWorkflowEngine:
                 self._evidence_reader.get(
                     evidence_id,
                     task_id=state["task_id"],
-                    tenant_id=state["contract"].constraints.tenant_id,
+                    tenant_id=state["intake_context"].tenant_id,
                 )
                 for evidence_id in state["evidence_ids"]
             ),

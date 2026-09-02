@@ -4,6 +4,9 @@ import type {
   ApprovalResolution,
   ApprovalResolutionRequest,
   ArtifactList,
+  ClarificationDetail,
+  ClarificationSubmission,
+  ClarificationSubmissionRequest,
   EvidenceList,
   Health,
   Liveness,
@@ -84,6 +87,40 @@ export async function getApproval(
     await apiClient.GET("/v1/tasks/{task_id}/approvals/{approval_id}", {
       params: { path: { task_id: taskId, approval_id: approvalId } },
     }),
+  );
+}
+
+export async function getClarification(
+  taskId: string,
+  clarificationId: string,
+): Promise<ClarificationDetail> {
+  return unwrap(
+    await apiClient.GET(
+      "/v1/tasks/{task_id}/clarifications/{clarification_id}",
+      {
+        params: {
+          path: { task_id: taskId, clarification_id: clarificationId },
+        },
+      },
+    ),
+  );
+}
+
+export async function submitClarification(
+  taskId: string,
+  clarificationId: string,
+  input: ClarificationSubmissionRequest,
+): Promise<ClarificationSubmission> {
+  return unwrap(
+    await apiClient.POST(
+      "/v1/tasks/{task_id}/clarifications/{clarification_id}",
+      {
+        params: {
+          path: { task_id: taskId, clarification_id: clarificationId },
+        },
+        body: input,
+      },
+    ),
   );
 }
 

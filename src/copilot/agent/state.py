@@ -16,6 +16,11 @@ from copilot.contracts import (
     Artifact,
     ArtifactType,
     CapabilityName,
+    ClarificationContext,
+    ClarificationInputType,
+    ClarificationQuestion,
+    ClarificationResponse,
+    ClarificationStatus,
     ContractSchemaVersion,
     DateRange,
     ErrorType,
@@ -27,6 +32,7 @@ from copilot.contracts import (
     StepResult,
     StepResultStatus,
     StepType,
+    TaskClarification,
     TaskConstraints,
     TaskContract,
     TaskError,
@@ -63,6 +69,11 @@ _CHECKPOINT_ALLOWED_TYPES = (
     Artifact,
     ArtifactType,
     CapabilityName,
+    ClarificationContext,
+    ClarificationInputType,
+    ClarificationQuestion,
+    ClarificationResponse,
+    ClarificationStatus,
     ContractSchemaVersion,
     DateRange,
     ErrorType,
@@ -83,6 +94,7 @@ _CHECKPOINT_ALLOWED_TYPES = (
     TaskRequest,
     TaskResult,
     TaskState,
+    TaskClarification,
     TaskStatus,
     TaskStep,
     TaskType,
@@ -229,6 +241,11 @@ class AgentGraphState(TypedDict):
     last_arguments: JsonObject | None
     approval_id: str | None
     approval_step_id: str | None
+    clarification_id: str | None
+    clarification_round: int
+    clarification_questions: list[ClarificationQuestion]
+    clarification_context: ClarificationContext
+    clarification_response: ClarificationResponse | None
     step_results: Annotated[list[StepResult], merge_step_results]
     step_executions: Annotated[list[StepExecutionRecord], merge_step_executions]
     tool_calls: Annotated[list[ToolCall], merge_tool_calls]
@@ -335,6 +352,11 @@ def initial_graph_state(
         last_arguments=None,
         approval_id=None,
         approval_step_id=None,
+        clarification_id=None,
+        clarification_round=0,
+        clarification_questions=[],
+        clarification_context=ClarificationContext(),
+        clarification_response=None,
         step_results=[],
         step_executions=[],
         tool_calls=[],

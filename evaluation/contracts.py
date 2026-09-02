@@ -112,10 +112,25 @@ class ActorContext(EvaluationModel):
     policy_snapshot_at: datetime | None = None
 
 
+class ClarificationResponseSpec(EvaluationModel):
+    """One scripted human response for a deterministic multi-turn evaluation case."""
+
+    answers: dict[str, JsonValue] = Field(default_factory=dict)
+    message: str | None = Field(default=None, min_length=1, max_length=4000)
+
+    @model_validator(mode="after")
+    def require_content(self) -> ClarificationResponseSpec:
+        if not self.answers and self.message is None:
+            raise ValueError("clarification response requires answers or message")
+        return self
+
+
 class ExecutionConfigSpec(EvaluationModel):
     timeout_seconds: int = Field(default=30, ge=1, le=300)
     approval_action: Literal["pause", "approve", "edit", "reject"] | None = None
     approval_edit: dict[str, JsonValue] | None = None
+    clarification_responses: tuple[ClarificationResponseSpec, ...] = ()
+    cancel_on_clarification_round: int | None = Field(default=None, ge=1)
 
 
 class FaultInjectionSpec(EvaluationModel):
@@ -495,6 +510,7 @@ __all__ = [
     "BaselineComparison",
     "BaselineMetric",
     "CapturedExecution",
+    "ClarificationResponseSpec",
     "EvaluationBaseline",
     "EvaluationCase",
     "EvaluationCaseResult",

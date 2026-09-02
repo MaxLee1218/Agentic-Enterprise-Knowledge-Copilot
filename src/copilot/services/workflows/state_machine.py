@@ -12,6 +12,8 @@ from copilot.services.workflows.ports import IdentifierFactory
 
 _TRANSITIONS: dict[tuple[TaskStatus, str], TaskStatus] = {
     (TaskStatus.CREATED, "START_UNDERSTANDING"): TaskStatus.UNDERSTANDING,
+    (TaskStatus.UNDERSTANDING, "CLARIFICATION_REQUIRED"): TaskStatus.WAITING_CLARIFICATION,
+    (TaskStatus.UNDERSTANDING, "CLARIFICATION_EXHAUSTED"): TaskStatus.FAILED,
     (TaskStatus.UNDERSTANDING, "CONTRACT_VALIDATED"): TaskStatus.PLANNING,
     (TaskStatus.UNDERSTANDING, "UNDERSTANDING_FAILED"): TaskStatus.FAILED,
     (TaskStatus.PLANNING, "PLAN_APPROVED_BY_POLICY"): TaskStatus.EXECUTING,
@@ -22,6 +24,9 @@ _TRANSITIONS: dict[tuple[TaskStatus, str], TaskStatus] = {
     (TaskStatus.WAITING_APPROVAL, "APPROVAL_REJECTED"): TaskStatus.CANCELLED,
     (TaskStatus.WAITING_APPROVAL, "APPROVAL_EXPIRED"): TaskStatus.CANCELLED,
     (TaskStatus.WAITING_APPROVAL, "APPROVAL_REVOKED"): TaskStatus.CANCELLED,
+    (TaskStatus.WAITING_CLARIFICATION, "CLARIFICATION_SUBMITTED"): TaskStatus.UNDERSTANDING,
+    (TaskStatus.WAITING_CLARIFICATION, "CLARIFICATION_REJECTED"): TaskStatus.FAILED,
+    (TaskStatus.WAITING_CLARIFICATION, "CLARIFICATION_EXHAUSTED"): TaskStatus.FAILED,
     (TaskStatus.EXECUTING, "STEP_SUCCEEDED"): TaskStatus.EXECUTING,
     (TaskStatus.EXECUTING, "TRANSIENT_FAILURE"): TaskStatus.RETRYING,
     (TaskStatus.RETRYING, "RETRY_READY"): TaskStatus.EXECUTING,
@@ -41,6 +46,7 @@ _TRANSITIONS: dict[tuple[TaskStatus, str], TaskStatus] = {
         for status in (
             TaskStatus.CREATED,
             TaskStatus.UNDERSTANDING,
+            TaskStatus.WAITING_CLARIFICATION,
             TaskStatus.PLANNING,
             TaskStatus.WAITING_APPROVAL,
             TaskStatus.EXECUTING,

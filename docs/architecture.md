@@ -3,7 +3,7 @@
 This document states the architecture rules that apply to the current repository. It describes
 the system as it exists and the boundaries that new implementation must preserve. The rationale
 for choosing these boundaries is recorded in
-[ADR-001](adr/ADR-001-package-and-layer-boundary.md). The frozen Supplier Quality Analysis v1.1
+[ADR-001](adr/ADR-001-package-and-layer-boundary.md). The frozen Supplier Quality Analysis v1.2
 documents under [`design/`](design/) remain the sole authority for that scenario's behavior.
 Machine-checked governance covers the dependency matrix and calling direction. It also covers each
 layer boundary, composition root, and transaction boundary where static analysis can enforce it.
@@ -178,6 +178,8 @@ User or approved protocol client
   -> initial CREATED state persisted + TASK_SUBMITTED audit
   -> LangGraph validate_request
   -> Task understanding and classification
+  -> request_clarification + WAITING_CLARIFICATION checkpoint, when required
+  -> authorized response dispatch -> Task understanding, possibly multiple bounded rounds
   -> TaskContract
   -> lightweight LLM ProposedPlan
   -> deterministic PlanCompiler (Domain Manifest + Registry + canonical domain factory)
@@ -420,8 +422,12 @@ The async transaction boundary extends the existing Task consistency boundary. I
 dispatch intent must commit together through a transactional outbox. Every later authoritative
 mutation must validate tenant, current Task/generation, an unexpired database lease, and its
 monotonic fencing token. The existing `workflow_leases` table is extended rather than replaced.
-`WAITING_APPROVAL` persists its approval and checkpoint, releases the lease, and occupies no
-Worker.
+`WAITING_APPROVAL` persists its approval and checkpoint; `WAITING_CLARIFICATION` persists a typed
+interaction and checkpoint. Both release the lease and occupy no Worker. Clarification response is
+one transaction over response CAS, Task `UNDERSTANDING`, runtime generation, and dispatch; the API
+never invokes LangGraph. The Worker resumes from the bound predecessor checkpoint into
+Understanding, not Planner. `TaskRequest.raw_input` remains immutable and only validated
+ClarificationContext reaches contract construction.
 
 Application-owned ports live in `copilot.services.async_runtime`; provider-neutral values live in
 `copilot.contracts.async_runtime`. PostgreSQL Queue/dispatcher/recovery adapters stay in
@@ -433,7 +439,8 @@ previously hosted.
 `POST /v1/tasks` now performs acceptance only and returns `202`; it never invokes the Graph or
 Tools. Approval resolution commits the decision and a new generation/dispatch, then returns `202`.
 The Worker owns normal execution and checkpoint continuation. The bounded scanner recovers only
-eligible runtime faults and excludes terminal Tasks, unresolved approvals, and valid leases.
+eligible runtime faults and excludes terminal Tasks, unresolved approvals, unresolved
+clarifications, and valid leases.
 Capacity is enforced atomically per tenant and globally at submission, with HTTP `429` and
 `Retry-After` when full.
 
@@ -460,7 +467,7 @@ Every new tool requires:
 8. Documentation and evaluation cases; an ADR when the change affects architecture, contracts,
    security, persistence, or an externally visible boundary.
 
-For Supplier Quality Analysis v1.1, only the four tools and exact behavior in the frozen design are
+For Supplier Quality Analysis v1.2, only the four tools and exact behavior in the frozen design are
 authorized. A broader tool or changed contract requires the documented design-change process
 before implementation.
 

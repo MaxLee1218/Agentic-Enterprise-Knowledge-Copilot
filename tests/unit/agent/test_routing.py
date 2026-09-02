@@ -90,7 +90,7 @@ def test_policy_stop_routes_go_to_persistence(route: str) -> None:
         (route_after_validate, "valid", "understand_task"),
         (route_after_validate, "invalid_request", "persist_result"),
         (route_after_understanding, "understood", "classify_task"),
-        (route_after_understanding, "missing_information", "persist_result"),
+        (route_after_understanding, "missing_information", "request_clarification"),
         (route_after_classification, "supported", "create_plan"),
         (route_after_classification, "unsupported", "persist_result"),
         (route_after_plan_creation, "plan_created", "validate_plan"),

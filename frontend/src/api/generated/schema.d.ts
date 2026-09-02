@@ -183,6 +183,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tasks/{task_id}/clarifications/{clarification_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Clarification */
+        get: operations["get_task_clarification"];
+        put?: never;
+        /** Submit Clarification */
+        post: operations["submit_task_clarification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tasks/{task_id}/evidence": {
         parameters: {
             query?: never;
@@ -364,6 +382,90 @@ export interface components {
             /** Task Id */
             task_id: string;
         };
+        /** ClarificationDetailResponse */
+        ClarificationDetailResponse: {
+            /** Clarification Id */
+            clarification_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Questions */
+            questions: components["schemas"]["ClarificationQuestionResponse"][];
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Round */
+            round: number;
+            status: components["schemas"]["ClarificationStatus"];
+            /** Submitted At */
+            submitted_at: string | null;
+            /** Task Id */
+            task_id: string;
+        };
+        /**
+         * ClarificationInputType
+         * @description Frontend-renderable answer controls supported by the v1 contract.
+         * @enum {string}
+         */
+        ClarificationInputType: "text" | "date" | "date_range" | "single_select" | "multi_select";
+        /** ClarificationQuestionResponse */
+        ClarificationQuestionResponse: {
+            /** Allowed Values */
+            allowed_values: string[];
+            /** Constraints */
+            constraints: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Field */
+            field: string;
+            input_type: components["schemas"]["ClarificationInputType"];
+            /** Prompt */
+            prompt: string;
+            /** Reason */
+            reason: string;
+            /** Required */
+            required: boolean;
+        };
+        /**
+         * ClarificationStatus
+         * @description One-round clarification lifecycle; only ``PENDING`` accepts a response.
+         * @enum {string}
+         */
+        ClarificationStatus: "PENDING" | "SUBMITTED" | "RESOLVED" | "REJECTED" | "CANCELLED";
+        /** ClarificationSubmissionRequest */
+        ClarificationSubmissionRequest: {
+            /** Answers */
+            answers?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Message */
+            message?: string | null;
+        };
+        /** ClarificationSubmissionResponse */
+        ClarificationSubmissionResponse: {
+            /**
+             * Accepted At
+             * Format: date-time
+             */
+            accepted_at: string;
+            /** Clarification Id */
+            clarification_id: string;
+            clarification_status: components["schemas"]["ClarificationStatus"];
+            /**
+             * Reused
+             * @default false
+             */
+            reused: boolean;
+            runtime_status: components["schemas"]["RuntimeStatus"];
+            /** Status Url */
+            status_url: string;
+            /** Task Id */
+            task_id: string;
+            task_status: components["schemas"]["TaskStatus"];
+            /** Trace Id */
+            trace_id: string;
+        };
         /**
          * EvidenceType
          * @description Evidence source types permitted by the frozen v1.0 scenario.
@@ -414,6 +516,44 @@ export interface components {
             /** Task */
             task: string;
             task_type?: components["schemas"]["TaskType"] | null;
+        };
+        /**
+         * PendingClarificationQuestionResponse
+         * @description Frontend-renderable question embedded in a waiting Task response.
+         */
+        PendingClarificationQuestionResponse: {
+            /** Allowed Values */
+            allowed_values: string[];
+            /** Constraints */
+            constraints: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Field */
+            field: string;
+            input_type: components["schemas"]["ClarificationInputType"];
+            /** Prompt */
+            prompt: string;
+            /** Reason */
+            reason: string;
+            /** Required */
+            required: boolean;
+        };
+        /**
+         * PendingClarificationResponse
+         * @description Discoverable current clarification interaction for a Task.
+         */
+        PendingClarificationResponse: {
+            /** Clarification Id */
+            clarification_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Questions */
+            questions: components["schemas"]["PendingClarificationQuestionResponse"][];
+            /** Round */
+            round: number;
         };
         /**
          * PublicStepStatus
@@ -550,6 +690,7 @@ export interface components {
             evidence_count: number;
             /** Pending Approval Id */
             pending_approval_id: string | null;
+            pending_clarification: components["schemas"]["PendingClarificationResponse"] | null;
             runtime_status: components["schemas"]["RuntimeStatus"];
             /** Started At */
             started_at: string | null;
@@ -569,7 +710,7 @@ export interface components {
          * @description Authoritative lifecycle states from the frozen task state machine.
          * @enum {string}
          */
-        TaskStatus: "CREATED" | "UNDERSTANDING" | "PLANNING" | "EXECUTING" | "WAITING_APPROVAL" | "RETRYING" | "REPLANNING" | "VERIFYING" | "COMPLETED" | "FAILED" | "CANCELLED";
+        TaskStatus: "CREATED" | "UNDERSTANDING" | "WAITING_CLARIFICATION" | "PLANNING" | "EXECUTING" | "WAITING_APPROVAL" | "RETRYING" | "REPLANNING" | "VERIFYING" | "COMPLETED" | "FAILED" | "CANCELLED";
         /**
          * TaskStepResponse
          * @description Public planned-step and persisted-result view.
@@ -1229,6 +1370,128 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskErrorResponse"];
+                };
+            };
+        };
+    };
+    get_task_clarification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                clarification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClarificationDetailResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskErrorResponse"];
+                };
+            };
+        };
+    };
+    submit_task_clarification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                clarification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClarificationSubmissionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClarificationSubmissionResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

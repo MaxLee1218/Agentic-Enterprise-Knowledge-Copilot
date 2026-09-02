@@ -2,6 +2,8 @@
 
 from copilot.api.schemas.artifacts import ArtifactMetadataResponse
 from copilot.api.schemas.tasks import (
+    PendingClarificationQuestionResponse,
+    PendingClarificationResponse,
     PublicStepStatus,
     TaskEvidenceResponse,
     TaskResponse,
@@ -31,6 +33,27 @@ def task_response(view: TaskSummaryView) -> TaskResponse:
         current_step=view.current_step,
         task_summary=view.task_summary,
         pending_approval_id=view.pending_approval_id,
+        pending_clarification=(
+            PendingClarificationResponse(
+                clarification_id=view.pending_clarification.clarification_id,
+                round=view.pending_clarification.round,
+                questions=tuple(
+                    PendingClarificationQuestionResponse(
+                        field=question.field,
+                        reason=question.reason,
+                        prompt=question.prompt,
+                        input_type=question.input_type,
+                        required=question.required,
+                        allowed_values=question.allowed_values,
+                        constraints=dict(question.constraints.root),
+                    )
+                    for question in view.pending_clarification.questions
+                ),
+                created_at=view.pending_clarification.created_at,
+            )
+            if view.pending_clarification is not None
+            else None
+        ),
         step_count=view.step_count,
         evidence_count=view.evidence_count,
         artifact_count=view.artifact_count,

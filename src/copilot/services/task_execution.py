@@ -9,7 +9,13 @@ from threading import Event, Lock, Thread
 from typing import Protocol
 
 from copilot.agent.graph import LangGraphWorkflowEngine, WorkflowInterrupted
-from copilot.contracts import ApprovalRequest, ApprovalStatus, TaskStatus
+from copilot.contracts import (
+    ApprovalRequest,
+    ApprovalStatus,
+    ClarificationStatus,
+    TaskClarification,
+    TaskStatus,
+)
 from copilot.contracts.async_runtime import (
     DispatchStatus,
     ExecutionLease,
@@ -29,6 +35,7 @@ from copilot.contracts.errors import (
 )
 from copilot.services.async_runtime import TaskQueue, WorkerRuntimeRepository
 from copilot.services.execution_authority import bind_execution_authority
+from copilot.services.task_intake import TrustedTaskContext
 from copilot.services.task_submission import trusted_context_from_request
 from copilot.services.workflows.ports import WorkflowRepository
 from copilot.tools.cancellation import InvocationCancellationRegistry
@@ -43,6 +50,12 @@ class ApprovalReader(Protocol):
     def get(self, approval_id: str, *, tenant_id: str) -> ApprovalRequest: ...
 
 
+class ClarificationReader(Protocol):
+    """Submitted clarification read boundary for a bound resume dispatch."""
+
+    def get(self, clarification_id: str, *, tenant_id: str) -> TaskClarification: ...
+
+
 class TaskExecutionService:
     """Host one dispatch using repository authority, lease, heartbeat, and fencing."""
 
@@ -52,6 +65,7 @@ class TaskExecutionService:
         runtime: WorkerRuntimeRepository,
         tasks: WorkflowRepository,
         approvals: ApprovalReader,
+        clarifications: ClarificationReader,
         queue: TaskQueue,
         engine: LangGraphWorkflowEngine,
         worker: WorkerIdentity,
@@ -63,6 +77,7 @@ class TaskExecutionService:
         self._runtime = runtime
         self._tasks = tasks
         self._approvals = approvals
+        self._clarifications = clarifications
         self._queue = queue
         self._engine = engine
         self._worker = worker
@@ -93,7 +108,10 @@ class TaskExecutionService:
         if snapshot.task_status in _TERMINAL or snapshot.cancellation is not None:
             self._acknowledge_noop(delivery, snapshot, reason="TASK_TERMINAL")
             return "NO_OP_TERMINAL"
-        if snapshot.task_status is TaskStatus.WAITING_APPROVAL:
+        if snapshot.task_status in {
+            TaskStatus.WAITING_APPROVAL,
+            TaskStatus.WAITING_CLARIFICATION,
+        }:
             self._acknowledge_noop(delivery, snapshot, reason="TASK_SUSPENDED")
             return "NO_OP_SUSPENDED"
         if (
@@ -154,7 +172,7 @@ class TaskExecutionService:
             self._runtime.acknowledge_dispatch(dispatch)
             self._queue.ack(delivery)
             LOGGER.info(
-                "Task suspended for approval",
+                "Task suspended for human input",
                 extra=self._fields(delivery, current_lease, attempt.runtime_attempt, "SUSPENDED"),
             )
             return "SUSPENDED"
@@ -281,6 +299,29 @@ class TaskExecutionService:
                 or generation != checkpoint.execution_generation + 1
             ):
                 raise RuntimeError("CHECKPOINT_GENERATION_MISMATCH")
+            clarification_state = self._engine.clarification_state(task_id, tenant_id)
+            clarification_id = clarification_state.get("clarification_id")
+            if clarification_state.get(
+                "task_status"
+            ) == TaskStatus.WAITING_CLARIFICATION.value and isinstance(clarification_id, str):
+                clarification = self._clarifications.get(
+                    clarification_id,
+                    tenant_id=tenant_id,
+                )
+                if clarification.status is not ClarificationStatus.SUBMITTED:
+                    raise RuntimeError("CLARIFICATION_NOT_SUBMITTED")
+                if clarification.resume_context is None:
+                    raise RuntimeError("CLARIFICATION_RESUME_CONTEXT_MISSING")
+                refreshed_context = TrustedTaskContext.model_validate(
+                    clarification.resume_context.root
+                )
+                self._engine.resume_clarification_dispatched(
+                    clarification,
+                    refreshed_context,
+                    tenant_id,
+                    execution_generation=generation,
+                )
+                return
             approval_state = self._engine.approval_state(task_id, tenant_id)
             approval_id = approval_state.get("approval_id")
             if not isinstance(approval_id, str):

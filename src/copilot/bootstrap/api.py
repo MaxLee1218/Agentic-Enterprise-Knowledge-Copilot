@@ -22,6 +22,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         application.state.task_service = container.task_service
         application.state.task_submission_service = container.task_submission_service
         application.state.approval_service = container.approval_service
+        application.state.clarification_service = container.clarification_service
         application.state.artifact_service = container.artifact_service
         application.state.settings = settings
         application.state.identity_provider = build_identity_provider(settings)

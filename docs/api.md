@@ -75,7 +75,7 @@ curl -X POST http://127.0.0.1:8000/v1/tasks \
 API 与 CLI 调用 acceptance/query service 和 `ArtifactService`。Route 不直接调用 LangGraph、
 Tool、Queue adapter、Repository 或文件路径。独立 Worker 从 PostgreSQL Queue v1 接收 dispatch，
 取得数据库 lease 后复用现有受治理 Graph。`TaskStatus` 是业务状态；`runtime_status` 是独立的执行
-投影。`WAITING_APPROVAL` 映射为 `SUSPENDED`，不占 Worker 或 lease。
+投影。`WAITING_APPROVAL` 和 `WAITING_CLARIFICATION` 映射为 `SUSPENDED`，不占 Worker 或 lease。
 
 | Method | Path | Request | Response | Success |
 |---|---|---|---|---:|
@@ -87,6 +87,18 @@ Tool、Queue adapter、Repository 或文件路径。独立 Worker 从 PostgreSQL
 | GET | `/v1/tasks/{task_id}/artifacts` | — | `ArtifactListResponse` | 200 |
 | GET | `/v1/tasks/{task_id}/artifacts/{artifact_id}` | — | streamed bytes | 200 |
 | POST | `/v1/tasks/{task_id}/cancel` | — | `TaskResponse` | 202 |
+| GET | `/v1/tasks/{task_id}/clarifications/{clarification_id}` | — | `ClarificationDetailResponse` | 200 |
+| POST | `/v1/tasks/{task_id}/clarifications/{clarification_id}` | `ClarificationSubmissionRequest` | `ClarificationSubmissionResponse` | 202 |
+
+Task detail 在 `WAITING_CLARIFICATION` 时直接包含 `pending_clarification`（ID、轮次、创建时间、
+结构化问题、输入类型、约束和当前授权候选值）；前端不需要从 Audit 推断。POST 可以提交部分
+`answers` 和/或最多 4000 字符的 `message`。接口验证当前 owner/tenant/role/task type/scope、问题
+字段、日期/选择类型和 suspended Checkpoint，在一个事务中接受回答并调度 resume；不 inline 调用
+Graph。成功响应的 `task_status` 为 `UNDERSTANDING`，同一响应指纹可幂等重试。
+
+Clarification 稳定错误为：403 `CLARIFICATION_ACCESS_DENIED`；404
+`CLARIFICATION_NOT_FOUND`；409 `CLARIFICATION_ALREADY_RESOLVED` 或
+`CLARIFICATION_STALE`；422 `CLARIFICATION_INPUT_INVALID`。跨租户标识按 not-found 处理。
 
 查询示例：
 
@@ -110,9 +122,9 @@ checksum，然后使用流式响应及安全 `Content-Disposition` 返回；不�
 curl -OJ http://127.0.0.1:8000/v1/tasks/TASK_ID/artifacts/ARTIFACT_ID
 ```
 
-取消使用冻结状态机的 `CANCEL_REQUESTED` 事件。等待审批、执行、重试、重规划和验证状态可取消；
+取消使用冻结状态机的 `CANCEL_REQUESTED` 事件。等待澄清、等待审批、执行、重试、重规划和验证状态可取消；
 `CANCELLED` 重复取消幂等；`COMPLETED`/`FAILED` 返回 `409 TASK_NOT_CANCELLABLE`。取消会撤销待决
-审批，使旧审批不能恢复 Graph，并移除当前 lease。Worker heartbeat/Tool token 只用于加速观察；
+审批或待决澄清，使旧人机交互不能恢复 Graph，并移除当前 lease。Worker heartbeat/Tool token 只用于加速观察；
 fencing 阻止迟到结果提交。取消是 cooperative cancellation，不承诺强制中断已经进行中的外部调用。
 
 ```bash

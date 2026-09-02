@@ -36,6 +36,7 @@ from evaluation.contracts import (
 from evaluation.dataset_loader import LoadedDataset, canonical_hash
 from evaluation.evaluators import (
     AccountsPayableEvaluator,
+    ClarificationEvaluator,
     EfficiencyEvaluator,
     GroundingEvaluator,
     NumericAccuracyEvaluator,
@@ -62,6 +63,7 @@ class EvaluationRunner:
         self._config = config
         self._evaluators: tuple[Evaluator, ...] = (
             TaskSuccessEvaluator(),
+            ClarificationEvaluator(),
             PlanQualityEvaluator(),
             ToolSelectionEvaluator(),
             ToolExecutionEvaluator(),
@@ -340,6 +342,31 @@ def _aggregate_metrics(
         ),
         ("replan_recovery_rate", "replan_recovery", MetricDirection.HIGHER_IS_BETTER),
         (
+            "clarification_detection_accuracy",
+            "clarification_detection_accuracy",
+            MetricDirection.HIGHER_IS_BETTER,
+        ),
+        (
+            "required_field_coverage",
+            "required_field_coverage",
+            MetricDirection.HIGHER_IS_BETTER,
+        ),
+        (
+            "unauthorized_auto_inference_rate",
+            "unauthorized_auto_inference_rate",
+            MetricDirection.LOWER_IS_BETTER,
+        ),
+        (
+            "clarification_resume_success_rate",
+            "clarification_resume_success_rate",
+            MetricDirection.HIGHER_IS_BETTER,
+        ),
+        (
+            "clarification_loop_exhaustion_rate",
+            "clarification_loop_exhaustion_rate",
+            MetricDirection.LOWER_IS_BETTER,
+        ),
+        (
             "duplicate_detection_precision",
             "duplicate_detection_precision",
             MetricDirection.HIGHER_IS_BETTER,
@@ -378,6 +405,11 @@ def _aggregate_metrics(
         results.append(_aggregate_ratio(output_name, cases, source_name, direction=direction))
     steps = [Decimal(len(capture.step_results)) for capture in captures]
     replans = [Decimal(capture.replan_count) for capture in captures]
+    clarification_rounds = [
+        Decimal(round_count)
+        for capture in captures
+        if (round_count := _clarification_round_count(capture)) > 0
+    ]
     latencies = [Decimal(capture.latency_ms) for capture in captures]
     results.extend(
         (
@@ -398,6 +430,17 @@ def _aggregate_metrics(
             ),
             _observation(
                 "average_replan_count", _mean(replans), "count", MetricDirection.LOWER_IS_BETTER
+            ),
+            _observation(
+                "average_clarification_rounds",
+                _mean(clarification_rounds) if clarification_rounds else None,
+                "rounds",
+                MetricDirection.INFORMATIONAL,
+                (
+                    Decimal(len(clarification_rounds)) / Decimal(len(captures))
+                    if captures
+                    else Decimal(0)
+                ),
             ),
             _observation(
                 "max_replan_count",
@@ -612,6 +655,20 @@ def _sum_named(cases: tuple[EvaluationCaseResult, ...], name: str) -> Decimal:
 
 def _mean(values: list[Decimal]) -> Decimal:
     return sum(values, Decimal(0)) / Decimal(len(values)) if values else Decimal(0)
+
+
+def _clarification_round_count(capture: CapturedExecution) -> int:
+    rounds: list[int] = []
+    for event in capture.workflow_events:
+        if event.get("event") != "TASK_CLARIFICATION_REQUIRED":
+            continue
+        metadata = event.get("metadata")
+        if not isinstance(metadata, dict):
+            continue
+        round_value = metadata.get("round")
+        if isinstance(round_value, int):
+            rounds.append(round_value)
+    return max(rounds, default=0)
 
 
 def _percentile(values: list[Decimal], quantile: Decimal) -> Decimal:

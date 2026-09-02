@@ -618,7 +618,10 @@ class WorkflowRepository:
                         TaskStatus.CANCELLED,
                     }:
                         runtime.runtime_status = "FINISHED"
-                    elif state.state is TaskStatus.WAITING_APPROVAL:
+                    elif state.state in {
+                        TaskStatus.WAITING_APPROVAL,
+                        TaskStatus.WAITING_CLARIFICATION,
+                    }:
                         runtime.runtime_status = "SUSPENDED"
                     else:
                         runtime.runtime_status = "READY"

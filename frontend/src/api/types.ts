@@ -5,12 +5,21 @@ export type ApprovalResolution =
   components["schemas"]["ApprovalResolutionResponse"];
 export type ApprovalResolutionRequest =
   components["schemas"]["ApprovalResolutionRequest"];
+export type ClarificationDetail =
+  components["schemas"]["ClarificationDetailResponse"];
+export type ClarificationInputType =
+  components["schemas"]["ClarificationInputType"];
+export type ClarificationSubmission =
+  components["schemas"]["ClarificationSubmissionResponse"];
+export type ClarificationSubmissionRequest =
+  components["schemas"]["ClarificationSubmissionRequest"];
 export type Artifact = components["schemas"]["ArtifactMetadataResponse"];
 export type ArtifactList = components["schemas"]["ArtifactListResponse"];
 export type Evidence = components["schemas"]["TaskEvidenceResponse"];
 export type EvidenceList = components["schemas"]["TaskEvidenceListResponse"];
 export type EvidenceType = components["schemas"]["EvidenceType"];
 export type Health = components["schemas"]["HealthResponse"];
+export type JsonValue = components["schemas"]["JsonValue"];
 export type Liveness = components["schemas"]["LivenessResponse"];
 export type Readiness = components["schemas"]["ReadinessResponse"];
 export type RuntimeStatus = components["schemas"]["RuntimeStatus"];

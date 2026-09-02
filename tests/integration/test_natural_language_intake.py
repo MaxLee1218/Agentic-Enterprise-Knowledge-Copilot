@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from copilot.agent.graph import WorkflowInterrupted
 from copilot.contracts import TaskConstraints, TaskStatus
 from copilot.llm.mock import MockLLM
 from copilot.llm.offline_mock import OfflineMockLLM
@@ -72,25 +73,34 @@ def test_natural_text_is_preserved_and_understood_before_planning(tmp_path: Path
         ]
 
 
-def test_missing_information_follows_frozen_failed_path_without_tools(tmp_path: Path) -> None:
+def test_missing_information_waits_for_clarification_without_planning_or_tools(
+    tmp_path: Path,
+) -> None:
     with build_test_container(
         tmp_path / "artifacts",
         llm_provider=OfflineMockLLM(),
     ) as container:
-        execution = container.task_service.submit(
-            NaturalLanguageTaskCommand(
-                task="帮我分析供应商问题。",
-                source=RequestSource.CLI,
-            ),
-            CALLER,
-        )
-
-        assert execution.task_result.final_status is TaskStatus.FAILED
-        assert any(error.error_code == "TASK_INFORMATION_MISSING" for error in execution.errors)
-        assert (
-            container.repository.tool_results_for(
-                execution.task_result.task_id, tenant_id=CALLER.tenant_id
+        with pytest.raises(WorkflowInterrupted) as captured:
+            container.task_service.submit(
+                NaturalLanguageTaskCommand(
+                    task="帮我分析供应商问题。",
+                    source=RequestSource.CLI,
+                ),
+                CALLER,
             )
+
+        interrupted = captured.value
+        assert interrupted.status == TaskStatus.WAITING_CLARIFICATION.value
+        assert interrupted.clarification_id is not None
+        assert (
+            container.repository.contract_for(interrupted.task_id, tenant_id=CALLER.tenant_id)
+            is None
+        )
+        assert (
+            container.repository.plan_for(interrupted.task_id, tenant_id=CALLER.tenant_id) is None
+        )
+        assert (
+            container.repository.tool_results_for(interrupted.task_id, tenant_id=CALLER.tenant_id)
             == ()
         )
         assert "TASK_CLARIFICATION_REQUIRED" in {

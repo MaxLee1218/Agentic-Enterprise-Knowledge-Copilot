@@ -14,9 +14,18 @@ class TaskSuccessEvaluator:
         status_ok = execution.terminal_task_status in expected.allowed_terminal_statuses
         if expected.required_terminal_status is not None:
             status_ok = execution.terminal_task_status is expected.required_terminal_status
+        if (
+            expected.must_request_clarification
+            and execution.terminal_task_status is not None
+            and execution.terminal_task_status.value == "WAITING_CLARIFICATION"
+        ):
+            # Compatibility for frozen pre-clarification datasets whose success oracle encoded
+            # the old FAILED transport outcome. The interaction event below remains mandatory.
+            status_ok = True
         artifact_ok = not expected.must_generate_artifact or bool(execution.artifacts)
         clarification_ok = not expected.must_request_clarification or any(
-            error.error_code == "TASK_INFORMATION_MISSING" for error in execution.errors
+            event.get("event") == "TASK_CLARIFICATION_REQUIRED"
+            for event in execution.workflow_events
         )
         approval_ok = not expected.must_require_approval or bool(execution.approvals)
         tools_ok = not expected.must_not_execute_tools or not execution.tool_calls

@@ -1,4 +1,4 @@
-# Domain Contracts v1.1
+# Domain Contracts v1.2
 
 ## Why the domain layer exists
 
@@ -8,9 +8,9 @@ stable typed boundary for that lifecycle. They reject undeclared fields, validat
 preserve enum semantics, and round-trip through JSON without relying on model prompts or runtime
 implementation details.
 
-The implementation follows the frozen Supplier Quality Analysis v1.1 design. It is not a generic
-agent contract. v1.1 adds only ApprovalRequest `EDIT` resolution; the task type, state set, four
-tools, Evidence types, Artifacts, and business scope are unchanged.
+The implementation follows the frozen Supplier Quality Analysis v1.2 design. It is not a generic
+agent contract. v1.2 adds durable interactive clarification while preserving the task type, four
+tools, Evidence types, Artifacts, and business scope.
 
 ## Contract chain
 

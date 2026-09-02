@@ -2,11 +2,11 @@
 
 **Design status:** `FROZEN — STAGE 12 REVIEW COMPLETE; PRODUCTION NOT READY`
 **Task type:** `accounts_payable_analysis.v1`  
-**Design version:** `1.0`  
-**Date:** 2026-08-24
+**Design version:** `1.1`
+**Date:** 2026-09-01
 
 This directory is the frozen implementation authority for Use Case 2. It does not alter the
-frozen Supplier Quality Analysis v1.1 baseline in `docs/design/`.
+frozen Supplier Quality Analysis v1.2 baseline in `docs/design/`.
 Stages 1 through 11 implement the AP contracts/routing, isolated synthetic data, controlled policy,
 read-only query, deterministic analytics, independent verification and JSON/PDF reporting
 foundations, governed execution through the existing Task Service and shared Graph, exposure
@@ -39,6 +39,12 @@ The v1 slice supports:
 
 The task is read-only. It may `ANALYZE`, `DETECT`, `COMPARE`, and `REPORT`; it may not mutate an
 invoice, PO, payment, supplier, bank account, or external system.
+
+AP design v1.1 adds only the shared Interactive Clarification & Resume lifecycle from ADR-019.
+Missing explicit dates and a legal entity that cannot be resolved from a single authorized choice
+produce trusted-scope questions and `WAITING_CLARIFICATION`; validated answers resume the same Task
+through `UNDERSTANDING`. AP formulas, exception taxonomy, policy bindings, tools, data model,
+reports, and verification remain v1 behavior.
 
 ## Document map
 

@@ -17,7 +17,7 @@ control flow, security or approval behavior, persistence, interoperability, depl
 externally visible interface. Routine implementation details that follow an accepted decision do
 not need a separate ADR.
 
-An ADR does not override the frozen Supplier Quality Analysis v1.1 design. A decision that changes
+An ADR does not override the frozen Supplier Quality Analysis v1.2 design. A decision that changes
 that baseline must first follow its explicit design-change and approval process.
 
 ## Naming convention
@@ -108,3 +108,4 @@ What becomes easier or harder, including operational and migration effects?
 | [ADR-016](ADR-016-runtime-graph-retry-ownership.md) | Accepted | 2026-08-25 | Separate Queue/runtime recovery from Graph and Tool business retry ownership |
 | [ADR-017](ADR-017-postgresql-backed-queue-v1.md) | Accepted | 2026-08-26 | Use PostgreSQL-backed at-least-once Queue v1 behind the existing transactional outbox |
 | [ADR-018](ADR-018-deterministic-plan-compilation.md) | Accepted | 2026-08-30 | Compile lightweight untrusted ProposedPlans into existing canonical TaskPlans using deterministic authorities |
+| [ADR-019](ADR-019-interactive-clarification-resume.md) | Accepted | 2026-09-01 | Suspend incomplete Tasks durably and resume the same checkpoint through Understanding after authorized human input |

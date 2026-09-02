@@ -122,15 +122,23 @@ The task query controls polling:
 
 - `CREATED`, `UNDERSTANDING`, `PLANNING`, `EXECUTING`, `RETRYING`, `REPLANNING`, and `VERIFYING`:
   every 2 seconds while the view is mounted;
-- `WAITING_APPROVAL`: every 10 seconds;
+- `WAITING_APPROVAL` and `WAITING_CLARIFICATION`: every 10 seconds;
 - `COMPLETED`, `FAILED`, and `CANCELLED`: no polling.
 
 Steps follow the same task-aware interval while the overview is mounted. Evidence and Artifacts
 refresh when lifecycle state changes and on relevant mutations rather than on independent
 high-frequency timers. Query polling automatically stops when the page unmounts.
 
-Mutations are create task, cancel task, and resolve approval. Each invalidates only its task,
-steps, evidence, artifacts, approval, and task-history keys.
+Mutations are create task, submit clarification, cancel task, and resolve approval. Each invalidates
+only its task, steps, evidence, artifacts, relevant human-interaction, and task-history keys.
+
+Task detail is the discovery authority for `pending_clarification`; the console does not infer it
+from Audit. The clarification panel renders OpenAPI-generated `date`, `date_range`, `text`,
+`single_select`, and `multi_select` controls. It accepts any complete subset plus optional natural
+language, prevents half-filled date ranges, submits to the same Task, and displays typed stale or
+permission conflicts. Candidate choices are rendered exactly as returned by the trusted backend.
+While waiting, the overview explicitly states that execution has not started and shows no invented
+plan steps.
 
 ## 7. API type lifecycle
 

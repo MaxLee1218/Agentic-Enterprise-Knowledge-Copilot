@@ -5,6 +5,13 @@ offline datasets. Each non-blank line is one strict `EvaluationCase`, and every 
 independently. The Supplier Quality dataset remains the default; AP must be selected explicitly
 and has its own compatible baseline.
 
+`interactive_clarification_v1.jsonl` isolates clarification detection, required-field coverage,
+unauthorized auto-inference safety, partial answers, multi-round resume, malformed answers,
+loop-budget exhaustion, and cancellation. Its optional `execution_config.clarification_responses`
+drives production async contracts through a deterministic SQLite test Queue while keeping the
+original Task submission immutable. PostgreSQL restart, concurrent response, duplicate delivery,
+and lease/fencing behavior remain real integration-test scenarios.
+
 ## Version and identifiers
 
 - Increment the dataset version when a case, oracle, fixture, or metric meaning changes.
@@ -46,6 +53,7 @@ loader rejects an AP dataset that cannot satisfy that rule.
 python evaluation/run_eval.py --case normal-q2-analysis
 python evaluation/run_eval.py --tag security
 python evaluation/run_eval.py --dataset evaluation/datasets/accounts_payable_v1.jsonl
+python evaluation/run_eval.py --dataset evaluation/datasets/interactive_clarification_v1.jsonl
 python evaluation/run_eval.py --dataset evaluation/datasets/accounts_payable_v1.jsonl \
   --baseline evaluation/baselines/accounts_payable_v1.json --fail-on-regression
 pytest tests/unit/evaluation tests/contract/evaluation

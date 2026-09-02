@@ -165,7 +165,10 @@ class PostgresRecoveryScanner:
         if task is None:
             return "SKIPPED"
         state = TaskState.model_validate_json(task.state_json)
-        if state.state in _TERMINAL or state.state is TaskStatus.WAITING_APPROVAL:
+        if state.state in _TERMINAL or state.state in {
+            TaskStatus.WAITING_APPROVAL,
+            TaskStatus.WAITING_CLARIFICATION,
+        }:
             return "SKIPPED"
         lease = session.scalar(
             select(WorkflowLeaseRow)

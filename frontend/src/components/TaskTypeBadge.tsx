@@ -5,9 +5,15 @@ const taskTypeLabels: Record<TaskType, string> = {
   "accounts_payable_analysis.v1": "Accounts Payable",
 };
 
-export function TaskTypeBadge({ taskType }: { taskType: TaskType | null }) {
+export function TaskTypeBadge({
+  taskType,
+  fallbackLabel = "Unclassified",
+}: {
+  taskType: TaskType | null;
+  fallbackLabel?: string;
+}) {
   if (taskType === null)
-    return <span className="task-type-badge">Unclassified</span>;
+    return <span className="task-type-badge">{fallbackLabel}</span>;
   return (
     <span
       className={`task-type-badge task-type-badge--${taskType.split("_")[0]}`}

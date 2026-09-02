@@ -337,6 +337,227 @@
         "title": "ArtifactMetadataResponse",
         "type": "object"
       },
+      "ClarificationDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "clarification_id": {
+            "title": "Clarification Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/ClarificationQuestionResponse"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "round": {
+            "minimum": 1.0,
+            "title": "Round",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ClarificationStatus"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "clarification_id",
+          "task_id",
+          "status",
+          "round",
+          "questions",
+          "created_at",
+          "submitted_at",
+          "resolved_at"
+        ],
+        "title": "ClarificationDetailResponse",
+        "type": "object"
+      },
+      "ClarificationInputType": {
+        "description": "Frontend-renderable answer controls supported by the v1 contract.",
+        "enum": [
+          "text",
+          "date",
+          "date_range",
+          "single_select",
+          "multi_select"
+        ],
+        "title": "ClarificationInputType",
+        "type": "string"
+      },
+      "ClarificationQuestionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_values": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Values",
+            "type": "array"
+          },
+          "constraints": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Constraints",
+            "type": "object"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "input_type": {
+            "$ref": "#/components/schemas/ClarificationInputType"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "field",
+          "reason",
+          "prompt",
+          "input_type",
+          "required",
+          "allowed_values",
+          "constraints"
+        ],
+        "title": "ClarificationQuestionResponse",
+        "type": "object"
+      },
+      "ClarificationStatus": {
+        "description": "One-round clarification lifecycle; only ``PENDING`` accepts a response.",
+        "enum": [
+          "PENDING",
+          "SUBMITTED",
+          "RESOLVED",
+          "REJECTED",
+          "CANCELLED"
+        ],
+        "title": "ClarificationStatus",
+        "type": "string"
+      },
+      "ClarificationSubmissionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "answers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Answers",
+            "type": "object"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "title": "ClarificationSubmissionRequest",
+        "type": "object"
+      },
+      "ClarificationSubmissionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_at": {
+            "format": "date-time",
+            "title": "Accepted At",
+            "type": "string"
+          },
+          "clarification_id": {
+            "title": "Clarification Id",
+            "type": "string"
+          },
+          "clarification_status": {
+            "$ref": "#/components/schemas/ClarificationStatus"
+          },
+          "reused": {
+            "default": false,
+            "title": "Reused",
+            "type": "boolean"
+          },
+          "runtime_status": {
+            "$ref": "#/components/schemas/RuntimeStatus"
+          },
+          "status_url": {
+            "title": "Status Url",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "task_status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "clarification_id",
+          "clarification_status",
+          "task_id",
+          "task_status",
+          "runtime_status",
+          "status_url",
+          "accepted_at",
+          "trace_id"
+        ],
+        "title": "ClarificationSubmissionResponse",
+        "type": "object"
+      },
       "EvidenceType": {
         "description": "Evidence source types permitted by the frozen v1.0 scenario.",
         "enum": [
@@ -466,6 +687,91 @@
           "task"
         ],
         "title": "NaturalLanguageTaskSubmission",
+        "type": "object"
+      },
+      "PendingClarificationQuestionResponse": {
+        "additionalProperties": false,
+        "description": "Frontend-renderable question embedded in a waiting Task response.",
+        "properties": {
+          "allowed_values": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Values",
+            "type": "array"
+          },
+          "constraints": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Constraints",
+            "type": "object"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "input_type": {
+            "$ref": "#/components/schemas/ClarificationInputType"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "field",
+          "reason",
+          "prompt",
+          "input_type",
+          "required",
+          "allowed_values",
+          "constraints"
+        ],
+        "title": "PendingClarificationQuestionResponse",
+        "type": "object"
+      },
+      "PendingClarificationResponse": {
+        "additionalProperties": false,
+        "description": "Discoverable current clarification interaction for a Task.",
+        "properties": {
+          "clarification_id": {
+            "title": "Clarification Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/PendingClarificationQuestionResponse"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "round": {
+            "minimum": 1.0,
+            "title": "Round",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "clarification_id",
+          "round",
+          "questions",
+          "created_at"
+        ],
+        "title": "PendingClarificationResponse",
         "type": "object"
       },
       "PublicStepStatus": {
@@ -826,6 +1132,16 @@
             ],
             "title": "Pending Approval Id"
           },
+          "pending_clarification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingClarificationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "runtime_status": {
             "$ref": "#/components/schemas/RuntimeStatus"
           },
@@ -884,6 +1200,7 @@
           "current_step",
           "task_summary",
           "pending_approval_id",
+          "pending_clarification",
           "step_count",
           "evidence_count",
           "artifact_count",
@@ -897,6 +1214,7 @@
         "enum": [
           "CREATED",
           "UNDERSTANDING",
+          "WAITING_CLARIFICATION",
           "PLANNING",
           "EXECUTING",
           "WAITING_APPROVAL",
@@ -1891,6 +2209,176 @@
         "summary": "Cancel Task",
         "tags": [
           "tasks"
+        ]
+      }
+    },
+    "/v1/tasks/{task_id}/clarifications/{clarification_id}": {
+      "get": {
+        "operationId": "get_task_clarification",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "clarification_id",
+            "required": true,
+            "schema": {
+              "title": "Clarification Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarificationDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Clarification",
+        "tags": [
+          "clarifications"
+        ]
+      },
+      "post": {
+        "operationId": "submit_task_clarification",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "clarification_id",
+            "required": true,
+            "schema": {
+              "title": "Clarification Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClarificationSubmissionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarificationSubmissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Submit Clarification",
+        "tags": [
+          "clarifications"
         ]
       }
     },

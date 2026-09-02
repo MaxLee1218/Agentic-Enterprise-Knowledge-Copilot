@@ -56,7 +56,7 @@ eligible records for that operation. Otherwise status is `NOT_AVAILABLE`, never 
 |---|---|
 | Unit | normalization, contract cross-fields, scope merge, every formula/boundary/null/exclusion, rule resolution, profile registry, AP report mapper |
 | Contract | serialized v1/v2 contracts, historical upcast, tool profile schemas, report schema, API/OpenAPI enum compatibility |
-| Integration | SQLite/PostgreSQL migrations, templates/AST/access, DB-to-Analytics lineage, rules-to-RAG binding, report JSON/PDF, Approval resume |
+| Integration | SQLite/PostgreSQL migrations, templates/AST/access, DB-to-Analytics lineage, rules-to-RAG binding, report JSON/PDF, Clarification and Approval resume |
 | Smoke | one clean AP path and one exception path through real shared Graph/Registry/Executor/Evidence/Verifier |
 | Security | all threat-model attacks through direct Executor and API; tenant/entity/unit/Artifact isolation |
 | Evaluation | complete synthetic dataset and direction-aware AP baseline |
@@ -66,7 +66,7 @@ eligible records for that operation. Otherwise status is `NOT_AVAILABLE`, never 
 
 Every shared-platform change runs:
 
-1. unchanged Supplier Quality v1.1 tests and evaluation baseline;
+1. Supplier Quality v1.2 tests and unchanged business/evaluation baseline;
 2. AP v1 tests and evaluation baseline;
 3. shared platform contract, persistence, security, API/frontend, deployment and MCP tests.
 
@@ -88,6 +88,12 @@ UC2 implementation is not ready for production unless:
 - SQLite and PostgreSQL migrations/rollback tests pass;
 - Supplier Quality baseline has no regression;
 - p95 resource usage remains within the architecture limits on the 50,000-row performance fixture.
+
+The independent `interactive_clarification_v1` dataset covers AP missing time/entity/both,
+multi-round and partial responses, unauthorized auto-inference, relative dates, round exhaustion,
+cancellation, and Supplier missing period. Required added metrics are clarification detection,
+required-field coverage, resume success, average rounds, exhaustion rate, and unauthorized
+auto-inference rate; the last must remain zero.
 
 The implementation report must record code revision, dataset/fixture hashes, seed, provider/model,
 prompt/profile/rule/report versions, configuration, timestamp, metric definitions and known

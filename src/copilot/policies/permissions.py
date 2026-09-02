@@ -20,6 +20,7 @@ class Permission(StrEnum):
     GENERATE_REPORT = "generate_report"
     APPROVE_ACTION = "approve_action"
     CANCEL_TASK = "cancel_task"
+    RESPOND_CLARIFICATION = "respond_clarification"
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +62,7 @@ _ROLE_PERMISSIONS = {
             Permission.DOWNLOAD_ARTIFACT,
             Permission.GENERATE_REPORT,
             Permission.CANCEL_TASK,
+            Permission.RESPOND_CLARIFICATION,
         }
     ),
     "quality_data_approver": frozenset(Permission),
@@ -74,6 +76,7 @@ _ROLE_PERMISSIONS = {
             Permission.DOWNLOAD_ARTIFACT,
             Permission.GENERATE_REPORT,
             Permission.CANCEL_TASK,
+            Permission.RESPOND_CLARIFICATION,
         }
     ),
     "finance_approver": frozenset(Permission),

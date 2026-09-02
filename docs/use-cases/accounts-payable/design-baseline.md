@@ -1,9 +1,16 @@
 # Accounts Payable v1 Design Baseline
 
-**Baseline ID:** `accounts-payable-design.v1.0`  
-**Status:** `FROZEN — STAGE 0 COMPLETE`  
-**Freeze date:** 2026-08-22  
-**Implementation status:** `NOT STARTED`
+**Baseline ID:** `accounts-payable-design.v1.1`
+**Status:** `FROZEN — INTERACTIVE CLARIFICATION AMENDMENT ACCEPTED`
+**Freeze date:** 2026-09-01
+**Implementation status:** `STAGE 12 NOT READY; CLARIFICATION RELEASE GATES REQUIRED`
+
+### v1.1 amendment
+
+ADR-019 authorizes `WAITING_CLARIFICATION`, durable clarification records, current-scope questions,
+partial/multi-round answers, and asynchronous resume into `UNDERSTANDING`. This is the only AP v1.1
+business-lifecycle change. All finance formulas, exception definitions, limits, data fixtures,
+policy versions, approval bindings, Evidence, report, and verification semantics remain v1.0.
 
 ## 1. Authority and scope
 
@@ -13,7 +20,7 @@ Compliance & Exception Investigation v1. It authorizes the staged implementation
 schema, seed data, policy corpus, evaluation dataset or UI is implemented.
 
 Repository-wide `AGENTS.md` instructions and accepted ADRs remain higher-level authority. The
-Supplier Quality Analysis v1.1 baseline under `docs/design/` is separate and unchanged. If a UC2
+Supplier Quality Analysis v1.2 baseline under `docs/design/` is separate. If a UC2
 implementation choice conflicts with that frozen baseline or a shared platform contract, work
 must stop until the conflict is resolved through an explicit design change.
 
@@ -94,8 +101,9 @@ scope.
   unchanged. Historical data without profile fields may map only through an exact known Supplier
   Quality schema fingerprint.
 - UC2 adds no workflow table, Task state or finance-specific API route.
-- Missing information follows the implemented recoverable `FAILED` path; conversational
-  clarification/resume is not claimed.
+- Missing required dates or a non-deterministically resolvable legal entity follows the bounded
+  interactive clarification path. Relative dates remain missing; unauthorized or malformed scope
+  fails and is never converted into a clarification-based authorization path.
 - Unavailable policy bindings, unauthorized scope, mixed-currency comparisons, unsupported
   settlement shapes, truncation or verification failure fail closed using the typed behavior in
   the normative documents.
@@ -105,7 +113,8 @@ scope.
 
 Implementation may fill in code behind this baseline but may not silently rename identifiers,
 change formulas or denominators, loosen limits, expand scope, add data fields, alter approval or
-tenant behavior, introduce a new state/API/capability, or weaken verification and evaluation.
+tenant behavior, introduce another state/API/capability beyond this v1.1 amendment, or weaken
+verification and evaluation.
 
 A material change requires all of the following before production code changes:
 

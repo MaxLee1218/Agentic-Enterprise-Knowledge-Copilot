@@ -1,4 +1,15 @@
-# Supplier Quality Analysis 桌面演练 v1.1
+# Supplier Quality Analysis 桌面演练 v1.2
+
+## 0. v1.2 缺失期间演练
+
+输入 `Analyze supplier quality and generate a report.` 时，Task 在同一 `task_id` 下从
+`CREATED → UNDERSTANDING → WAITING_CLARIFICATION`。系统持久化一个 `time_range` 问题；此时
+Contract 和 Plan 均不存在，工具调用为零，Worker 释放 lease。用户回答 `Q2 2026` 后，API 只
+持久化回答、将 Task 改回 `UNDERSTANDING` 并创建下一 execution generation；Worker 从原
+Checkpoint 恢复并再次理解。年份/季度验证完成后才进入下文原有成功路径。
+
+如果回答仍为相对期间，系统再次等待；如果回答包含未授权供应商，则直接拒绝而不规划。原请求不
+被拼接或覆盖。后续 Supplier 计算、Evidence、审批、报告和验证演练相对 v1.1 不变。
 
 ## 1. 演练前提
 

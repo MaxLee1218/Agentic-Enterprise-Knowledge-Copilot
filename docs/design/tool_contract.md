@@ -1,4 +1,11 @@
-# 工具契约冻结设计 v1.1
+# 工具契约冻结设计 v1.2
+
+## v1.2 澄清边界
+
+本版本不改变四个业务工具、Schema、超时、重试、审批、Evidence 或幂等语义。Clarification 不是
+Tool，也不通过 Tool Registry 执行。`WAITING_CLARIFICATION` 时没有完整 TaskContract 或
+TaskPlan，因此禁止构造 ToolCall、预执行查询或用工具结果猜测缺失输入。回答经
+`UNDERSTANDING` 验证且契约完整后，才按本文件既有契约进入 Planner、Policy 和 Executor。
 
 ## 1. 通用调用封套
 

@@ -1,4 +1,19 @@
-# 领域模型冻结设计 v1.1
+# 领域模型冻结设计 v1.2
+
+## v1.2 澄清对象
+
+`TaskClarification` 是租户和 Task 绑定的版本化交互记录，包含稳定
+`clarification_id`、从 1 开始的 `round`、状态、结构化问题、已验证上下文、可选结构化/自然语言
+回答、提交者、时间、响应指纹、恢复上下文、解决码和版本。状态为 `PENDING`、`SUBMITTED`、
+`RESOLVED`、`REJECTED` 或 `CANCELLED`；同一 Task 最多一个 `PENDING` 记录，历史只追加。
+
+`ClarificationQuestion` 绑定缺失字段、原因、人类可读问题、输入类型、必填标记、当前可信范围产生的
+候选值和约束。`ClarificationResponse` 可以包含部分结构化回答和/或有界自然语言；空响应无效。
+`ClarificationContext` 只保存 Task Understanding 已验证的业务事实，并与不可变
+`TaskRequest.raw_input` 分开传递。它不是授权来源，不能替代当前调用者身份或策略检查。
+
+所有最终业务对象的 ownership 不变。ClarificationRepository 拥有当前交互和不可变版本历史；
+Task Repository 仍是业务状态权威，Checkpoint 仍只是恢复状态，Queue/Worker 仍不是 Task 权威。
 
 ## 1. 建模约定
 

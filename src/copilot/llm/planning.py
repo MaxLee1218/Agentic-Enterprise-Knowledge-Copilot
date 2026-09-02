@@ -14,9 +14,14 @@ from copilot.contracts import (
     ApprovalRequirement,
     ArtifactType,
     CapabilityName,
+    ClarificationContext,
+    ClarificationInputType,
+    ClarificationQuestion,
+    ClarificationResponse,
     ContractSchemaVersion,
     DateRange,
     ExpectedOutput,
+    JsonObject,
     MoneyThreshold,
     ProposedPlan,
     StepResult,
@@ -149,6 +154,8 @@ class LLMPlanningService:
         trusted_context: TrustedTaskContext,
         trace_id: str,
         max_steps: int,
+        clarification_context: ClarificationContext | None = None,
+        clarification_response: ClarificationResponse | None = None,
     ) -> TaskUnderstandingOutcome:
         """Produce a frozen contract while preserving trusted tenant and policy fields."""
         domain_manifest = self._domain_manifests.require_execution_for_type(
@@ -194,6 +201,8 @@ class LLMPlanningService:
                     "supported_output_formats": [item.value for item in supported_outputs],
                 },
                 output_schema=understanding_schema,
+                clarification_context=clarification_context,
+                clarification_response=clarification_response,
             ),
             output_schema=understanding_schema,
             context=context,
@@ -210,6 +219,7 @@ class LLMPlanningService:
                 request=request,
                 trusted_context=trusted_context,
                 candidate=candidate,
+                clarification_context=clarification_context,
             )
         assert isinstance(candidate, TaskUnderstandingOutput)
         if candidate.task_type is not trusted_context.task_type:
@@ -220,9 +230,27 @@ class LLMPlanningService:
         if candidate.time_range.year is None or candidate.time_range.quarter is None:
             missing.append("An explicit year and quarter are required")
         if missing:
+            context_values = dict(
+                clarification_context.values.root if clarification_context is not None else {}
+            )
+            if candidate.time_range.year is not None and candidate.time_range.quarter is not None:
+                context_values.update(
+                    year=candidate.time_range.year,
+                    quarter=candidate.time_range.quarter,
+                )
             return TaskUnderstandingOutcome(
                 contract=None,
                 missing_information=tuple(dict.fromkeys(missing)),
+                questions=(
+                    ClarificationQuestion(
+                        field="time_range",
+                        reason="Supplier Quality analysis requires an explicit reporting quarter.",
+                        prompt="Which year and quarter should be analyzed (for example, Q2 2026)?",
+                        input_type=ClarificationInputType.TEXT,
+                        constraints=JsonObject({"format": "Q[1-4] YYYY"}),
+                    ),
+                ),
+                clarification_context=ClarificationContext(values=JsonObject(context_values)),
             )
         assert candidate.time_range.year is not None
         assert candidate.time_range.quarter is not None
@@ -296,7 +324,14 @@ class LLMPlanningService:
             ),
             created_at=request.created_at,
         )
-        return TaskUnderstandingOutcome(contract=contract)
+        return TaskUnderstandingOutcome(
+            contract=contract,
+            clarification_context=ClarificationContext(
+                values=JsonObject(
+                    {"year": candidate.time_range.year, "quarter": candidate.time_range.quarter}
+                )
+            ),
+        )
 
     @staticmethod
     def _accounts_payable_contract(
@@ -304,6 +339,7 @@ class LLMPlanningService:
         request: TaskRequest,
         trusted_context: TrustedTaskContext,
         candidate: APTaskUnderstandingOutput,
+        clarification_context: ClarificationContext | None = None,
     ) -> TaskUnderstandingOutcome:
         """Merge an untrusted AP candidate into explicit trusted scope and policy facts."""
         if candidate.task_type is not trusted_context.task_type:
@@ -324,9 +360,43 @@ class LLMPlanningService:
             else:
                 missing.append("An explicit authorized legal entity is required")
         if missing:
+            context_values = dict(
+                clarification_context.values.root if clarification_context is not None else {}
+            )
+            questions: list[ClarificationQuestion] = []
+            if candidate.time_range.start_date is not None:
+                assert candidate.time_range.end_date is not None
+                context_values["start_date"] = candidate.time_range.start_date.isoformat()
+                context_values["end_date"] = candidate.time_range.end_date.isoformat()
+            else:
+                questions.append(
+                    ClarificationQuestion(
+                        field="time_range",
+                        reason=(
+                            "Accounts Payable analysis requires an explicit inclusive date range."
+                        ),
+                        prompt="What exact start and end dates should be analyzed?",
+                        input_type=ClarificationInputType.DATE_RANGE,
+                        constraints=JsonObject({"format": "YYYY-MM-DD"}),
+                    )
+                )
+            if legal_entities:
+                context_values["legal_entity_ids"] = list(legal_entities)
+            else:
+                questions.append(
+                    ClarificationQuestion(
+                        field="legal_entity_ids",
+                        reason="A legal entity must be selected within the caller's current scope.",
+                        prompt="Which authorized legal entity should be analyzed?",
+                        input_type=ClarificationInputType.SINGLE_SELECT,
+                        allowed_values=trusted_context.authorized_legal_entity_ids,
+                    )
+                )
             return TaskUnderstandingOutcome(
                 contract=None,
                 missing_information=tuple(dict.fromkeys(missing)),
+                questions=tuple(questions),
+                clarification_context=ClarificationContext(values=JsonObject(context_values)),
             )
         assert candidate.time_range.start_date is not None
         assert candidate.time_range.end_date is not None
@@ -447,7 +517,16 @@ class LLMPlanningService:
                     ),
                 ),
                 created_at=request.created_at,
-            )
+            ),
+            clarification_context=ClarificationContext(
+                values=JsonObject(
+                    {
+                        "start_date": candidate.time_range.start_date.isoformat(),
+                        "end_date": candidate.time_range.end_date.isoformat(),
+                        "legal_entity_ids": list(legal_entities),
+                    }
+                )
+            ),
         )
 
     def create_validated_plan(

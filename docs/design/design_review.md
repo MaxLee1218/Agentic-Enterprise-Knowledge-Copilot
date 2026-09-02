@@ -1,4 +1,4 @@
-# 设计冲突审查与解决记录 v1.1
+# 设计冲突审查与解决记录 v1.2
 
 ## 1. 审查范围与结论
 
@@ -10,9 +10,16 @@
 - [工具契约](tool_contract.md)
 - [场景演练](walkthrough.md)
 
-结论：v1.1 的对象职责、状态转换、工具 Schema、失败语义和 Supplier Quality 演练一致；所有核心冲突均已解决。没有遗留未定设计项。
+结论：v1.2 的对象职责、状态转换、工具 Schema、失败语义和 Supplier Quality 演练一致；所有核心冲突均已解决。没有遗留未定设计项。
 
-v1.1 相对 v1.0 的唯一语义变更是新增审批解决动作 `EDIT`：审批人可在策略 allowlist 内提交完整替换参数和修改建议，校验后以 `APPROVED` 状态恢复执行。状态集合、任务类型、四个工具、StepType、ArtifactType、业务范围、重试、重规划、证据和验证语义均未改变。
+v1.2 相对 v1.1 只增加通用的 Interactive Clarification & Resume：非终态
+`WAITING_CLARIFICATION`、版本化澄清对象、独立验证上下文、异步暂停/恢复、API 和有界轮数。
+Supplier 指标、工具、数据、审批、Evidence、Artifact 和验证行为不变。该变更由 ADR-019 记录，
+并与冻结异步架构 ADR-012 至 ADR-017 一致。
+
+v1.1 相对 v1.0 的唯一语义变更仍是审批解决动作 `EDIT`。v1.2 在此基础上增加上述澄清
+生命周期；任务类型、四个工具、StepType、ArtifactType、业务分析范围、重试、重规划、证据和
+验证语义均未改变。
 
 ## 2. Domain Model 审查
 

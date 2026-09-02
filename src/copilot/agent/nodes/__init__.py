@@ -9,6 +9,7 @@ from copilot.agent.nodes.persist_result import persist_result
 from copilot.agent.nodes.policy_check import policy_check
 from copilot.agent.nodes.repair_plan import repair_plan
 from copilot.agent.nodes.replan import replan
+from copilot.agent.nodes.request_clarification import request_clarification
 from copilot.agent.nodes.understand_task import understand_task
 from copilot.agent.nodes.validate_plan import validate_plan
 from copilot.agent.nodes.validate_request import validate_request
@@ -24,6 +25,7 @@ __all__ = [
     "policy_check",
     "repair_plan",
     "replan",
+    "request_clarification",
     "understand_task",
     "validate_plan",
     "validate_request",

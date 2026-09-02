@@ -5,6 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from copilot.contracts import ClarificationQuestion
+
+
+@dataclass(frozen=True, slots=True)
+class TaskClarificationView:
+    """Safe pending interaction summary embedded in Task details."""
+
+    clarification_id: str
+    round: int
+    questions: tuple[ClarificationQuestion, ...]
+    created_at: datetime
+
 
 @dataclass(frozen=True, slots=True)
 class TaskSummaryView:
@@ -26,6 +38,7 @@ class TaskSummaryView:
     artifact_count: int
     error_summary: str | None
     runtime_status: str = "READY"
+    pending_clarification: TaskClarificationView | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +105,7 @@ class TaskArtifactView:
 
 __all__ = [
     "TaskArtifactView",
+    "TaskClarificationView",
     "TaskEvidenceView",
     "TaskListView",
     "TaskStepView",

@@ -1,6 +1,6 @@
-# Implemented v1.1 task and approval lifecycle
+# Implemented v1.2 task, clarification, and approval lifecycle
 
-The frozen Supplier Quality v1.1 state machine in
+The frozen Supplier Quality v1.2 state machine in
 [`docs/design/state_machine.md`](design/state_machine.md) is authoritative.
 
 The current deterministic workflow follows:
@@ -12,6 +12,8 @@ Natural-language API / CLI submission
   -> TASK_SUBMITTED audit
   -> validate_request
   -> understand_task (original TaskRequest.raw_input)
+  -> WAITING_CLARIFICATION (when required user information is missing)
+  -> UNDERSTANDING (authorized answer resumes the same checkpoint)
   -> TaskContract
   -> create_plan
   -> transient ProposedPlan
@@ -68,11 +70,16 @@ independent budgets. The graph `repair_plan` node remains a compatibility safety
 compiled-plan validation failure. An eligible verification failure uses the frozen
 `VERIFYING -> REPLANNING -> EXECUTING` transitions and a separate replan counter.
 
-The frozen machine has no clarification state. Required missing information therefore records a
-recoverable `TASK_INFORMATION_MISSING` error and `TASK_CLARIFICATION_REQUIRED` audit event, but
-transitions `UNDERSTANDING -> FAILED`; the API/CLI exposes the missing-information message and a
-corrected request starts a new Task. The frozen database-empty path remains Success and never
-replans.
+Required missing user information creates a versioned `TaskClarification` and transitions
+`UNDERSTANDING -> WAITING_CLARIFICATION`. The current interaction is embedded in Task detail; its
+questions include only trusted-scope choices. A partial structured or natural-language answer is
+persisted with an immutable response fingerprint and a new dispatch generation. The HTTP request
+returns `202`; an independent Worker resumes the same checkpoint through `UNDERSTANDING`. Validated
+facts live in `ClarificationContext`, while `TaskRequest.raw_input` remains unchanged. Another round
+asks only for what remains. The default five-round bound fails with
+`CLARIFICATION_LIMIT_EXCEEDED`. Unauthorized, malformed, unsupported, and security-denied input
+still fails rather than entering a scope-expanding conversation. The frozen database-empty path
+remains Success and never replans.
 
 The initial persisted row may temporarily contain no Contract or Plan. Understanding commits the
 Contract before planning; planning commits the Plan before deterministic validation or any
@@ -91,7 +98,7 @@ separate `runtime_status`, and `status_url`. It never invokes the Graph, Tools, 
 Artifact renderer in the HTTP request thread. Clients poll `GET /v1/tasks/{task_id}`.
 
 Cancellation is the frozen `CANCEL_REQUESTED` domain event. It is valid from `CREATED`,
-`UNDERSTANDING`, `PLANNING`, `WAITING_APPROVAL`, `EXECUTING`, `RETRYING`, `REPLANNING`, and
+`UNDERSTANDING`, `PLANNING`, `WAITING_CLARIFICATION`, `WAITING_APPROVAL`, `EXECUTING`, `RETRYING`, `REPLANNING`, and
 `VERIFYING`. The service atomically compare-and-swaps the state to `CANCELLED`, stops future
 resumption by revoking pending approvals, preserves committed StepResults and Evidence, and writes
 the cancellation audit/result records. Repeating cancellation on `CANCELLED` is idempotent;
@@ -113,6 +120,7 @@ used only for execution hosting:
 | accepted and dispatchable | `READY` | none |
 | actively hosted | `LEASED` | exactly one unexpired database lease |
 | runtime recovery delayed | `WAITING_RETRY` | none |
+| `WAITING_CLARIFICATION` | `SUSPENDED` | none |
 | `WAITING_APPROVAL` | `SUSPENDED` | none |
 | `COMPLETED` / `FAILED` / `CANCELLED` | `FINISHED` | none |
 
@@ -121,10 +129,16 @@ reconciles the tenant/task checkpoint, and acquires the atomic lease before ente
 workflow. A monotonic fencing token is checked on authoritative commits. Duplicate/stale delivery
 therefore becomes an acknowledged no-op rather than a second Task execution.
 
+Clarification response persists one submitted interaction and atomically changes the Task back to
+`UNDERSTANDING` plus creates a new dispatch. The Worker validates the exact suspended checkpoint,
+predecessor generation, current Task state, submitted response, and server-created refreshed
+context before resume. Duplicate delivery cannot create another Contract, Plan, step, or Artifact.
+
 Approval resolution persists one immutable decision and, for an approved request, atomically
 creates a new dispatch at `execution_generation + 1`; it returns `202` without executing the Graph.
 Reject, expiry, revoke, and cancellation create no executable resume dispatch. A
-`WAITING_APPROVAL` Task is `SUSPENDED`, has no execution lease, and consumes no Worker slot.
+`WAITING_APPROVAL` or `WAITING_CLARIFICATION` Task is `SUSPENDED`, has no execution lease, and
+consumes no Worker slot.
 Durable cancellation remains the Task DB source of truth, while process-local cooperative signals
 only reduce observation latency. Late Tool results cannot commit through a deleted/stale lease.
 

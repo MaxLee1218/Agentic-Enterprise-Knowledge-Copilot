@@ -34,6 +34,15 @@ from copilot.contracts.async_runtime import (
     runtime_retry_delay_seconds,
 )
 from copilot.contracts.base import ContractModel, ImmutableContractModel, JsonObject
+from copilot.contracts.clarifications import (
+    ClarificationAnswer,
+    ClarificationContext,
+    ClarificationInputType,
+    ClarificationQuestion,
+    ClarificationResponse,
+    ClarificationStatus,
+    TaskClarification,
+)
 from copilot.contracts.enums import (
     APAnalyticsOperation,
     APDatabaseTemplate,
@@ -202,6 +211,12 @@ __all__ = [
     "Artifact",
     "ArtifactType",
     "CapabilityName",
+    "ClarificationAnswer",
+    "ClarificationContext",
+    "ClarificationInputType",
+    "ClarificationQuestion",
+    "ClarificationResponse",
+    "ClarificationStatus",
     "CancellationRequest",
     "CancellationState",
     "CheckpointIdentity",
@@ -309,6 +324,7 @@ __all__ = [
     "SpanStatus",
     "TaskConstraints",
     "TaskContract",
+    "TaskClarification",
     "TaskError",
     "TaskAlreadyTerminalError",
     "TaskDispatch",

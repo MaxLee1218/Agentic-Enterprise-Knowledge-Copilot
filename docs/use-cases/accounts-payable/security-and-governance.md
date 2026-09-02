@@ -112,6 +112,14 @@ text or raw SQL.
 Structured logs use safe low-cardinality identifiers and counts. `invoice_number`, `po_number`,
 supplier name, monetary values and exception record keys are not metrics labels or log tags.
 
+Clarification responses are governed input, not chat authority. Only the Task owner with current
+`finance_analyst` permission may respond. The API rechecks tenant, task type, purpose, role, and
+dimension scope, and selectable legal entities are exactly the current trusted identity's allowed
+values. Answers, invoice identifiers, dates, and free-form response text are not ordinary log or
+metric fields. Audit records store interaction IDs, round, requested field names, actor, outcome,
+and safe error codes. Worker resume accepts only the API-created refreshed context bound to the
+submitted record and checkpoint generation; model output cannot authorize scope.
+
 ## 8. Forbidden operations
 
 The Registry and permission matrix must reject pay/cancel/reverse payment, approve/edit invoice,

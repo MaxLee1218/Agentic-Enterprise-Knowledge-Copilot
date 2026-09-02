@@ -49,6 +49,19 @@ and quarter are explicit. Arbitrary start/end dates are allowed when ordered. Re
 such as “last quarter” are missing information in v1 because they are not reproducible without a
 separately approved reference-time rule.
 
+## 2.1 Interactive clarification binding
+
+Missing explicit dates and legal entity selection when the caller has multiple authorized
+entities are `REQUIRED_USER_INPUT`. Understanding emits `time_range` (`date_range`) and
+`legal_entity_ids` (`single_select`) questions. Legal-entity choices are exactly the current
+caller's trusted authorized IDs; tenant-wide values and LLM-invented choices are forbidden.
+
+Partial answers are validated and accumulated in `ClarificationContext`, separate from immutable
+`TaskRequest.raw_input`. Every response returns the Task to Understanding. Relative dates remain
+missing and cause another round. Unauthorized IDs, invalid date ordering, scope violations, policy
+gaps, or forbidden requests fail closed and cannot be converted into an authorization question.
+No AP TaskContract or TaskPlan exists until required fields are complete.
+
 ## 3. Versioned contract proposal
 
 The existing outer `TaskContract` is retained, with `constraints` generalized to a task-type-

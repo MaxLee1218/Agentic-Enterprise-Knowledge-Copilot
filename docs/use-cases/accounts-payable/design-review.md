@@ -1,9 +1,13 @@
 # Accounts Payable v1 Stage 0 Design Review
 
 **Review ID:** `accounts-payable-stage-0-review.2026-08-22`  
-**Baseline reviewed:** `accounts-payable-design.v1.0`  
+**Baseline reviewed:** `accounts-payable-design.v1.1`
 **Result:** `PASS — NO BLOCKING DESIGN QUESTION`  
-**Product implementation status:** `NOT STARTED`
+**Product implementation status:** `STAGE 12 NOT READY; CLARIFICATION CHANGE UNDER GATES`
+
+The 2026-09-01 amendment review accepts ADR-019 and the affected AP design updates. It confirms
+that clarification changes only missing-input lifecycle behavior and does not change frozen
+finance calculations, taxonomy, data, policy, report, or verification semantics.
 
 ## 1. Review purpose and method
 
@@ -28,7 +32,7 @@ already exists.
 | Can formulas drift between report and evaluator? | No. Canonical fields, Decimal precision, formulas, denominators and per-currency aggregation are frozen once and referenced by Evidence/report/evaluation. | README terminology; analytics; evidence; evaluation |
 | Is multiple/partial payment interpretation ambiguous? | No. Exactly one settled payment is eligible; unsupported settlement shapes use explicit exclusions and are never guessed. | Database design §4; analytics §§3.4–3.5 |
 | Can materiality hide detected exceptions? | No. Detection is unchanged; a user may only tighten the effective threshold, and materiality affects severity labeling rather than exception totals. | Task contract §4; analytics §5 |
-| How is missing information handled without a clarification state? | It uses the current recoverable `FAILED` behavior and requires a corrected new Task; conversational resume is not claimed. | Architecture §5 |
+| How is missing required information handled? | Valid missing dates or unresolved multi-entity choice enters bounded `WAITING_CLARIFICATION`; authorized response resumes the same Task through `UNDERSTANDING`. Unauthorized/malformed scope still fails. | Architecture §5; ADR-019 |
 | Can approval authorize bank data, writes or wider scope? | No. Those actions are forbidden and cannot be approved; approval binds one exact controlled read and may only tighten `top_k` or `row_limit`. | Security §§3, 8 |
 | Does MCP create a bypass or dependency? | No. UC2 uses the governed internal path and has no MCP dependency. | Architecture §9; README non-goals |
 
@@ -70,7 +74,7 @@ the v1 architecture.
 
 ## 5. Backward-compatibility review
 
-- `docs/design/` remains the sole frozen authority for Supplier Quality Analysis v1.1 and is not
+- `docs/design/` remains the sole frozen authority for Supplier Quality Analysis v1.2 and is not
   modified by this baseline.
 - UC2 adds values and profiles; it does not reinterpret existing Supplier Quality values.
 - Existing `/v1/tasks`, approval, cancellation, Evidence and Artifact resource models are reused.

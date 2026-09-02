@@ -472,6 +472,87 @@ class WorkflowApprovalHistoryRow(PersistenceBase):
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class WorkflowClarificationRow(PersistenceBase):
+    """Current durable snapshot for one interactive clarification round."""
+
+    __tablename__ = "workflow_clarifications"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "task_id"],
+            ["workflow_tasks.tenant_id", "workflow_tasks.task_id"],
+            name="fk_workflow_clarifications_tenant_task",
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "clarification_id",
+            name="uq_workflow_clarifications_tenant_clarification",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "task_id",
+            "round",
+            name="uq_workflow_clarifications_tenant_task_round",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "active_task_id",
+            name="uq_workflow_clarifications_one_active",
+        ),
+        CheckConstraint("round >= 1", name="ck_workflow_clarification_round"),
+        CheckConstraint("version >= 1", name="ck_workflow_clarification_version"),
+        CheckConstraint(
+            "status IN ('PENDING','SUBMITTED','RESOLVED','REJECTED','CANCELLED')",
+            name="ck_workflow_clarification_status",
+        ),
+        CheckConstraint(
+            "(status = 'PENDING' AND active_task_id = task_id) "
+            "OR (status <> 'PENDING' AND active_task_id IS NULL)",
+            name="ck_workflow_clarification_active_binding",
+        ),
+        Index("ix_workflow_clarifications_tenant_task", "tenant_id", "task_id"),
+        Index("ix_workflow_clarifications_task_status", "task_id", "status"),
+    )
+
+    clarification_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    round: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    active_task_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    response_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    resume_dispatch_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WorkflowClarificationHistoryRow(PersistenceBase):
+    """Append-only version history for clarification lifecycle mutations."""
+
+    __tablename__ = "workflow_clarification_history"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "clarification_id"],
+            ["workflow_clarifications.tenant_id", "workflow_clarifications.clarification_id"],
+            name="fk_workflow_clarification_history_tenant_clarification",
+            ondelete="CASCADE",
+        ),
+        Index(
+            "ix_workflow_clarification_history_tenant_clarification",
+            "tenant_id",
+            "clarification_id",
+        ),
+    )
+
+    clarification_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class WorkflowEvidenceRow(PersistenceBase):
     __tablename__ = "workflow_evidence"
     __table_args__ = (
@@ -620,6 +701,8 @@ __all__ = [
     "PersistenceBase",
     "WorkflowApprovalHistoryRow",
     "WorkflowApprovalRow",
+    "WorkflowClarificationHistoryRow",
+    "WorkflowClarificationRow",
     "WorkflowArtifactRow",
     "WorkflowEvidenceRow",
     "WorkflowGraphAuditRow",

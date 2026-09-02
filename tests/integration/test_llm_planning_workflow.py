@@ -114,7 +114,7 @@ def test_llm_plan_repair_is_checkpointed_and_invalid_plan_never_executes(
     assert all(result.step_id in valid_step_ids for result in execution.step_results)
 
 
-def test_missing_year_fails_before_planner_or_tools(tmp_path: Path) -> None:
+def test_missing_year_waits_for_clarification_before_planner_or_tools(tmp_path: Path) -> None:
     missing = _understanding().model_copy(
         update={
             "time_range": UnderstandingTimeRange(),
@@ -127,9 +127,10 @@ def test_missing_year_fails_before_planner_or_tools(tmp_path: Path) -> None:
         tmp_path / "missing" / "artifacts",
         llm_provider=provider,
     ) as container:
-        execution = container.service.execute(COMMAND)
+        with pytest.raises(WorkflowInterrupted) as interrupted:
+            container.service.execute(COMMAND)
 
-        assert execution.final_state.state is TaskStatus.FAILED
+        assert interrupted.value.status == TaskStatus.WAITING_CLARIFICATION.value
         assert container.tool_audit.list(tenant_id="TENANT-DEMO") == ()
         assert [call.context.node_name for call in provider.calls] == ["understand_task"]
 
@@ -150,4 +151,4 @@ def test_prompt_injection_is_data_and_cannot_expand_scope(tmp_path: Path) -> Non
 
         assert execution.final_state.state is TaskStatus.FAILED
         assert container.tool_audit.list(tenant_id="TENANT-DEMO") == ()
-        assert provider.calls[0].context.prompt_version == "task-understanding-v2"
+        assert provider.calls[0].context.prompt_version == "task-understanding-v3"

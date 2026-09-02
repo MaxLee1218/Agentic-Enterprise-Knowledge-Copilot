@@ -51,7 +51,7 @@ def test_fresh_database_upgrade_reaches_head_and_safe_downgrade(
         )
         with engine.connect() as connection:
             revision = MigrationContext.configure(connection).get_current_revision()
-            assert revision == "20260826_0006"
+            assert revision == "20260831_0007"
         step_uniques = {
             tuple(item["column_names"])
             for item in inspector.get_unique_constraints("workflow_step_results")
@@ -67,6 +67,17 @@ def test_fresh_database_upgrade_reaches_head_and_safe_downgrade(
             "workflow_task_runtime",
         }
         assert runtime_tables.issubset(inspect(engine).get_table_names())
+        clarification_tables = {
+            "workflow_clarifications",
+            "workflow_clarification_history",
+        }
+        assert clarification_tables.issubset(inspect(engine).get_table_names())
+        clarification_uniques = {
+            tuple(item["column_names"])
+            for item in inspector.get_unique_constraints("workflow_clarifications")
+        }
+        assert ("tenant_id", "task_id", "round") in clarification_uniques
+        assert ("tenant_id", "active_task_id") in clarification_uniques
         lease_columns = {item["name"] for item in inspector.get_columns("workflow_leases")}
         assert {
             "dispatch_id",
@@ -167,7 +178,7 @@ def test_existing_stage17_rows_are_backfilled_and_unknown_ownership_is_quarantin
             "T-UNKNOWN": "TENANT-LEGACY-UNSCOPED",
         }
         assert child_tenant == "TENANT-A"
-        assert revision == "20260826_0006"
+        assert revision == "20260831_0007"
     finally:
         engine.dispose()
         get_settings.cache_clear()

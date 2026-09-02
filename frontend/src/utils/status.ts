@@ -3,6 +3,7 @@ import type { RuntimeStatus, StepStatus, TaskStatus } from "../api/types";
 export const taskStatuses: readonly TaskStatus[] = [
   "CREATED",
   "UNDERSTANDING",
+  "WAITING_CLARIFICATION",
   "PLANNING",
   "EXECUTING",
   "WAITING_APPROVAL",
@@ -23,6 +24,7 @@ export const terminalTaskStatuses = new Set<TaskStatus>([
 export const cancellableTaskStatuses = new Set<TaskStatus>([
   "CREATED",
   "UNDERSTANDING",
+  "WAITING_CLARIFICATION",
   "PLANNING",
   "EXECUTING",
   "WAITING_APPROVAL",
@@ -41,6 +43,7 @@ export type StatusTone =
 const taskStatusTones: Record<TaskStatus, StatusTone> = {
   CREATED: "neutral",
   UNDERSTANDING: "active",
+  WAITING_CLARIFICATION: "warning",
   PLANNING: "active",
   EXECUTING: "active",
   WAITING_APPROVAL: "warning",
@@ -68,11 +71,18 @@ export function statusTone(status: TaskStatus | StepStatus): StatusTone {
     : stepStatusTones[status as StepStatus];
 }
 
+export function statusLabel(status: TaskStatus | StepStatus): string {
+  if (status === "WAITING_CLARIFICATION") return "Waiting for information";
+  return status.replaceAll("_", " ");
+}
+
 export function pollingInterval(
   status: TaskStatus | undefined,
 ): number | false {
   if (!status || terminalTaskStatuses.has(status)) return false;
-  return status === "WAITING_APPROVAL" ? 10_000 : 2_000;
+  return status === "WAITING_APPROVAL" || status === "WAITING_CLARIFICATION"
+    ? 10_000
+    : 2_000;
 }
 
 export function runtimeLabel(
@@ -80,6 +90,7 @@ export function runtimeLabel(
   runtimeStatus: RuntimeStatus,
 ): string {
   if (taskStatus === "WAITING_APPROVAL") return "Waiting approval";
+  if (taskStatus === "WAITING_CLARIFICATION") return "Waiting for information";
   if (taskStatus === "COMPLETED") return "Completed";
   if (taskStatus === "FAILED") return "Failed";
   if (taskStatus === "CANCELLED") return "Cancelled";

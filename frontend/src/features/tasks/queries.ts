@@ -7,6 +7,7 @@ import {
 
 import type {
   ApprovalResolutionRequest,
+  ClarificationSubmissionRequest,
   Task,
   TaskCreateRequest,
   TaskStatus,
@@ -17,6 +18,7 @@ import {
   createTask,
   getApproval,
   getArtifacts,
+  getClarification,
   getEvidence,
   getHealth,
   getLiveness,
@@ -25,6 +27,7 @@ import {
   getTask,
   listTasks,
   resolveApproval,
+  submitClarification,
   type TaskListParams,
 } from "./api";
 
@@ -37,6 +40,8 @@ export const queryKeys = {
   artifacts: (taskId: string) => ["artifacts", taskId] as const,
   approval: (taskId: string, approvalId: string) =>
     ["approval", taskId, approvalId] as const,
+  clarification: (taskId: string, clarificationId: string) =>
+    ["clarification", taskId, clarificationId] as const,
   health: ["health"] as const,
 };
 
@@ -89,6 +94,14 @@ export function useApproval(taskId: string, approvalId: string) {
   });
 }
 
+export function useClarification(taskId: string, clarificationId: string) {
+  return useQuery({
+    queryKey: queryKeys.clarification(taskId, clarificationId),
+    queryFn: () => getClarification(taskId, clarificationId),
+    enabled: Boolean(taskId && clarificationId),
+  });
+}
+
 function invalidateTaskQueries(
   queryClient: ReturnType<typeof useQueryClient>,
   taskId: string,
@@ -126,6 +139,23 @@ export function useResolveApproval(taskId: string, approvalId: string) {
       invalidateTaskQueries(queryClient, taskId);
       void queryClient.invalidateQueries({
         queryKey: queryKeys.approval(taskId, approvalId),
+      });
+    },
+  });
+}
+
+export function useSubmitClarification(
+  taskId: string,
+  clarificationId: string,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ClarificationSubmissionRequest) =>
+      submitClarification(taskId, clarificationId, input),
+    onSuccess: () => {
+      invalidateTaskQueries(queryClient, taskId);
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.clarification(taskId, clarificationId),
       });
     },
   });

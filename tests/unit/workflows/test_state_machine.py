@@ -66,6 +66,25 @@ def test_cancellation_and_approval_waiting_follow_frozen_transitions() -> None:
     assert state.state is TaskStatus.CANCELLED
 
 
+def test_clarification_resumes_only_through_understanding_and_can_cancel() -> None:
+    machine = TaskStateMachine(clock=_clock, ids=SequentialIdentifierFactory())
+    state = machine.initial("T-CLARIFY")
+    state, _ = machine.transition(state, "START_UNDERSTANDING", reason="test")
+    state, _ = machine.transition(state, "CLARIFICATION_REQUIRED", reason="missing period")
+    assert state.state is TaskStatus.WAITING_CLARIFICATION
+
+    with pytest.raises(StateTransitionError):
+        machine.transition(state, "CONTRACT_VALIDATED", reason="cannot bypass understanding")
+
+    resumed, _ = machine.transition(state, "CLARIFICATION_SUBMITTED", reason="response")
+    assert resumed.state is TaskStatus.UNDERSTANDING
+    waiting_again, _ = machine.transition(
+        resumed, "CLARIFICATION_REQUIRED", reason="missing entity"
+    )
+    cancelled, _ = machine.transition(waiting_again, "CANCEL_REQUESTED", reason="user cancelled")
+    assert cancelled.state is TaskStatus.CANCELLED
+
+
 @pytest.mark.parametrize("event", ["APPROVAL_GRANTED", "APPROVAL_EDITED"])
 def test_approved_resolution_actions_resume_execution(event: str) -> None:
     machine = TaskStateMachine(clock=_clock, ids=SequentialIdentifierFactory())

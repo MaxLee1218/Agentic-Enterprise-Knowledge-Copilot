@@ -109,7 +109,7 @@ semantics.
 
 ## 4. Frozen-design conflict record
 
-Supplier Quality v1.1 explicitly states that it is the only supported scenario and that new task
+The historical Supplier Quality v1.1 baseline explicitly stated that it was the only supported scenario and that new task
 types/contracts/tools/metrics require a new design review. This UC2 work complies by preserving
 `docs/design/` as historical authority and creating a separate versioned design plus Proposed
 ADRs. Implementation is not authorized as a silent v1.1 change.

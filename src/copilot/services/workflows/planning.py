@@ -5,7 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from copilot.contracts import StepResult, TaskContract, TaskPlan, TaskRequest
+from copilot.contracts import (
+    ClarificationContext,
+    ClarificationQuestion,
+    ClarificationResponse,
+    StepResult,
+    TaskContract,
+    TaskPlan,
+    TaskRequest,
+)
 from copilot.services.task_intake import TrustedTaskContext
 from copilot.services.workflows.plan_compiler import PlanCompilationDiagnostic
 from copilot.services.workflows.validation import PlanValidationIssue, PlanValidationResult
@@ -17,6 +25,8 @@ class TaskUnderstandingOutcome:
 
     contract: TaskContract | None
     missing_information: tuple[str, ...] = ()
+    questions: tuple[ClarificationQuestion, ...] = ()
+    clarification_context: ClarificationContext = ClarificationContext()
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +74,8 @@ class PlanningService(Protocol):
         trusted_context: TrustedTaskContext,
         trace_id: str,
         max_steps: int,
+        clarification_context: ClarificationContext | None = None,
+        clarification_response: ClarificationResponse | None = None,
     ) -> TaskUnderstandingOutcome:
         """Interpret untrusted text without changing trusted authorization scope."""
         ...

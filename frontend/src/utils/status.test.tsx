@@ -6,6 +6,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import {
   pollingInterval,
   runtimeLabel,
+  statusLabel,
   statusTone,
   taskStatuses,
   terminalTaskStatuses,
@@ -16,7 +17,7 @@ describe("authoritative task statuses", () => {
     "renders %s as text rather than color alone",
     (status) => {
       render(<StatusBadge status={status} />);
-      expect(screen.getByText(status.replaceAll("_", " "))).toBeVisible();
+      expect(screen.getByText(statusLabel(status))).toBeVisible();
       expect(statusTone(status)).toMatch(
         /neutral|active|warning|success|danger/,
       );
@@ -31,6 +32,7 @@ describe("authoritative task statuses", () => {
     }
     expect(pollingInterval("EXECUTING")).toBe(2_000);
     expect(pollingInterval("WAITING_APPROVAL")).toBe(10_000);
+    expect(pollingInterval("WAITING_CLARIFICATION")).toBe(10_000);
   });
 
   it("maps Task and runtime state without exposing Worker or lease internals", () => {
@@ -39,6 +41,9 @@ describe("authoritative task statuses", () => {
     expect(runtimeLabel("EXECUTING", "WAITING_RETRY")).toBe("Retry scheduled");
     expect(runtimeLabel("WAITING_APPROVAL", "SUSPENDED")).toBe(
       "Waiting approval",
+    );
+    expect(runtimeLabel("WAITING_CLARIFICATION", "SUSPENDED")).toBe(
+      "Waiting for information",
     );
     expect(runtimeLabel("COMPLETED", "FINISHED")).toBe("Completed");
   });

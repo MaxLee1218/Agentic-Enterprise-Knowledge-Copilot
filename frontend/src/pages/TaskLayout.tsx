@@ -76,10 +76,15 @@ export function TaskLayout() {
       <PageHeader
         eyebrow="Governed task"
         title={task.task_summary || task.task_id}
-        description="Authoritative lifecycle, execution, Evidence, approval, and Artifact state."
+        description="Authoritative lifecycle, execution, Evidence, human interaction, and Artifact state."
         actions={
           <div className="button-row">
-            <TaskTypeBadge taskType={task.task_type} />
+            <TaskTypeBadge
+              taskType={task.task_type}
+              fallbackLabel={
+                task.pending_clarification ? "Needs clarification" : undefined
+              }
+            />
             <StatusBadge status={task.status} />
             {canCancel && (
               <button

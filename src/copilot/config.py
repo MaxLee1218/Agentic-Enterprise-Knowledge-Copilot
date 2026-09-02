@@ -79,6 +79,7 @@ class Settings(BaseSettings):
     llm_trace_header: str = Field(default="X-Trace-ID", min_length=1, max_length=128)
     max_structured_output_retries: int = Field(default=1, ge=0, le=2)
     max_plan_repair_attempts: int = Field(default=2, ge=0, le=2)
+    max_clarification_rounds: int = Field(default=5, ge=1, le=20)
     # Enterprise business data is a separate, read-only Tool boundary.
     database_url: str
     database_provider: Literal["mock", "sqlalchemy"] = "mock"

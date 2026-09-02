@@ -67,6 +67,7 @@ def build_worker_application(settings: Settings) -> WorkerApplication:
         runtime=runtime_repository,
         tasks=container.repository,
         approvals=container.approval_repository,
+        clarifications=container.clarification_repository,
         queue=queue,
         engine=container.engine,
         worker=identity,

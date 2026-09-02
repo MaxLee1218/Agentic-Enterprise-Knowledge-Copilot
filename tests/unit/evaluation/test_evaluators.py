@@ -6,6 +6,7 @@ from evaluation.config import ACCOUNTS_PAYABLE_DATASET, DEFAULT_DATASET
 from evaluation.contracts import MetricStatus
 from evaluation.dataset_loader import load_dataset
 from evaluation.evaluators.accounts_payable import AccountsPayableEvaluator
+from evaluation.evaluators.clarification import ClarificationEvaluator
 from evaluation.evaluators.numeric_accuracy import NumericAccuracyEvaluator
 from evaluation.evaluators.safety import SafetyEvaluator
 from evaluation.evaluators.task_success import TaskSuccessEvaluator
@@ -55,6 +56,30 @@ def test_expected_rejection_and_clarification_are_task_success(tmp_path: Path) -
 
     assert TaskSuccessEvaluator().evaluate(reject_case, reject)[0].value == 1
     assert TaskSuccessEvaluator().evaluate(missing_case, missing)[0].value == 1
+
+
+def test_clarification_metrics_cover_required_fields_and_scope_safety(
+    tmp_path: Path,
+) -> None:
+    dataset = load_dataset(
+        Path("evaluation/datasets/interactive_clarification_v1.jsonl"),
+        case_ids=("clarification-ap-missing-both", "clarification-ap-unauthorized-entity"),
+    )
+    results = {}
+    for case in dataset.cases:
+        execution = EvaluationHarness(dataset_directory=dataset.path.parent).execute(
+            case, tmp_path / case.case_id
+        )
+        results[case.case_id] = {
+            metric.metric_name: metric
+            for metric in ClarificationEvaluator().evaluate(case, execution)
+        }
+
+    missing = results["clarification-ap-missing-both"]
+    unauthorized = results["clarification-ap-unauthorized-entity"]
+    assert missing["clarification_detection_accuracy"].value == 1
+    assert missing["required_field_coverage"].value == 1
+    assert unauthorized["unauthorized_auto_inference_rate"].value == 0
 
 
 def test_stage15_security_rates_cover_injection_secret_artifact_and_error_probes(

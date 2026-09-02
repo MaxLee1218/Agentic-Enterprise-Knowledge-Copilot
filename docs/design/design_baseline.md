@@ -2,9 +2,20 @@
 
 ## Version
 
-**v1.1 — Frozen**
+**v1.2 — Frozen**
 
-冻结日期：2026-08-02
+冻结日期：2026-09-01
+
+## v1.2 Change Scope
+
+v1.2 批准 ADR-019 定义的 Interactive Clarification & Resume。状态集合增加非终态
+`WAITING_CLARIFICATION`；缺少年份/季度的合法 Supplier 请求可以在同一 Task 内多轮追问，回答
+后只能回到 `UNDERSTANDING`。新增澄清 Contract、持久化/API/Audit/Checkpoint 恢复和默认五轮
+上限。等待不占 Worker 或 lease，回答的 dispatch、generation 和 fencing 复用冻结异步架构。
+
+本变更不修改 Supplier 业务指标、查询、工具、Policy、Approval、Evidence、Artifact、报告或验证
+语义；不授权新的数据源、外部副作用或 MCP 行为。`TaskRequest.raw_input` 仍不可变，完整
+TaskContract 前仍禁止 Planning。
 
 ## v1.1 Change Scope
 
@@ -29,7 +40,7 @@ v1.1 相对 2026-07-19 冻结的 v1.0 只增加一个领域语义：ApprovalRequ
 5. [桌面演练](walkthrough.md)
 6. [设计冲突审查](design_review.md)
 
-这些文件共同构成 v1.1 冻结设计。摘要与详细文档冲突时，以详细文档中的显式契约为准；详细文档之间的冲突必须先通过设计变更流程解决，不能由实现自行选择。
+这些文件共同构成 v1.2 冻结设计。摘要与详细文档冲突时，以详细文档中的显式契约为准；详细文档之间的冲突必须先通过设计变更流程解决，不能由实现自行选择。
 
 ## Domain Model Summary
 

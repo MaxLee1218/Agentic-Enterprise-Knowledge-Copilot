@@ -66,6 +66,25 @@ _CURRENCY = re.compile(r"\b[A-Z]{3}\b")
 _CHINESE_QUARTERS = {"一": 1, "二": 2, "三": 3, "四": 4, "1": 1, "2": 2, "3": 3, "4": 4}
 
 
+def _clarification_input(payload: dict[str, object]) -> tuple[dict[str, object], str]:
+    """Keep the original request separate while exposing validated and latest response data."""
+    original = str(payload["untrusted_user_input"])
+    raw_context = payload.get("validated_clarification_context")
+    context = dict(raw_context) if isinstance(raw_context, dict) else {}
+    latest = payload.get("untrusted_latest_clarification")
+    parts = [original]
+    if context:
+        parts.append(json.dumps(context, ensure_ascii=False, sort_keys=True))
+    if isinstance(latest, dict):
+        message = latest.get("message")
+        answers = latest.get("answers")
+        if isinstance(message, str):
+            parts.append(message)
+        if isinstance(answers, dict):
+            parts.append(json.dumps(answers, ensure_ascii=False, sort_keys=True))
+    return context, "\n".join(parts)
+
+
 class OfflineMockLLM:
     """Emulate structured model output without network access.
 
@@ -158,7 +177,8 @@ class OfflineMockLLM:
 
     @staticmethod
     def _understand(payload: dict[str, object]) -> TaskUnderstandingOutput:
-        raw = str(payload["untrusted_user_input"])
+        original = str(payload["untrusted_user_input"])
+        context, raw = _clarification_input(payload)
         trusted = cast(dict[str, object], payload["trusted_context"])
         if "markdown" in raw.casefold():
             raise LLMSchemaValidationError(
@@ -172,6 +192,9 @@ class OfflineMockLLM:
             if chinese is not None:
                 quarter = _CHINESE_QUARTERS[chinese.group(1)]
         year = int(year_match.group(1)) if year_match is not None else None
+        if isinstance(context.get("year"), int) and isinstance(context.get("quarter"), int):
+            year = int(cast(int, context["year"]))
+            quarter = int(cast(int, context["quarter"]))
         missing: tuple[str, ...] = ()
         if year is None or quarter is None:
             year = None
@@ -194,7 +217,7 @@ class OfflineMockLLM:
         if not isinstance(system_max_steps, int):
             raise LLMSchemaValidationError("Offline mock received an invalid step limit")
         return TaskUnderstandingOutput(
-            goal=raw[:2000],
+            goal=original[:2000],
             task_type=TaskType.SUPPLIER_QUALITY_ANALYSIS_V1,
             entities=UnderstandingEntities(supplier_ids=suppliers),
             time_range=UnderstandingTimeRange(year=year, quarter=quarter),
@@ -295,7 +318,8 @@ class OfflineMockLLM:
     def _understand_accounts_payable(
         payload: dict[str, object],
     ) -> APTaskUnderstandingOutput:
-        raw = str(payload["untrusted_user_input"])
+        original = str(payload["untrusted_user_input"])
+        context, raw = _clarification_input(payload)
         trusted = cast(dict[str, object], payload["trusted_context"])
         dates = [date.fromisoformat(match.group(0)) for match in _ISO_DATE.finditer(raw)]
         start_date: date | None = None
@@ -317,6 +341,22 @@ class OfflineMockLLM:
                 end_month = month + 2
                 next_month = date(year + (end_month // 12), end_month % 12 + 1, 1)
                 end_date = date.fromordinal(next_month.toordinal() - 1)
+        latest = payload.get("untrusted_latest_clarification")
+        latest_answers = latest.get("answers") if isinstance(latest, dict) else None
+        range_answer = (
+            latest_answers.get("time_range") if isinstance(latest_answers, dict) else None
+        )
+        if isinstance(range_answer, dict):
+            answer_start = range_answer.get("start_date")
+            answer_end = range_answer.get("end_date")
+            if isinstance(answer_start, str) and isinstance(answer_end, str):
+                start_date = date.fromisoformat(answer_start)
+                end_date = date.fromisoformat(answer_end)
+        context_start = context.get("start_date")
+        context_end = context.get("end_date")
+        if isinstance(context_start, str) and isinstance(context_end, str):
+            start_date = date.fromisoformat(context_start)
+            end_date = date.fromisoformat(context_end)
         missing = (
             ()
             if start_date is not None and end_date is not None
@@ -367,16 +407,20 @@ class OfflineMockLLM:
                 item for item in _CURRENCY.findall(raw.upper()) if item in authorized_currencies
             )
         )
+        legal_entities = tuple(dict.fromkeys(item.upper() for item in _LEGAL_ENTITY.findall(raw)))
+        context_entities = context.get("legal_entity_ids")
+        if isinstance(context_entities, list) and all(
+            isinstance(item, str) for item in context_entities
+        ):
+            legal_entities = tuple(str(item).upper() for item in context_entities)
         return APTaskUnderstandingOutput(
-            goal=raw[:2000],
+            goal=original[:2000],
             task_type=TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1,
             time_range=APDateRangeCandidate(start_date=start_date, end_date=end_date),
             requested_supplier_ids=tuple(
                 dict.fromkeys(item.upper() for item in _SUPPLIER.findall(raw))
             ),
-            requested_legal_entity_ids=tuple(
-                dict.fromkeys(item.upper() for item in _LEGAL_ENTITY.findall(raw))
-            ),
+            requested_legal_entity_ids=legal_entities,
             requested_business_unit_ids=tuple(
                 dict.fromkeys(item.upper() for item in _BUSINESS_UNIT.findall(raw))
             ),

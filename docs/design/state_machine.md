@@ -1,4 +1,4 @@
-# Task 状态机冻结设计 v1.1
+# Task 状态机冻结设计 v1.2
 
 ## 1. 状态定义
 
@@ -6,6 +6,7 @@
 |---|---|---|---|
 | `CREATED` | 暂态 | TaskRequest 已持久化，尚未解释 | 开始理解或取消 |
 | `UNDERSTANDING` | 活动态 | 分类请求并形成 TaskContract | 进入规划、失败或取消 |
+| `WAITING_CLARIFICATION` | 等待态 | 缺少必须由用户明确提供的信息，问题和 Checkpoint 已持久化 | 回到理解、取消或因轮数耗尽失败 |
 | `PLANNING` | 活动态 | 创建并验证初始 TaskPlan | 执行、等待审批、失败或取消 |
 | `EXECUTING` | 活动态 | 调度可运行步骤并收集 ToolResult/Evidence | 验证、重试、重规划、等待审批、失败或取消 |
 | `WAITING_APPROVAL` | 等待态 | 已冻结动作和范围，等待人类决定 | 恢复原阶段、取消或失败 |
@@ -16,7 +17,11 @@
 | `FAILED` | 终态 | 不可恢复错误或恢复预算耗尽 | 无；恢复需创建新 Task |
 | `CANCELLED` | 终态 | 用户取消、审批拒绝/撤销或等待审批过期 | 无；恢复需创建新 Task |
 
-`WAITING_APPROVAL` 记录 `resume_state`（仅可为 `PLANNING`、`EXECUTING`、`REPLANNING`），原样批准或在同一受控范围内编辑后批准，均回到该阶段的合法后继：规划阶段进入 `EXECUTING`，执行阶段回到 `EXECUTING`，重规划阶段进入 `EXECUTING`。它不是任意跳转机制。
+`WAITING_CLARIFICATION` 只允许通过已授权且成功持久化的回答回到 `UNDERSTANDING`，不能直接
+进入 `PLANNING`。`WAITING_APPROVAL` 记录 `resume_state`（仅可为 `PLANNING`、`EXECUTING`、
+`REPLANNING`），原样批准或在同一受控范围内编辑后批准，均回到该阶段的合法后继：规划阶段进入
+`EXECUTING`，执行阶段回到 `EXECUTING`，重规划阶段进入 `EXECUTING`。两种等待不能同时 active，
+也都不是任意跳转机制。
 
 ## 2. 状态不变量
 
@@ -31,6 +36,25 @@
 9. 重试与重规划均有预算，不能通过互相切换重置预算。
 10. `EDIT` 只能在目标工具尚未调用时解决待决审批；必须保留原参数，校验完整替换参数并生成新的 resolved action fingerprint，不能改变 Contract、Plan、工具或权限范围。
 11. 审批恢复使用批准后的最终参数；已完成的前置步骤不重放，目标步骤及其后续步骤按现有计划继续。
+12. `WAITING_CLARIFICATION` 时不得存在该 Task 的 TaskContract、TaskPlan、可执行步骤或工具调用。
+13. 每轮回答后重新进入 `UNDERSTANDING`；只有完整契约验证通过后才进入 `PLANNING`。
+14. `TaskRequest.raw_input` 不因回答而变化；验证后的事实存于独立 ClarificationContext。
+15. Clarification 有界，默认最多五轮；耗尽后以 `CLARIFICATION_LIMIT_EXCEEDED` 进入 `FAILED`。
+16. 等待澄清不占 Worker 或 lease；取消使待决记录 `CANCELLED`，旧回答不能恢复 Task。
+
+## v1.2 澄清路径
+
+```text
+UNDERSTANDING
+  -> WAITING_CLARIFICATION   (CLARIFICATION_REQUIRED)
+  -> UNDERSTANDING           (CLARIFICATION_SUBMITTED)
+  -> WAITING_CLARIFICATION   (仍缺必填信息，可重复至上限)
+  -> UNDERSTANDING
+  -> PLANNING                (完整 TaskContract 已验证)
+```
+
+未经授权范围、非法值、禁用任务、不可解析且非缺失的信息以及安全拒绝仍进入 `FAILED`，不创建可用于
+扩权的澄清回路。
 
 ## 3. 正常路径
 

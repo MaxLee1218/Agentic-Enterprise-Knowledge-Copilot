@@ -42,6 +42,7 @@ from copilot.persistence.artifact_repository import LocalArtifactRepository
 from copilot.persistence.async_runtime_repository import AsyncRuntimeRepository
 from copilot.persistence.audit_repository import ToolAuditRepository, WorkflowAuditRepository
 from copilot.persistence.checkpoint import require_postgres_checkpoint_schema
+from copilot.persistence.clarification_repository import ClarificationRepository
 from copilot.persistence.database import PersistenceDatabase
 from copilot.persistence.identifiers import UuidIdentifierFactory
 from copilot.persistence.postgres_queue import PostgresOutboxDispatcher, PostgresTaskQueue
@@ -54,6 +55,7 @@ from copilot.policies.permissions import PermissionMatrix
 from copilot.security import OutputGuard, PromptInjectionDetector, SensitiveDataRegistry
 from copilot.services.approval_service import ApprovalGateService, ApprovalService
 from copilot.services.artifact_service import ArtifactService
+from copilot.services.clarification_service import ClarificationService
 from copilot.services.domains import builtin_domain_manifest_registry
 from copilot.services.health import ReadinessService
 from copilot.services.llm import LLMGenerationOptions, LLMProvider
@@ -107,6 +109,8 @@ class WorkflowContainer:
     workflow_audit: WorkflowAuditRepository
     approval_repository: ApprovalRepository
     approval_service: ApprovalService
+    clarification_repository: ClarificationRepository
+    clarification_service: ClarificationService
     artifact_service: ArtifactService
     knowledge_tool: MockKnowledgeTool | KnowledgeTool
     knowledge_client: HttpKnowledgeClient | None
@@ -265,6 +269,10 @@ def build_workflow_container(
     approval_repository = ApprovalRepository(
         persistence_database,
         initialize_schema=False,
+    )
+    clarification_repository = ClarificationRepository(
+        persistence_database,
+        tasks=repository,
     )
     schema_registry = SchemaRegistry()
     knowledge_client: HttpKnowledgeClient | None = None
@@ -492,6 +500,8 @@ def build_workflow_container(
         approval_gate=approval_gate,
         approval_repository=approval_repository,
         approval_policy=approval_policy,
+        clarification_repository=clarification_repository,
+        max_clarification_rounds=settings.max_clarification_rounds,
         max_task_steps=settings.max_task_steps,
         max_replan_count=settings.max_replan_count,
         max_execution_attempts=(
@@ -580,6 +590,20 @@ def build_workflow_container(
         task_repository=repository,
         state_machine=state_machine,
     )
+    clarification_service = ClarificationService(
+        repository=clarification_repository,
+        tasks=repository,
+        engine=engine,
+        state_machine=state_machine,
+        ids=identifier_factory,
+        clock=clock,
+        audit_sink=workflow_audit,
+        permission_matrix=permission_matrix,
+        observability=observability,
+        max_response_metadata_bytes=settings.max_task_metadata_bytes,
+        max_response_metadata_depth=settings.max_task_metadata_depth,
+        max_response_metadata_items=settings.max_task_metadata_items,
+    )
     service = SupplierQualityWorkflowService(
         engine=engine,
         plan_factory=plan_factory,
@@ -605,6 +629,7 @@ def build_workflow_container(
         evidence=evidence,
         artifacts=artifacts,
         approvals=approval_repository,
+        clarifications=clarification_repository,
         state_machine=state_machine,
         audit_sink=workflow_audit,
         injection_detector=injection_detector,
@@ -681,6 +706,8 @@ def build_workflow_container(
         workflow_audit=workflow_audit,
         approval_repository=approval_repository,
         approval_service=approval_service,
+        clarification_repository=clarification_repository,
+        clarification_service=clarification_service,
         artifact_service=artifact_service,
         knowledge_tool=knowledge_tool,
         knowledge_client=knowledge_client,

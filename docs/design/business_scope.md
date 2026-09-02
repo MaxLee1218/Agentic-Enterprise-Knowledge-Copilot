@@ -1,6 +1,17 @@
 # Supplier Quality Analysis 业务范围基线
 
-**Design v1.1 — Frozen（2026-08-02）**
+**Design v1.2 — Frozen（2026-09-01）**
+
+## v1.2 交互式澄清变更
+
+v1.2 只扩展缺失必填信息的 Human-in-the-loop 生命周期。缺少年份或季度、但任务类型和权限
+均合法的请求进入 `WAITING_CLARIFICATION`；系统提出明确的 `time_range` 问题，持久化回答，并在
+同一个 Task 中重新进入 `UNDERSTANDING`。回答仍缺信息时可以再次追问，默认最多五轮。
+`TaskRequest.raw_input` 不修改，`TaskContract` 完整前不得规划或调用工具。
+
+非法季度、未授权供应商、越权范围、禁用任务和安全拒绝仍直接失败，不能借澄清扩权。供应商省略
+继续使用调用者已授权的全部供应商，属于原有确定性默认，不新增确认步骤。指标、数据、工具、审批、
+证据、报告和验证语义相对 v1.1 不变。
 
 ## 1. 场景描述
 

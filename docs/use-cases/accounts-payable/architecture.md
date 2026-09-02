@@ -99,7 +99,9 @@ START
  -> END
 ```
 
-The Graph topology and frozen Task states are unchanged. Plans need not have exactly four steps:
+The executable Graph topology is unchanged after Task Understanding. The shared lifecycle now also
+contains the pre-contract `request_clarification` suspension node from ADR-019. Plans need not have
+exactly four steps:
 AP has one knowledge step, one or more database steps, one analysis step per requested detection,
 one summary analysis step, and exactly one final report step. The report depends on policy
 Evidence and the summary; the summary depends on every requested detection. Database and
@@ -107,17 +109,21 @@ knowledge steps may run independently when dependencies allow.
 
 ## 5. Clarification behavior
 
-The implemented state machine has no interactive clarification state. UC2 therefore follows the
-real current behavior: missing required information produces recoverable
-`TASK_INFORMATION_MISSING`, records `TASK_CLARIFICATION_REQUIRED`, transitions
-`UNDERSTANDING -> FAILED`, and returns concrete missing fields. A corrected request creates a new
-Task. UC2 must not claim conversational resume.
+Missing required information now creates a durable `TaskClarification` and transitions
+`UNDERSTANDING -> WAITING_CLARIFICATION`. The response API performs current owner/tenant/role/scope
+checks, persists a new execution generation, and returns `202` without running the Graph. A Worker
+resumes the same checkpoint into `UNDERSTANDING`; partial answers may produce another round. The
+wait releases Worker and lease. At most one pending human interaction exists, so a later
+`WAITING_APPROVAL` is separate and can occur only after clarification completes and planning begins.
 
 An explicit `time_range` is mandatory. Supplier omission means the trusted authorized supplier
 scope. Legal entity omission is allowed only when trusted context resolves exactly one authorized
 legal entity. Business unit omission means all authorized units. Exception types default to the
 six v1 exception types produced by five detection operations. Currency omission means all
 currencies in scope, analyzed separately.
+
+Malformed, unauthorized, policy-invalid, or unsupported input still fails. Clarification does not
+change AP defaults, hard limits, approval policy, formulas, or execution operations.
 
 ## 6. Performance and termination boundaries
 

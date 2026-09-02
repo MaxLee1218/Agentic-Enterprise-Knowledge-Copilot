@@ -1,5 +1,6 @@
 import { useOutletContext } from "react-router-dom";
 
+import { ClarificationPanel } from "../components/ClarificationPanel";
 import { MetadataList } from "../components/MetadataList";
 import { EmptyState, ErrorPanel, LoadingState } from "../components/PageState";
 import { StatusBadge } from "../components/StatusBadge";
@@ -31,11 +32,19 @@ export function TaskOverviewPage() {
             "Execution was cancelled and cannot leave the terminal state."}
           {task.status === "WAITING_APPROVAL" &&
             "A controlled action is frozen until an authorized human decision."}
+          {task.status === "WAITING_CLARIFICATION" &&
+            "The Agent needs more information before it can create a governed plan."}
           {task.status === "CREATED" &&
             task.runtime_status === "READY" &&
             "The task is durably queued and will be claimed by an available Worker."}
           {!(
-            ["COMPLETED", "FAILED", "CANCELLED", "WAITING_APPROVAL"] as string[]
+            [
+              "COMPLETED",
+              "FAILED",
+              "CANCELLED",
+              "WAITING_APPROVAL",
+              "WAITING_CLARIFICATION",
+            ] as string[]
           ).includes(task.status) &&
             !(task.status === "CREATED" && task.runtime_status === "READY") &&
             "The Agent is progressing through the authoritative governed lifecycle."}
@@ -55,6 +64,13 @@ export function TaskOverviewPage() {
         />
       </section>
 
+      {task.pending_clarification && (
+        <ClarificationPanel
+          taskId={taskId}
+          clarification={task.pending_clarification}
+        />
+      )}
+
       <section className="panel steps-panel">
         <div className="panel-heading">
           <div>
@@ -67,12 +83,20 @@ export function TaskOverviewPage() {
         {steps.isError && (
           <ErrorPanel error={steps.error} retry={() => void steps.refetch()} />
         )}
-        {steps.data?.steps.length === 0 && (
-          <EmptyState
-            title="No persisted plan steps"
-            message="Steps appear after task understanding and planning produce a valid plan."
-          />
-        )}
+        {steps.data?.steps.length === 0 &&
+          task.status === "WAITING_CLARIFICATION" && (
+            <EmptyState
+              title="Execution has not started yet"
+              message="Planning and tool execution remain blocked until the required information is validated."
+            />
+          )}
+        {steps.data?.steps.length === 0 &&
+          task.status !== "WAITING_CLARIFICATION" && (
+            <EmptyState
+              title="No persisted plan steps"
+              message="Steps appear after task understanding and planning produce a valid plan."
+            />
+          )}
         {steps.data && steps.data.steps.length > 0 && (
           <ol className="execution-timeline">
             {steps.data.steps.map((step) => (

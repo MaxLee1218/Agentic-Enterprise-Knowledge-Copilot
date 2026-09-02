@@ -11,11 +11,11 @@ load/soak evidence; Stage J remains deployment-owned and incomplete
 > path. The implementation record is
 > [`stage-19-queue-worker-execution.md`](stage-19-queue-worker-execution.md).
 
-This document is the implementation authority for the future asynchronous runtime layer. It does
-not change the frozen Supplier Quality v1.1 or Accounts Payable v1 business state machines. When a
-business-domain document and this runtime document address different concerns, both apply. If a
-future implementation would change a frozen business contract, the domain design-change process
-must complete first.
+This document is the implementation authority for the asynchronous runtime layer. ADR-019 and the
+approved Supplier Quality v1.2 / Accounts Payable v1.1 design amendments extend its suspension and
+resume rules to interactive clarification. When a business-domain document and this runtime
+document address different concerns, both apply. Any further frozen business-contract change must
+complete the domain design-change process first.
 
 ## 1. Goals
 

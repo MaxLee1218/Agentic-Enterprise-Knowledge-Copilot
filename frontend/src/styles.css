@@ -83,6 +83,17 @@ h3 {
   outline: 3px solid rgb(37 94 145 / 28%);
   outline-offset: 2px;
 }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
 .skip-link {
   position: fixed;
   z-index: 100;
@@ -645,6 +656,42 @@ tbody tr:hover {
   grid-template-columns: minmax(270px, 0.72fr) minmax(0, 1.6fr);
   gap: 18px;
 }
+.steps-panel {
+  grid-row: 1;
+  grid-column: 2;
+}
+.clarification-panel {
+  grid-column: 1 / -1;
+  padding: clamp(22px, 3vw, 32px);
+  border-left: 5px solid var(--warning);
+}
+.clarification-intro {
+  max-width: 760px;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+.clarification-question {
+  margin-bottom: 20px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  background: var(--surface-subtle);
+}
+.clarification-question > .field-help {
+  margin: -1px 0 12px;
+}
+.choice-group {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.choice-group .checkbox-field {
+  margin: 0;
+  background: var(--surface);
+}
 .lifecycle-panel,
 .steps-panel {
   padding: 24px;
@@ -1155,6 +1202,13 @@ tbody tr:hover {
   .detail-grid,
   .approval-layout {
     grid-template-columns: 1fr;
+  }
+  .steps-panel {
+    grid-row: auto;
+    grid-column: auto;
+  }
+  .clarification-panel {
+    grid-column: auto;
   }
   .lifecycle-panel .metadata-list {
     grid-template-columns: repeat(2, 1fr);

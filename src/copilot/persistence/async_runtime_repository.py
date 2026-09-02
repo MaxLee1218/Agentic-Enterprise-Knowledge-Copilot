@@ -18,7 +18,15 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from copilot.contracts import ApprovalRequest, ApprovalStatus, TaskResult, TaskState, TaskStatus
+from copilot.contracts import (
+    ApprovalRequest,
+    ApprovalStatus,
+    ClarificationStatus,
+    TaskClarification,
+    TaskResult,
+    TaskState,
+    TaskStatus,
+)
 from copilot.contracts.async_runtime import (
     CancellationRequest,
     CancellationState,
@@ -56,6 +64,8 @@ from copilot.persistence.models import (
     TaskSubmissionIdempotencyRow,
     WorkflowApprovalHistoryRow,
     WorkflowApprovalRow,
+    WorkflowClarificationHistoryRow,
+    WorkflowClarificationRow,
     WorkflowLeaseRow,
     WorkflowStateEventRow,
     WorkflowStepResultRow,
@@ -768,6 +778,7 @@ class AsyncRuntimeRepository:
                     summary="Task cancelled by an authorized request.",
                 ).model_dump_json()
             self._revoke_pending_approvals(session, request, finalized_at)
+            self._cancel_pending_clarifications(session, request, finalized_at)
             session.execute(
                 delete(WorkflowLeaseRow).where(
                     WorkflowLeaseRow.tenant_id == request.tenant_id,
@@ -1111,6 +1122,17 @@ class AsyncRuntimeRepository:
         )
         if len(pending) > 1:
             raise DispatchConflictError("Task has more than one pending approval")
+        pending_clarifications = tuple(
+            session.scalars(
+                select(WorkflowClarificationRow).where(
+                    WorkflowClarificationRow.tenant_id == tenant_id,
+                    WorkflowClarificationRow.task_id == task_id,
+                    WorkflowClarificationRow.status == ClarificationStatus.PENDING.value,
+                )
+            )
+        )
+        if len(pending_clarifications) > 1:
+            raise DispatchConflictError("Task has more than one pending clarification")
         plan_version: int | None = None
         if task.plan_json:
             raw_plan = json.loads(task.plan_json)
@@ -1148,6 +1170,12 @@ class AsyncRuntimeRepository:
             ),
             pending_approval_id=pending[0].approval_id if pending else None,
             pending_approval_status=ApprovalStatus.PENDING if pending else None,
+            pending_clarification_id=(
+                pending_clarifications[0].clarification_id if pending_clarifications else None
+            ),
+            pending_clarification_status=(
+                ClarificationStatus.PENDING if pending_clarifications else None
+            ),
             successful_step_ids=successful_steps,
             recovery_attempt_count=runtime.recovery_attempt_count,
             last_recovery_error=runtime.last_recovery_error,
@@ -1236,6 +1264,52 @@ class AsyncRuntimeRepository:
                     version=revoked.version,
                     tenant_id=request.tenant_id,
                     payload_json=revoked.model_dump_json(),
+                )
+            )
+
+    def _cancel_pending_clarifications(
+        self,
+        session: Session,
+        request: CancellationRequest,
+        finalized_at: datetime,
+    ) -> None:
+        rows = tuple(
+            session.scalars(
+                select(WorkflowClarificationRow)
+                .where(
+                    WorkflowClarificationRow.tenant_id == request.tenant_id,
+                    WorkflowClarificationRow.task_id == request.task_id,
+                    WorkflowClarificationRow.status.in_(
+                        (
+                            ClarificationStatus.PENDING.value,
+                            ClarificationStatus.SUBMITTED.value,
+                        )
+                    ),
+                )
+                .with_for_update()
+            )
+        )
+        for row in rows:
+            pending = TaskClarification.model_validate_json(row.payload_json)
+            cancelled = pending.model_copy(
+                update={
+                    "status": ClarificationStatus.CANCELLED,
+                    "resolved_at": finalized_at,
+                    "resolution_code": request.reason_code,
+                    "version": pending.version + 1,
+                }
+            )
+            row.status = cancelled.status.value
+            row.version = cancelled.version
+            row.active_task_id = None
+            row.payload_json = cancelled.model_dump_json()
+            row.resolved_at = finalized_at
+            session.add(
+                WorkflowClarificationHistoryRow(
+                    clarification_id=cancelled.clarification_id,
+                    version=cancelled.version,
+                    tenant_id=request.tenant_id,
+                    payload_json=cancelled.model_dump_json(),
                 )
             )
 
@@ -1419,7 +1493,7 @@ def _lease_result(
 def _runtime_status_after_release(status: TaskStatus) -> RuntimeStatus:
     if status in _TERMINAL:
         return RuntimeStatus.FINISHED
-    if status is TaskStatus.WAITING_APPROVAL:
+    if status in {TaskStatus.WAITING_APPROVAL, TaskStatus.WAITING_CLARIFICATION}:
         return RuntimeStatus.SUSPENDED
     return RuntimeStatus.READY
 

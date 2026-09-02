@@ -9,11 +9,16 @@ from datetime import datetime
 
 from copilot.agent.state import AgentGraphState
 from copilot.contracts import (
+    ClarificationContext,
+    ClarificationInputType,
+    ClarificationQuestion,
+    ClarificationStatus,
     ErrorType,
     EvidenceItem,
     JsonObject,
     StepResult,
     StepResultStatus,
+    TaskClarification,
     TaskError,
     TaskResult,
     TaskState,
@@ -27,6 +32,7 @@ from copilot.contracts import (
 from copilot.policies.approval import PolicyOutcome, SupplierQualityApprovalPolicy
 from copilot.policies.permissions import AuthorizationRequest, Permission, PermissionMatrix
 from copilot.services.approval_service import ApprovalGateService, ApprovalRepositoryPort
+from copilot.services.clarification_service import ClarificationRepositoryPort
 from copilot.services.domains import (
     DomainCapabilityManifestRegistry,
     DomainManifestError,
@@ -34,7 +40,7 @@ from copilot.services.domains import (
 )
 from copilot.services.execution import ExecutionContext
 from copilot.services.llm import LLMErrorCode, LLMProviderError
-from copilot.services.observability import NoopObservability, ObservabilityPort
+from copilot.services.observability import EventName, NoopObservability, ObservabilityPort
 from copilot.services.workflows.deadlines import tool_attempt_deadline
 from copilot.services.workflows.dependency import DependencyChecker
 from copilot.services.workflows.errors import PlannerError, PlannerErrorCode, StepInputError
@@ -100,6 +106,8 @@ class GraphNodeRuntime:
         approval_gate: ApprovalGateService,
         approval_repository: ApprovalRepositoryPort,
         approval_policy: SupplierQualityApprovalPolicy,
+        clarification_repository: ClarificationRepositoryPort,
+        max_clarification_rounds: int,
         max_task_steps: int,
         max_replan_count: int,
         max_execution_attempts: int | None = None,
@@ -132,6 +140,8 @@ class GraphNodeRuntime:
         self._approval_gate = approval_gate
         self._approval_repository = approval_repository
         self._approval_policy = approval_policy
+        self._clarification_repository = clarification_repository
+        self._max_clarification_rounds = max_clarification_rounds
         self._permission_matrix = permission_matrix or PermissionMatrix()
         self._observability = observability or NoopObservability()
         self._domain_manifests = domain_manifests or builtin_domain_manifest_registry()
@@ -184,14 +194,24 @@ class GraphNodeRuntime:
                 state, domain_state, "START_UNDERSTANDING", "Authenticated request accepted"
             )
         contract = state.get("contract")
+        completed_clarification_context = state["clarification_context"]
         if self._planning_service is not None:
             try:
-                outcome = self._planning_service.understand(
-                    request=state["request"],
-                    trusted_context=state["intake_context"],
-                    trace_id=state["trace_id"],
-                    max_steps=state["intake_context"].max_steps,
-                )
+                understanding_arguments: dict[str, object] = {
+                    "request": state["request"],
+                    "trusted_context": state["intake_context"],
+                    "trace_id": state["trace_id"],
+                    "max_steps": state["intake_context"].max_steps,
+                }
+                if (
+                    state["clarification_context"].values.root
+                    or state["clarification_response"] is not None
+                ):
+                    understanding_arguments.update(
+                        clarification_context=state["clarification_context"],
+                        clarification_response=state["clarification_response"],
+                    )
+                outcome = self._planning_service.understand(**understanding_arguments)  # type: ignore[arg-type]
             except DomainManifestError as exc:
                 error = self._error(
                     state,
@@ -200,8 +220,8 @@ class GraphNodeRuntime:
                     str(exc),
                     recoverable=False,
                 )
-                domain_state = self._transition(
-                    state, domain_state, "UNDERSTANDING_FAILED", error.message
+                domain_state = self._fail_clarification_or_understanding(
+                    state, domain_state, error.message, resolution_code=exc.code
                 )
                 self._emit(state, "TASK_UNDERSTANDING_FAILED", status=exc.code)
                 return self._node_result(
@@ -215,8 +235,11 @@ class GraphNodeRuntime:
                 )
             except LLMProviderError as exc:
                 error = self._llm_error(state, exc, "understand_task")
-                domain_state = self._transition(
-                    state, domain_state, "UNDERSTANDING_FAILED", error.message
+                domain_state = self._fail_clarification_or_understanding(
+                    state,
+                    domain_state,
+                    error.message,
+                    resolution_code=exc.code.value,
                 )
                 self._emit(
                     state,
@@ -234,28 +257,93 @@ class GraphNodeRuntime:
                 )
             if outcome.contract is None:
                 message = "; ".join(outcome.missing_information)
-                error = self._error(
-                    state,
-                    "TASK_INFORMATION_MISSING",
-                    ErrorType.VALIDATION,
-                    message or "Required task information is missing",
-                    recoverable=True,
-                )
-                domain_state = self._transition(
-                    state, domain_state, "UNDERSTANDING_FAILED", error.message
-                )
-                self._emit(state, "TASK_CLARIFICATION_REQUIRED", status="MISSING_INFORMATION")
-                self._emit(state, "TASK_UNDERSTANDING_FAILED", status="MISSING_INFORMATION")
+                if state["clarification_round"] >= self._max_clarification_rounds:
+                    error = self._error(
+                        state,
+                        "CLARIFICATION_LIMIT_EXCEEDED",
+                        ErrorType.VALIDATION,
+                        "Maximum clarification rounds were reached",
+                        recoverable=False,
+                    )
+                    current, event = self._state_machine.transition(
+                        domain_state,
+                        "CLARIFICATION_EXHAUSTED",
+                        reason=error.message,
+                    )
+                    submitted = self._submitted_clarification(state)
+                    if submitted is not None:
+                        rejected = submitted.model_copy(
+                            update={
+                                "status": ClarificationStatus.REJECTED,
+                                "context": outcome.clarification_context,
+                                "resolved_at": self._clock(),
+                                "resolution_code": error.error_code,
+                                "version": submitted.version + 1,
+                            }
+                        )
+                        self._clarification_repository.resolve_submitted_and_transition(
+                            submitted,
+                            rejected,
+                            domain_state,
+                            current,
+                            event,
+                        )
+                    else:
+                        self._repository.commit_transition(
+                            domain_state,
+                            current,
+                            event,
+                            tenant_id=state["intake_context"].tenant_id,
+                        )
+                    self._observability.increment("clarification_failures_total")
+                    self._observability.increment("clarification_exhausted_count")
+                    self._emit(
+                        state,
+                        "TASK_CLARIFICATION_EXHAUSTED",
+                        status=current.state.value,
+                        error_code=error.error_code,
+                        failure_reason=error.message,
+                        metadata=JsonObject({"clarification_round": state["clarification_round"]}),
+                    )
+                    self._observability.emit(
+                        EventName.CLARIFICATION_FAILED,
+                        fields={
+                            "reason_code": error.error_code,
+                            "clarification_round": state["clarification_round"],
+                        },
+                    )
+                    return self._node_result(
+                        state,
+                        "understand_task",
+                        started,
+                        "clarification_exhausted",
+                        error.message,
+                        domain_state=current,
+                        clarification_context=outcome.clarification_context,
+                        errors=[error],
+                    )
                 return self._node_result(
                     state,
                     "understand_task",
                     started,
                     "missing_information",
-                    error.message,
+                    message or "Required task information is missing",
                     domain_state=domain_state,
-                    errors=[error],
+                    clarification_questions=list(
+                        outcome.questions
+                        or (
+                            ClarificationQuestion(
+                                field="details",
+                                reason="Additional information is required to validate the task.",
+                                prompt=message or "Please provide the missing task information.",
+                                input_type=ClarificationInputType.TEXT,
+                            ),
+                        )
+                    ),
+                    clarification_context=outcome.clarification_context,
                 )
             contract = outcome.contract
+            completed_clarification_context = outcome.clarification_context
         elif contract is None:
             error = self._error(
                 state,
@@ -263,8 +351,11 @@ class GraphNodeRuntime:
                 ErrorType.TECHNICAL,
                 "Natural-language task understanding is unavailable",
             )
-            domain_state = self._transition(
-                state, domain_state, "UNDERSTANDING_FAILED", error.message
+            domain_state = self._fail_clarification_or_understanding(
+                state,
+                domain_state,
+                error.message,
+                resolution_code=error.error_code,
             )
             self._emit(state, "TASK_UNDERSTANDING_FAILED", status=error.error_code)
             return self._node_result(
@@ -295,8 +386,8 @@ class GraphNodeRuntime:
                 str(exc),
                 recoverable=False,
             )
-            domain_state = self._transition(
-                state, domain_state, "UNDERSTANDING_FAILED", error.message
+            domain_state = self._fail_clarification_or_understanding(
+                state, domain_state, error.message, resolution_code=exc.code
             )
             return self._node_result(
                 state,
@@ -321,8 +412,11 @@ class GraphNodeRuntime:
                 "Required authenticated scope information is missing",
                 recoverable=True,
             )
-            domain_state = self._transition(
-                state, domain_state, "UNDERSTANDING_FAILED", error.message
+            domain_state = self._fail_clarification_or_understanding(
+                state,
+                domain_state,
+                error.message,
+                resolution_code=error.error_code,
             )
             return self._node_result(
                 state,
@@ -333,6 +427,12 @@ class GraphNodeRuntime:
                 domain_state=domain_state,
                 errors=[error],
             )
+        if self._planning_service is not None:
+            self._resolve_submitted_clarification(
+                state,
+                completed_clarification_context,
+                resolution_code="CONTRACT_COMPLETED",
+            )
         self._emit(state, "TASK_UNDERSTANDING_COMPLETED", status="COMPLETED")
         return self._node_result(
             state,
@@ -342,6 +442,201 @@ class GraphNodeRuntime:
             "Frozen deterministic contract available",
             domain_state=domain_state,
             contract=contract,
+        )
+
+    def request_clarification(self, state: AgentGraphState) -> dict[str, object]:
+        """Persist one interaction round and enter a durable suspended state."""
+        started = self._clock()
+        previous = state["domain_state"]
+        next_round = state["clarification_round"] + 1
+        submitted = self._submitted_clarification(state)
+        if next_round > self._max_clarification_rounds:
+            error = self._error(
+                state,
+                "CLARIFICATION_LIMIT_EXCEEDED",
+                ErrorType.VALIDATION,
+                "Maximum clarification rounds were reached",
+                recoverable=False,
+            )
+            current, event = self._state_machine.transition(
+                previous,
+                "CLARIFICATION_EXHAUSTED",
+                reason=error.message,
+            )
+            if submitted is not None:
+                resolved = submitted.model_copy(
+                    update={
+                        "status": ClarificationStatus.REJECTED,
+                        "context": state["clarification_context"],
+                        "resolved_at": self._clock(),
+                        "resolution_code": error.error_code,
+                        "version": submitted.version + 1,
+                    }
+                )
+                self._clarification_repository.resolve_submitted_and_transition(
+                    submitted,
+                    resolved,
+                    previous,
+                    current,
+                    event,
+                )
+            else:
+                self._repository.commit_transition(
+                    previous,
+                    current,
+                    event,
+                    tenant_id=state["intake_context"].tenant_id,
+                )
+            self._observability.increment("clarification_failures_total")
+            self._observability.increment("clarification_exhausted_count")
+            if submitted is not None:
+                self._emit(
+                    state,
+                    "TASK_CLARIFICATION_REJECTED",
+                    status=ClarificationStatus.REJECTED.value,
+                    error_code=error.error_code,
+                    failure_reason=error.message,
+                    metadata=JsonObject(
+                        {
+                            "clarification_id": submitted.clarification_id,
+                            "round": submitted.round,
+                            "question_fields": [question.field for question in submitted.questions],
+                        }
+                    ),
+                )
+            self._emit(
+                state,
+                "TASK_CLARIFICATION_EXHAUSTED",
+                status=current.state.value,
+                error_code=error.error_code,
+                failure_reason=error.message,
+                metadata=JsonObject({"clarification_round": next_round}),
+            )
+            self._observability.emit(
+                EventName.CLARIFICATION_FAILED,
+                fields={"reason_code": error.error_code, "clarification_round": next_round},
+            )
+            return self._node_result(
+                state,
+                "request_clarification",
+                started,
+                "clarification_exhausted",
+                error.message,
+                domain_state=current,
+                errors=[error],
+            )
+        questions = tuple(state["clarification_questions"])
+        pending = TaskClarification(
+            clarification_id=self._ids.new_id("CLAR"),
+            task_id=state["task_id"],
+            tenant_id=state["intake_context"].tenant_id,
+            round=next_round,
+            status=ClarificationStatus.PENDING,
+            questions=questions,
+            context=state["clarification_context"],
+            created_at=self._clock(),
+        )
+        existing = self._clarification_repository.get_pending_for_task(
+            state["task_id"],
+            tenant_id=state["intake_context"].tenant_id,
+        )
+        created = existing is None
+        if existing is not None:
+            if (
+                existing.round != next_round
+                or existing.questions != pending.questions
+                or existing.context != pending.context
+            ):
+                raise ValueError("Pending clarification does not match replayed graph state")
+            current = self._repository.state_for(
+                state["task_id"],
+                tenant_id=state["intake_context"].tenant_id,
+            )
+            if current.state is not TaskStatus.WAITING_CLARIFICATION:
+                raise ValueError("Pending clarification Task is not suspended")
+            pending = existing
+        else:
+            current, event = self._state_machine.transition(
+                previous,
+                "CLARIFICATION_REQUIRED",
+                reason=f"Clarification round {next_round} requires human input",
+            )
+            if submitted is not None:
+                resolved = submitted.model_copy(
+                    update={
+                        "status": ClarificationStatus.RESOLVED,
+                        "context": state["clarification_context"],
+                        "resolved_at": self._clock(),
+                        "resolution_code": "PARTIAL_RESPONSE_ACCEPTED",
+                        "version": submitted.version + 1,
+                    }
+                )
+                self._clarification_repository.replace_submitted_with_pending(
+                    submitted,
+                    resolved,
+                    pending,
+                    previous,
+                    current,
+                    event,
+                )
+                self._observability.increment("clarification_resumes_total")
+                self._observability.increment("clarification_resolved_count")
+                self._observability.observe("clarification_rounds", float(submitted.round))
+                self._observability.emit(
+                    EventName.CLARIFICATION_RESUMED,
+                    fields={"clarification_round": submitted.round},
+                )
+                self._emit(
+                    state,
+                    "TASK_CLARIFICATION_RESOLVED",
+                    status=ClarificationStatus.RESOLVED.value,
+                    metadata=JsonObject(
+                        {
+                            "clarification_id": submitted.clarification_id,
+                            "round": submitted.round,
+                            "question_fields": [question.field for question in submitted.questions],
+                            "resolution_code": "PARTIAL_RESPONSE_ACCEPTED",
+                        }
+                    ),
+                )
+            else:
+                self._clarification_repository.create_pending_and_transition(
+                    pending,
+                    previous,
+                    current,
+                    event,
+                )
+        if created:
+            self._emit(
+                state,
+                "TASK_CLARIFICATION_REQUIRED",
+                status=TaskStatus.WAITING_CLARIFICATION.value,
+                metadata=JsonObject(
+                    {
+                        "clarification_id": pending.clarification_id,
+                        "round": pending.round,
+                        "question_fields": [question.field for question in pending.questions],
+                    }
+                ),
+            )
+            self._observability.increment("clarification_requests_total")
+            self._observability.increment("clarification_required_count")
+            self._observability.gauge_add("waiting_clarification_count", 1)
+            self._observability.emit(
+                EventName.CLARIFICATION_REQUESTED,
+                fields={"clarification_round": pending.round},
+            )
+        return self._node_result(
+            state,
+            "request_clarification",
+            started,
+            "clarification_requested",
+            "Task is checkpointed while waiting for clarification",
+            domain_state=current,
+            clarification_id=pending.clarification_id,
+            clarification_round=pending.round,
+            clarification_questions=list(pending.questions),
+            clarification_response=None,
         )
 
     def classify_task(self, state: AgentGraphState) -> dict[str, object]:
@@ -1294,15 +1589,24 @@ class GraphNodeRuntime:
     def persist_result(self, state: AgentGraphState) -> dict[str, object]:
         """Idempotently commit a terminal TaskResult, or preserve an approval interruption."""
         started = self._clock()
-        if state["domain_state"].state is TaskStatus.WAITING_APPROVAL:
+        if state["domain_state"].state in {
+            TaskStatus.WAITING_APPROVAL,
+            TaskStatus.WAITING_CLARIFICATION,
+        }:
+            waiting_status = state["domain_state"].state
+            waiting_reason = (
+                "Task is waiting for approval before controlled database access"
+                if waiting_status is TaskStatus.WAITING_APPROVAL
+                else "Task is checkpointed while waiting for clarification"
+            )
             updates = self._node_result(
                 state,
                 "persist_result",
                 started,
                 "interrupted",
-                "Task is checkpointed while waiting for approval",
+                waiting_reason,
             )
-            self._emit(state, "task_interrupted", status=TaskStatus.WAITING_APPROVAL.value)
+            self._emit(state, "task_interrupted", status=waiting_status.value)
             return updates
         domain_state = state["domain_state"]
         if domain_state.state not in {
@@ -1800,6 +2104,122 @@ class GraphNodeRuntime:
             TaskStatus.VERIFYING: "NON_REPAIRABLE_VERIFICATION_FAILURE",
         }.get(domain_state.state)
         return self._transition(state, domain_state, event, reason) if event else domain_state
+
+    def _submitted_clarification(
+        self,
+        state: AgentGraphState,
+    ) -> TaskClarification | None:
+        clarification_id = state["clarification_id"]
+        if clarification_id is None:
+            return None
+        clarification = self._clarification_repository.get(
+            clarification_id,
+            tenant_id=state["intake_context"].tenant_id,
+        )
+        return clarification if clarification.status is ClarificationStatus.SUBMITTED else None
+
+    def _resolve_submitted_clarification(
+        self,
+        state: AgentGraphState,
+        context: ClarificationContext,
+        *,
+        resolution_code: str,
+    ) -> None:
+        submitted = self._submitted_clarification(state)
+        if submitted is None:
+            return
+        resolved = submitted.model_copy(
+            update={
+                "status": ClarificationStatus.RESOLVED,
+                "context": context,
+                "resolved_at": self._clock(),
+                "resolution_code": resolution_code,
+                "version": submitted.version + 1,
+            }
+        )
+        self._clarification_repository.resolve_submitted(submitted, resolved)
+        self._observability.increment("clarification_resumes_total")
+        self._observability.increment("clarification_resolved_count")
+        self._observability.observe("clarification_rounds", float(submitted.round))
+        self._observability.emit(
+            EventName.CLARIFICATION_RESUMED,
+            fields={"clarification_round": submitted.round},
+        )
+        self._emit(
+            state,
+            "TASK_CLARIFICATION_RESOLVED",
+            status=ClarificationStatus.RESOLVED.value,
+            metadata=JsonObject(
+                {
+                    "clarification_id": submitted.clarification_id,
+                    "round": submitted.round,
+                    "question_fields": [question.field for question in submitted.questions],
+                }
+            ),
+        )
+
+    def _fail_clarification_or_understanding(
+        self,
+        state: AgentGraphState,
+        previous: TaskState,
+        reason: str,
+        *,
+        resolution_code: str,
+    ) -> TaskState:
+        current, event = self._state_machine.transition(
+            previous,
+            "UNDERSTANDING_FAILED",
+            reason=reason,
+        )
+        submitted = self._submitted_clarification(state)
+        if submitted is not None:
+            rejected = submitted.model_copy(
+                update={
+                    "status": ClarificationStatus.REJECTED,
+                    "context": state["clarification_context"],
+                    "resolved_at": self._clock(),
+                    "resolution_code": resolution_code,
+                    "version": submitted.version + 1,
+                }
+            )
+            self._clarification_repository.resolve_submitted_and_transition(
+                submitted,
+                rejected,
+                previous,
+                current,
+                event,
+            )
+            self._observability.increment("clarification_failures_total")
+            self._observability.emit(
+                EventName.CLARIFICATION_FAILED,
+                fields={
+                    "reason_code": resolution_code,
+                    "clarification_round": submitted.round,
+                },
+            )
+            self._emit(
+                state,
+                "TASK_CLARIFICATION_REJECTED",
+                status=ClarificationStatus.REJECTED.value,
+                error_code=resolution_code,
+                failure_reason=reason,
+                metadata=JsonObject(
+                    {
+                        "clarification_id": submitted.clarification_id,
+                        "round": submitted.round,
+                        "question_fields": [question.field for question in submitted.questions],
+                    }
+                ),
+            )
+        else:
+            self._repository.commit_transition(
+                previous,
+                current,
+                event,
+                tenant_id=state["intake_context"].tenant_id,
+            )
+        self._emit(state, "task_status_changed", status=current.state.value)
+        return current
 
     def _transition(
         self,

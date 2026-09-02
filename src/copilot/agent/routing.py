@@ -8,7 +8,11 @@ def route_after_validate(state: AgentGraphState) -> str:
 
 
 def route_after_understanding(state: AgentGraphState) -> str:
-    return "classify_task" if state["route"] == "understood" else "persist_result"
+    if state["route"] == "understood":
+        return "classify_task"
+    if state["route"] == "missing_information" and not state.get("errors"):
+        return "request_clarification"
+    return "persist_result"
 
 
 def route_after_classification(state: AgentGraphState) -> str:

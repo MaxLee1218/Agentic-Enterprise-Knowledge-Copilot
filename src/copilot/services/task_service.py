@@ -16,6 +16,7 @@ from copilot.contracts import (
     EvidenceItem,
     JsonObject,
     StepResult,
+    TaskClarification,
     TaskContract,
     TaskPlan,
     TaskRequest,
@@ -57,6 +58,7 @@ from copilot.services.task_intake import (
     validate_task_text,
 )
 from copilot.services.task_views import (
+    TaskClarificationView,
     TaskEvidenceView,
     TaskListView,
     TaskStepView,
@@ -156,6 +158,12 @@ class TaskApprovalRepository(Protocol):
     ) -> None: ...
 
 
+class TaskClarificationRepository(Protocol):
+    """Pending clarification read boundary for Task summaries."""
+
+    def get_pending_for_task(self, task_id: str, *, tenant_id: str) -> TaskClarification | None: ...
+
+
 class TaskRuntimeRepository(Protocol):
     """Async runtime operations required by Task management."""
 
@@ -221,6 +229,7 @@ class NaturalLanguageTaskService:
         evidence: TaskEvidenceReader | None = None,
         artifacts: TaskArtifactReader | None = None,
         approvals: TaskApprovalRepository | None = None,
+        clarifications: TaskClarificationRepository | None = None,
         state_machine: TaskStateMachine | None = None,
         audit_sink: WorkflowAuditSink | None = None,
         injection_detector: PromptInjectionDetector | None = None,
@@ -238,6 +247,7 @@ class NaturalLanguageTaskService:
         self._evidence = evidence
         self._artifacts = artifacts
         self._approvals = approvals
+        self._clarifications = clarifications
         self._state_machine = state_machine
         self._audit_sink = audit_sink
         self._injection_detector = injection_detector or PromptInjectionDetector()
@@ -573,6 +583,8 @@ class NaturalLanguageTaskService:
                 )
             except TaskAlreadyTerminalError as exc:
                 raise TaskNotCancellableError(task_id) from exc
+            if state.state is TaskStatus.WAITING_CLARIFICATION:
+                self._observability.gauge_add("waiting_clarification_count", -1)
             current = repository.state_for(task_id, tenant_id=caller.tenant_id)
             self._audit("task_cancellation_requested", task_id, plan, caller, trace_id)
             self._audit("task_cancelled", task_id, plan, caller, trace_id)
@@ -720,6 +732,11 @@ class NaturalLanguageTaskService:
             if self._approvals
             else ()
         )
+        pending_clarification = (
+            self._clarifications.get_pending_for_task(task_id, tenant_id=tenant_id)
+            if self._clarifications is not None
+            else None
+        )
         completed_at = state.updated_at if state.state in _TERMINAL_STATES else None
         current_step = next(
             (
@@ -748,6 +765,16 @@ class NaturalLanguageTaskService:
             current_step=current_step,
             task_summary=_task_summary(request.raw_input, self._output_guard),
             pending_approval_id=pending[0].approval_id if pending else None,
+            pending_clarification=(
+                TaskClarificationView(
+                    clarification_id=pending_clarification.clarification_id,
+                    round=pending_clarification.round,
+                    questions=pending_clarification.questions,
+                    created_at=pending_clarification.created_at,
+                )
+                if pending_clarification is not None
+                else None
+            ),
             step_count=len(plan.steps) if plan is not None else 0,
             evidence_count=(
                 len(self._evidence.list_for_task(task_id, tenant_id=tenant_id))
@@ -771,7 +798,10 @@ class NaturalLanguageTaskService:
                 pass
         if state.state in _TERMINAL_STATES:
             return RuntimeStatus.FINISHED.value
-        if state.state is TaskStatus.WAITING_APPROVAL:
+        if state.state in {
+            TaskStatus.WAITING_APPROVAL,
+            TaskStatus.WAITING_CLARIFICATION,
+        }:
             return RuntimeStatus.SUSPENDED.value
         return RuntimeStatus.READY.value
 

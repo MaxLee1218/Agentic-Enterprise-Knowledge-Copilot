@@ -259,8 +259,9 @@ pending approval must remain queryable; graph recovery must load the matching ch
 disagree, stop retries and investigate rather than synthesizing new state.
 
 The asynchronous runtime has an automatic bounded recovery scanner embedded in each independent
-Worker. It reloads authoritative Task/runtime/dispatch state, excludes terminal and unresolved
-approval Tasks, and uses PostgreSQL skip locking so multiple scanners do not recover the same row.
+Worker. It reloads authoritative Task/runtime/dispatch state, excludes terminal Tasks and
+unresolved approval or clarification waits, and uses PostgreSQL skip locking so multiple scanners
+do not recover the same row.
 It re-arms the same dispatch and generation after an expired lease or due runtime retry; it never
 creates a replacement business Task. After three runtime recoveries it fails closed.
 
@@ -277,22 +278,31 @@ Operators must distinguish:
 - duplicate broker delivery with a healthy lease (normal no-op);
 - expired execution lease eligible for fenced takeover;
 - unresolved `WAITING_APPROVAL` (not recovery eligible);
+- unresolved `WAITING_CLARIFICATION` (not recovery eligible and no lease);
 - due `WAITING_RETRY` runtime failure;
 - fail-closed checkpoint mismatch;
 - poison Task whose runtime recovery budget is exhausted.
 
 The RecoveryScanner scans only READY/orphaned dispatch, expired lease, due runtime retry, and
-orphan outbox candidates. It must exclude terminal Tasks, unresolved approval waits, and valid
-leases. Operators must not manually delete lease or checkpoint rows to force progress. A lost
+orphan outbox candidates. It must exclude terminal Tasks, unresolved approval/clarification waits,
+and valid leases. Operators must not manually delete lease or checkpoint rows to force progress. A lost
 heartbeat because PostgreSQL is unavailable means the Worker has no safe commit authority; it
 must stop committing and wait for database recovery/takeover.
 
 Required operational views/alerts are Queue depth/oldest age, active Workers
 and leases, acquire conflicts, lease expirations, recoveries/failures, runtime retries, Queue wait,
-active execution, approval wait, total wall-clock duration, and cancellation latency. Heartbeat
+active execution, approval wait, clarification wait/rounds/exhaustion, total wall-clock duration,
+and cancellation latency. Heartbeat
 success is a bounded metric rather than a per-beat audit/log stream. Runtime logs contain IDs and
 safe error codes, never credentials, Queue authorization payloads, prompts, rows, or Artifact
 bytes.
+
+For a Task in `WAITING_CLARIFICATION`, inspect Task detail and the tenant-qualified current
+clarification record; do not edit Task/checkpoint/clarification tables. A successful response
+changes the Task to `UNDERSTANDING`, creates the next dispatch generation, and is then owned by an
+independent Worker. Repeated `SUSPENDED` state is normal while no answer exists. Alert on growing
+wait age according to product policy, response conflicts, exhaustion, or a submitted response that
+does not become READY/LEASED. Raw answers must not appear in operational logs.
 
 Start, health, graceful drain, restart, tenant-safe inspection, read-only SQL diagnostics, metrics,
 and failure response are specified in
