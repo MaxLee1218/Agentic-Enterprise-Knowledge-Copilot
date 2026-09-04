@@ -9,10 +9,13 @@ from copilot.api.schemas.tasks import NaturalLanguageTaskSubmission
 from copilot.contracts import ArtifactType, TaskType
 from copilot.services.task_intake import (
     IntakeLimits,
+    TaskDomainResolutionStatus,
     TaskIntakeValidationError,
     TaskOutputFormat,
     TrustedCallerContext,
     merge_execution_constraints,
+    resolve_output_format,
+    resolve_task_domain,
     sanitize_metadata,
     validate_task_text,
 )
@@ -138,3 +141,54 @@ def test_output_format_maps_through_trusted_task_type() -> None:
         TaskOutputFormat.JSON.artifact_type_for(TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1)
         is ArtifactType.ACCOUNTS_PAYABLE_REPORT_JSON
     )
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    (
+        (
+            "Analyze supplier quality issues in Q2.",
+            TaskType.SUPPLIER_QUALITY_ANALYSIS_V1,
+        ),
+        (
+            "Investigate duplicate invoice exceptions for Accounts Payable.",
+            TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1,
+        ),
+        ("分析第二季度供应商质量偏差。", TaskType.SUPPLIER_QUALITY_ANALYSIS_V1),
+        ("调查应付账款发票异常。", TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1),
+    ),
+)
+def test_natural_language_resolves_only_enabled_domains(
+    text: str,
+    expected: TaskType,
+) -> None:
+    resolution = resolve_task_domain(text)
+    assert resolution.status is TaskDomainResolutionStatus.RESOLVED
+    assert resolution.task_type is expected
+    assert resolution.reason_code
+
+
+def test_domain_resolution_fails_closed_for_ambiguous_and_unsupported_text() -> None:
+    ambiguous = resolve_task_domain(
+        "Compare supplier quality defects with Accounts Payable invoice exceptions."
+    )
+    unsupported = resolve_task_domain("Send an email asking for a refund.")
+    assert ambiguous.status is TaskDomainResolutionStatus.AMBIGUOUS
+    assert ambiguous.task_type is None
+    assert unsupported.status is TaskDomainResolutionStatus.UNSUPPORTED
+    assert unsupported.task_type is None
+
+
+def test_output_format_is_extracted_or_defaults_deterministically_to_pdf() -> None:
+    assert resolve_output_format("Analyze supplier quality.") == (
+        TaskOutputFormat.PDF,
+        "DOMAIN_DEFAULT",
+    )
+    assert resolve_output_format("Analyze Accounts Payable and return JSON.") == (
+        TaskOutputFormat.JSON,
+        "NATURAL_LANGUAGE_REQUEST",
+    )
+    with pytest.raises(TaskIntakeValidationError, match="PDF or JSON"):
+        resolve_output_format("Return PDF and JSON.")
+    with pytest.raises(TaskIntakeValidationError, match="supports PDF and JSON"):
+        resolve_output_format("Export an Excel spreadsheet.")

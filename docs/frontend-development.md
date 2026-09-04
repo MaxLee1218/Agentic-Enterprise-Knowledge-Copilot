@@ -1,8 +1,8 @@
 # Frontend Development
 
-The frontend is a React 19 + TypeScript enterprise execution console. It is a same-origin client
-of the existing FastAPI contract; it does not connect to PostgreSQL, the business database, RAG,
-LLM providers, or Artifact storage directly.
+The frontend is a React 19 + TypeScript chat-first workspace for governed enterprise Tasks. It is
+a same-origin client of the existing FastAPI contract; it does not connect to PostgreSQL, the
+business database, RAG, LLM providers, Queue/Worker internals, or Artifact storage directly.
 
 ## Prerequisites
 
@@ -41,9 +41,10 @@ Open `http://127.0.0.1:5173`. Vite proxies `/api/*` to `http://127.0.0.1:8000` a
 browser-only `/api` prefix. Set `VITE_API_PROXY_TARGET` only when the approved local API uses a
 different origin.
 
-The browser cannot choose or send a tenant, user, role, scope, supplier allowlist, database, or
-tool. Development identity comes from server settings. Production identity comes from the
-trusted upstream gateway and remains enforced by FastAPI.
+The New Task composer sends only natural-language `task` text and an Idempotency-Key. The browser
+cannot choose or send a task domain, output default, tenant, user, role, scope, supplier/legal
+entity allowlist, database, model, or tool. Development identity comes from server settings.
+Production identity comes from the trusted upstream gateway and remains enforced by FastAPI.
 
 ## Checks
 
@@ -55,10 +56,11 @@ npm run test
 npm run build
 ```
 
-Vitest component tests use MSW only at the HTTP boundary. They cover task validation and
-submission, lifecycle and failure states, steps, Evidence, Artifacts, clarification questions,
-typed controls, partial/free-form answers, stale conflicts, waiting cancellation, approval
-authorization and conflicts, edit restrictions, rejection, and cancellation.
+Vitest component tests use MSW only at the HTTP boundary. They cover the unpersisted New Task
+draft, natural-language-only submission, Idempotency-Key reuse, conversation reconstruction,
+polling and terminal states, lazy Evidence/execution drawers, Artifacts, natural-language
+clarification, stale conflicts with draft preservation, approval actions, explicit cancellation,
+sidebar grouping, and mobile focus behavior.
 
 Install Playwright's browser once, then run the real E2E suite:
 
@@ -69,11 +71,10 @@ npm run test:e2e
 
 Playwright starts a hermetic FastAPI application backed by the real Task Service, workflow graph,
 Evidence ledger, Approval Service, Artifact Service, and offline deterministic adapters. It also
-starts Vite, so the happy path verifies browser → `/api` proxy → FastAPI → Agent workflow →
-Evidence → downloadable Artifact. Separate tests cover approval, rejection, cancellation, and a
-typed failure response. A browser interaction test also exercises AP task creation, two
-clarification rounds under one Task ID, resume, completion, and PDF presentation; backend
-PostgreSQL recovery/concurrency remains covered by the backend integration suite.
+starts Vite, so the primary path verifies browser → `/api` proxy → FastAPI → Queue/Worker driver →
+conversation projection → Evidence → downloadable Artifact. Browser coverage includes refresh,
+lazy drawers, mobile task history, and AP task creation with two clarification rounds under one
+Task ID. Backend PostgreSQL recovery/concurrency remains covered by the backend integration suite.
 
 ## OpenAPI types
 

@@ -1,16 +1,21 @@
-# Enterprise Agent Execution Console Architecture
+# Conversational Task Workspace Frontend Architecture
 
-**Status:** implementation design  
-**Date:** 2026-08-13
+**Status:** implemented
+**Date:** 2026-09-02
+**Authority:** [frozen workspace contract](design/conversational-task-workspace.md) and
+[ADR-020](adr/ADR-020-chat-first-task-workspace.md)
 
-## 1. Purpose
+## 1. Purpose and authority
 
-The frontend is an enterprise execution console for the implemented Supplier Quality Analysis
-workflow. Its primary hierarchy is Task, Status, Execution, Approval, Evidence, and Artifact. It is
-not a general chat client, an alternative workflow engine, or an authorization boundary.
+The React frontend is a chat-first workspace for governed enterprise Tasks. One Task is presented
+as one conversation and `task_id` remains its only durable identity. This presentation layer does
+not create a Conversation aggregate, message table, alternative workflow engine, or authorization
+boundary.
 
-The backend remains authoritative for lifecycle transitions, permissions, tenant/user ownership,
-approval validation, evidence minimization, Artifact publication, and downloads.
+The backend remains authoritative for domain resolution, lifecycle transitions, trusted scope,
+permissions, policy, approvals, clarification, Evidence, verification, Artifact publication, and
+downloads. The browser never chooses an execution domain or sends identity, tenant, role, tool,
+model, data-source, or business-scope authority.
 
 ## 2. Runtime topology
 
@@ -18,131 +23,92 @@ approval validation, evidence minimization, Artifact publication, and downloads.
 Browser
   -> one frontend origin
   -> Nginx
-       /          -> React SPA assets
+       /          -> compiled React SPA
        /api/*     -> FastAPI (prefix stripped)
-  -> existing service / policy / repository / agent boundaries
+  -> existing service / policy / repository / agent / Queue / Worker boundaries
 ```
 
-Local Vite development uses the same application URLs. Vite proxies `/api` to the configurable
-development target, defaulting to `http://127.0.0.1:8000`; feature code never contains that host.
+Local Vite development proxies `/api` to `http://127.0.0.1:8000`. Production remains a static
+bundle behind unprivileged Nginx. Frontend code has no direct connection to PostgreSQL, RAG,
+business databases, Artifact storage, Queue, Worker, or model providers.
 
-No frontend code directly accesses PostgreSQL, the business database, RAG, Artifact storage, or
-model providers. No Node server is deployed at runtime.
+## 3. Technology and state ownership
 
-## 3. Technology decisions
-
-| Concern | Choice | Reason |
-|---|---|---|
-| UI runtime | React 19 + TypeScript + Vite | Small static SPA, strict typing, fast local/test builds |
-| Routing | React Router | Deep-linkable task, evidence, report, approval, and system views |
-| Server state | TanStack Query | Request deduplication, mutation invalidation, bounded polling |
-| Forms | React Hook Form + Zod | Accessible field errors and deterministic client validation |
-| API generation | `openapi-typescript` + `openapi-fetch` | Generated types plus a typed Fetch client without Axios |
-| Unit/component tests | Vitest + Testing Library + user-event | Browser-like component behavior without the backend |
-| HTTP mocks | MSW | One contract-shaped mock boundary shared by component tests |
-| E2E | Playwright | Real browser navigation, proxy, download, and workflow coverage |
-| UI components | Small repository-owned primitives | No existing design system; avoids a second large styling contract |
-| Styling | Plain modular application CSS with design tokens | Minimal dependencies and straightforward Nginx CSP compatibility |
-
-TanStack Query owns remote data. React state owns only ephemeral presentation state such as open
-dialogs and selected approval action. No Redux/Zustand store and no competing request wrapper are
-introduced.
-
-## 4. Source structure
-
-```text
-frontend/
-├── openapi/
-│   └── openapi.json              # deterministic FastAPI snapshot
-├── src/
-│   ├── api/
-│   │   ├── client.ts             # openapi-fetch instance and normalized errors
-│   │   ├── types.ts              # aliases of generated public contracts
-│   │   └── generated/
-│   │       └── schema.d.ts        # generated; never manually edited
-│   ├── app/
-│   │   ├── App.tsx
-│   │   └── queryClient.ts
-│   ├── components/               # AppShell, badges, states, dialog, metadata
-│   ├── features/tasks/            # typed API operations and query hooks
-│   ├── pages/
-│   ├── test/
-│   ├── utils/
-│   ├── main.tsx
-│   └── styles.css
-├── tests/
-│   └── e2e/
-├── Dockerfile
-├── nginx.conf
-├── package.json
-├── package-lock.json
-├── tsconfig*.json
-├── vite.config.ts
-├── vitest.config.ts
-└── playwright.config.ts
-
-scripts/
-└── export_frontend_openapi.py     # creates the snapshot from create_app().openapi()
-```
-
-Feature folders own query hooks and domain-specific presentation. Pages compose features but do
-not issue raw Fetch calls. Generated code is isolated under `src/api/generated`.
-
-## 5. Routes and information architecture
-
-| URL | View |
+| Concern | Choice |
 |---|---|
-| `/` | Redirect to `/tasks` |
-| `/tasks` | Paginated current-user task history |
-| `/tasks/new` | Simple enterprise task form with optional advanced constraints |
-| `/tasks/:taskId` | Overview and execution steps |
-| `/tasks/:taskId/evidence` | Type-specific minimized Evidence and lineage |
-| `/tasks/:taskId/report` | Governed Artifact metadata and downloads |
-| `/tasks/:taskId/approvals/:approvalId` | Authorized approval workbench |
-| `/system` | Actual liveness/readiness and returned dependency states |
+| UI | React 19, TypeScript, Vite |
+| Routing | React Router |
+| Server state and polling | TanStack Query |
+| Public API types | FastAPI OpenAPI, `openapi-typescript`, `openapi-fetch` |
+| Component tests | Vitest, Testing Library, MSW |
+| Browser tests | Playwright |
+| Styling | repository-owned CSS and design tokens |
 
-Task subnavigation uses real URLs rather than local tabs so refresh, bookmarking, and audit handoff
-remain reliable.
+TanStack Query owns remote state. React state is limited to draft text, open drawers/dialogs,
+sidebar presentation, and an in-flight Idempotency-Key. Critical interaction state is rebuilt from
+the server after refresh. No Redux/Zustand store, credential storage, chat memory, or competing
+request client is introduced.
 
-## 6. Query and polling model
+## 4. Information architecture
 
-Stable query keys are:
+| URL | Meaning |
+|---|---|
+| `/` | unpersisted New Task welcome and composer |
+| `/tasks/:taskId` | refresh-safe conversation projection for one Task |
+| `/system` | operational liveness/readiness view, separate from ordinary work |
+
+Legacy `/tasks`, `/tasks/new`, task overview, report, Evidence, and approval deep links redirect to
+the canonical workspace route. Evidence and execution are lazy drawers; approval is an inline
+structured card; verified reports are Artifact cards in the conversation.
+
+The desktop shell uses a collapsible dark-green history sidebar. Mobile uses a modal task-history
+drawer with a focus trap, Escape dismissal, and focus return. History is grouped deterministically
+into Today, Yesterday, Previous 7 days, Previous 30 days, and Older, with server pagination.
+
+## 5. Submission and supported-domain resolution
+
+The first valid composer message performs:
 
 ```text
-["tasks", filters]
-["task", taskId]
-["steps", taskId]
-["evidence", taskId]
-["artifacts", taskId]
-["approval", taskId, approvalId]
-["health"]
+POST /v1/tasks
+Idempotency-Key: <per-draft UUID>
+{"task": "<natural language>"}
 ```
 
-The task query controls polling:
+The browser sends no `task_type`, output selector, execution limit, approval preference, or scope
+form. It preserves the same Idempotency-Key while retrying the same draft and navigates to
+`/tasks/:taskId` only after the existing `202 Accepted` response.
 
-- `CREATED`, `UNDERSTANDING`, `PLANNING`, `EXECUTING`, `RETRYING`, `REPLANNING`, and `VERIFYING`:
-  every 2 seconds while the view is mounted;
-- `WAITING_APPROVAL` and `WAITING_CLARIFICATION`: every 10 seconds;
-- `COMPLETED`, `FAILED`, and `CANCELLED`: no polling.
+Before domain-specific understanding, the backend deterministically resolves exactly one enabled
+domain from the request text, intersects it with the caller's trusted `allowed_task_types`, and
+persists and audits its typed reason. Multiple supported-domain matches are ambiguous; no match is
+unsupported; unauthorized matches are denied. None falls back to caller `purpose`.
 
-Steps follow the same task-aware interval while the overview is mounted. Evidence and Artifacts
-refresh when lifecycle state changes and on relevant mutations rather than on independent
-high-frequency timers. Query polling automatically stops when the page unmounts.
+An explicit PDF or JSON request is extracted server-side. If absent, the enabled Supplier Quality
+and Accounts Payable manifests use the deterministic PDF default. Conflicting or unsupported
+formats fail closed.
 
-Mutations are create task, submit clarification, cancel task, and resolve approval. Each invalidates
-only its task, steps, evidence, artifacts, relevant human-interaction, and task-history keys.
+## 6. Read projection and API boundaries
 
-Task detail is the discovery authority for `pending_clarification`; the console does not infer it
-from Audit. The clarification panel renders OpenAPI-generated `date`, `date_range`, `text`,
-`single_select`, and `multi_select` controls. It accepts any complete subset plus optional natural
-language, prevents half-filled date ranges, submits to the same Task, and displays typed stale or
-permission conflicts. Candidate choices are rendered exactly as returned by the trusted backend.
-While waiting, the overview explicitly states that execution has not started and shows no invented
-plan steps.
+`GET /v1/tasks` returns a lightweight owner/tenant-scoped summary page containing only ID, safe
+title, lifecycle/runtime status, resolved task type, and creation time. It does not load steps,
+Evidence, approval detail, Artifact detail, raw metadata, or tool inputs.
 
-## 7. API type lifecycle
+`GET /v1/tasks/{task_id}` returns the ordinary task summary plus the versioned
+`task-interaction-projection.v1`. The projection is a sanitized read model over existing
+authoritative records:
 
-The backend Pydantic/OpenAPI document is the source of truth:
+- initial TaskRequest display text;
+- all clarification questions and submitted user responses;
+- stable lifecycle phase events;
+- minimized approval summaries;
+- safe terminal TaskResult summary.
+
+Ordering uses persisted timestamps plus deterministic tie-breakers. Artifact metadata remains on
+the existing Artifact collection. Approval details, Evidence, and execution steps remain lazy
+authorized reads. There is no `/conversations` endpoint or generic message-write API.
+
+The type lifecycle remains:
 
 ```text
 FastAPI/Pydantic
@@ -150,94 +116,63 @@ FastAPI/Pydantic
   -> frontend/openapi/openapi.json
   -> openapi-typescript
   -> frontend/src/api/generated/schema.d.ts
-  -> openapi-fetch and React query hooks
+  -> typed feature queries and mutations
 ```
 
-Commands:
+## 7. Conversation lifecycle
 
-```text
-npm run api:export
-npm run api:generate
-npm run api:check
-```
+The stream merges the persisted initial request, quiet phase events, clarification rounds,
+approval summaries, result, and Artifact cards. Polling uses the existing status-aware cadence:
+active tasks poll frequently, human-wait states poll slowly, and terminal states stop.
 
-`api:check` regenerates both artifacts and fails on a Git diff in CI. The generated declaration
-file is committed for review and deterministic `npm ci` builds. It is never manually patched.
+The composer is enabled only for an unresolved clarification belonging to the current Task. A
+response is natural-language text sent to the existing clarification endpoint and does not create
+a Task. During execution, approval, and terminal states the composer is disabled with explicit
+copy. Multi-round clarification remains on the same URL and draft text survives typed failures or
+stale-state conflicts.
 
-Binary Artifact download is a normal browser navigation to the guarded same-origin API URL; it is
-not routed through the JSON generated client.
+Approvals are never conversational commands. A pending inline card lazily loads authorized detail
+and exposes explicit Approve, Edit and resubmit, and Reject controls. Backend editable-field,
+scope, stale-version, and permission checks remain authoritative. Cancellation is likewise an
+explicit confirmed action and not a message.
 
-## 8. Task history API boundary
+## 8. Evidence, execution, and Artifacts
 
-The pre-migration audit found no list operation. The migration adds a minimal read-only endpoint
-at `GET /v1/tasks` using the existing task service and repository boundaries. It:
+Evidence and execution records are secondary, read-only detail drawers opened on demand. Evidence
+shows only the minimized public contract; execution shows safe step purpose and status, not tool
+arguments or hidden checkpoint/runtime authority. Technical failure detail is shown only from the
+safe public error summary.
 
-- constrain every query by trusted tenant and creating user;
-- require the existing task read permission;
-- order newest first with task ID as deterministic tie-breaker;
-- accept an optional real `TaskStatus` filter;
-- use bounded `limit` and non-negative `offset` parameters;
-- return `items`, `total`, `limit`, and `offset`;
-- return the existing safe `TaskResponse` shape for items;
-- never expose raw request metadata, task contract, plan input, tool input, or persistence JSON.
+Completed tasks fetch Artifact metadata and render one card per verified file. Open/download URLs
+are constructed only from encoded Task and Artifact IDs under the same-origin API. Storage paths,
+credentials, checksums used as authority, and unverified bytes never enter presentation state.
 
-This is a backwards-compatible read surface. It does not change the frozen lifecycle or business
-behavior.
+## 9. Accessibility and resilient interaction
 
-## 9. Approval workbench
+The shell and pages use landmarks, semantic headings, labelled controls, text status labels, skip
+navigation, and visible focus. Drawers and confirmation dialogs trap focus, close on Escape, and
+return focus to the opener. The composer implements Enter-to-send, Shift+Enter for newline, IME
+composition protection, a visible send button, deterministic length validation, and draft
+preservation on failure. Responsive rules keep the stream readable and the composer reachable at
+desktop and mobile widths; reduced-motion preferences are honored.
 
-The page first obtains authorized `ApprovalDetailResponse`. A 403 produces an explicit read-only
-authorization message; it does not infer or request a role from the user.
+## 10. Security and intentional exclusions
 
-- Approve sends only `action` and optional reason.
-- Reject requires a non-empty reason.
-- Edit starts from a deep clone of the complete `proposed_arguments`; only fields returned in
-  `editable_fields` get controls. The v1.1 controls support only integer `top_k` and `row_limit`
-  decreases. The full cloned object is sent as `edited_arguments`.
-- Resolved/expired approval actions are disabled. Backend 409 remains authoritative for races.
+All user, retrieval, tool, and model text is treated as untrusted. Conversation display is derived
+through existing redaction and output-safety guards. Browser messages cannot grant authority,
+bypass approvals, select tools, or broaden data scope.
 
-Requested arguments are rendered as read-only structured data. Sensitive credentials are not
-expected in the contract and are never persisted by frontend code.
+This stage intentionally adds no chat database, cross-Task memory, multiple Tasks in one thread,
+streaming/SSE/WebSocket transport, file upload, natural-language approval/cancellation, Queue or
+Worker changes, second lease system, alternate execution path, or claim of broader production
+readiness.
 
-## 10. Evidence and Artifact presentation
+## 11. Verification
 
-Evidence cards render only public fields. Each type receives a distinct label and relevant
-metadata, while common step/producer/time/lineage fields remain visible. Missing optional metadata
-is described as not exposed rather than shown as false or empty business data.
-
-Artifact cards show format, media type, filename, size, checksum, and creation time. Download URLs
-use encoded task and Artifact IDs under `/api/v1/tasks/.../artifacts/...`. Storage locations are
-never accepted from API data or constructed by the UI.
-
-## 11. Error and accessibility model
-
-The API adapter normalizes the public error object and FastAPI's nested 401 `detail` shape into one
-`ApiError` carrying status, code, safe message, task ID, trace ID, and details. Pages map 401, 403,
-404, 409, 422, 500, 503, network failures, and timeouts to actionable user-facing states. Raw
-response bodies, stack traces, and request arguments are not logged or rendered.
-
-Semantic headings, landmarks, forms, tables/lists, labels, error associations, keyboard focus,
-and modal focus behavior are required. Status components always include text/iconography and never
-depend on color alone. Motion is limited and respects reduced-motion preferences.
-
-## 12. Build and deployment
-
-The frontend image is multi-stage:
-
-1. pinned Node Alpine build with `npm ci` and `npm run build`;
-2. existing unprivileged Nginx runtime serving `dist/`.
-
-The Nginx `/api/` location remains ahead of `try_files`; all application routes fall back to
-`index.html`. The final image contains no source dependencies, package manager, credentials, or
-backend configuration.
-
-Local Enterprise Compose continues to expose only `127.0.0.1:8080`. Production deployment places
-the frontend behind the approved identity gateway; Nginx does not become an authentication
-service.
-
-## 13. Legacy migration
-
-The existing visual tokens, same-origin request pattern, readiness semantics, task submission,
-step/evidence summaries, and governed downloads are retained in behavior. The former `app.js` and
-standalone `styles.css` implementation have been replaced by typed React features and removed, so
-only one production UI remains.
+Contract/unit coverage verifies domain and format resolution, safe projections, lightweight list
+shape, polling, draft/idempotency behavior, clarification, approval, terminal read-only behavior,
+lazy detail, accessibility interactions, and responsive history. Playwright covers the mocked
+workspace, real two-round Accounts Payable clarification through the hermetic FastAPI/Worker
+driver, refresh reconstruction, Artifact rendering, and mobile drawer behavior. The full backend,
+frontend static/build, OpenAPI, documentation, evaluation, and browser-inspection gates remain
+release requirements.

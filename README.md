@@ -153,11 +153,13 @@ AP workflow, policy, approval, evidence or verification gates.
 
 ## Frontend
 
-The implemented React + TypeScript console provides tenant/owner-scoped task history, governed
-task submission, lifecycle and step inspection, minimized Evidence views, verified Artifact
-downloads, cancellation, system health, and an authorized approval workbench. It preserves the
-same-origin `/api` boundary and never accepts browser-selected identity, tenant, role, database,
-RAG source, or tool configuration.
+The implemented React + TypeScript frontend is a chat-first workspace for governed enterprise
+Tasks. `+ New Task` starts an unpersisted natural-language draft; the backend resolves the enabled
+Supplier Quality or Accounts Payable domain and output contract; and one Task is reconstructed as
+one durable conversation. Grouped task history, multi-round clarification, explicit approval and
+cancellation, lazy Evidence/execution drawers, verified Artifact cards, and system health reuse the
+existing authoritative services. The browser sends only task text plus an Idempotency-Key and
+never selects identity, tenant, role, domain, scope, tool, model, database, or RAG source.
 
 Install and run it against the local API:
 
@@ -181,7 +183,8 @@ npm run test:e2e
 ```
 
 The Playwright suite starts a hermetic real FastAPI/Task Service/Agent workflow and verifies the
-browser-to-Evidence-to-Artifact path plus approval, rejection, cancellation, and failure UX. See
+chat-first submission, multi-round clarification, refresh projection, Evidence-to-Artifact path,
+mobile history drawer, approval, cancellation, and failure UX. See
 [Frontend development](docs/frontend-development.md),
 [Frontend architecture](docs/frontend-architecture.md), and the pre-migration
 [Frontend audit](docs/frontend-audit.md).

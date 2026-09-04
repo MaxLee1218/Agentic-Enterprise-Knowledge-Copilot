@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 from typing import Protocol
@@ -51,16 +52,28 @@ from copilot.services.task_intake import (
     IntakeLimits,
     NaturalLanguageTaskCommand,
     RequestSource,
+    TaskDomainResolutionStatus,
+    TaskIntakeValidationError,
     TrustedCallerContext,
     TrustedTaskContext,
     merge_execution_constraints,
+    resolve_output_format,
+    resolve_task_domain,
     sanitize_metadata,
     validate_task_text,
 )
 from copilot.services.task_views import (
+    ApprovalSummaryView,
+    ClarificationRoundView,
+    InitialUserMessageView,
     TaskClarificationView,
+    TaskDetailView,
     TaskEvidenceView,
+    TaskInteractionProjectionView,
+    TaskListItemView,
     TaskListView,
+    TaskPhaseEventView,
+    TaskResultSummaryView,
     TaskStepView,
     TaskSummaryView,
 )
@@ -153,6 +166,8 @@ class TaskApprovalRepository(Protocol):
         self, task_id: str, *, tenant_id: str
     ) -> tuple[ApprovalRequest, ...]: ...
 
+    def list_by_task(self, task_id: str, *, tenant_id: str) -> tuple[ApprovalRequest, ...]: ...
+
     def resolve(
         self, pending: ApprovalRequest, resolved: ApprovalRequest, *, tenant_id: str
     ) -> None: ...
@@ -162,6 +177,8 @@ class TaskClarificationRepository(Protocol):
     """Pending clarification read boundary for Task summaries."""
 
     def get_pending_for_task(self, task_id: str, *, tenant_id: str) -> TaskClarification | None: ...
+
+    def list_by_task(self, task_id: str, *, tenant_id: str) -> tuple[TaskClarification, ...]: ...
 
 
 class TaskRuntimeRepository(Protocol):
@@ -281,6 +298,8 @@ class NaturalLanguageTaskService:
                     "request_source": context.request_source.value,
                     "input_size": context.task_text_length,
                     "input_hash": context.task_text_hash,
+                    "task_type": context.task_type.value,
+                    "domain_resolution_reason": _domain_resolution_reason(request),
                 },
             )
             security = request.metadata.root.get("security")
@@ -288,28 +307,64 @@ class NaturalLanguageTaskService:
                 self._audit_security_finding(request, context, caller, security)
             return self._engine.submit(request, context)
 
+    def audit_domain_resolution(
+        self,
+        request: TaskRequest,
+        context: TrustedTaskContext,
+        caller: TrustedCallerContext,
+    ) -> None:
+        """Record the accepted deterministic domain/output decision without raw input."""
+        if self._audit_sink is None:
+            return
+        intake = request.metadata.root.get("intake")
+        resolution = intake.get("domain_resolution") if isinstance(intake, dict) else None
+        self._audit_sink.append(
+            WorkflowAuditRecord(
+                event_id=self._ids.new_id("AUD"),
+                event="task_domain_resolved",
+                task_id=context.task_id,
+                plan_id=(
+                    "accounts-payable-analysis"
+                    if context.task_type is TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1
+                    else "supplier-quality-analysis"
+                ),
+                plan_version=0,
+                timestamp=self._clock(),
+                tenant_id=context.tenant_id,
+                trace_id=context.trace_id,
+                actor_id=caller.user_id,
+                scopes=caller.scopes,
+                status=(
+                    str(resolution.get("status", "RESOLVED"))
+                    if isinstance(resolution, dict)
+                    else "RESOLVED"
+                ),
+                metadata=JsonObject(
+                    {
+                        "actor_id": caller.user_id,
+                        "tenant_id": context.tenant_id,
+                        "trace_id": context.trace_id,
+                        "task_type": context.task_type.value,
+                        "reason_code": _domain_resolution_reason(request),
+                        "output_format": (
+                            str(intake.get("output_format", "")) if isinstance(intake, dict) else ""
+                        ),
+                        "output_format_source": (
+                            str(intake.get("output_format_source", ""))
+                            if isinstance(intake, dict)
+                            else ""
+                        ),
+                    }
+                ),
+            )
+        )
+
     def prepare(
         self,
         command: NaturalLanguageTaskCommand,
         caller: TrustedCallerContext,
     ) -> tuple[TaskRequest, TrustedTaskContext]:
         """Validate an intake without executing it; useful for thin CLI dry-runs and tests."""
-        task_type = command.task_type or TaskType(caller.purpose)
-        if task_type not in caller.allowed_task_types:
-            raise TaskPermissionDeniedError("TASK-TYPE")
-        if command.source is not RequestSource.INTERNAL:
-            submission_decision = self._permission_matrix.evaluate(
-                AuthorizationRequest(
-                    action=Permission.SUBMIT_TASK,
-                    roles=caller.roles,
-                    resource_type="task_collection",
-                    purpose=task_type.value,
-                    scopes=caller.scopes,
-                    is_demo_identity=caller.is_demo_identity,
-                )
-            )
-            if not submission_decision.allowed:
-                raise TaskPermissionDeniedError("TASK-COLLECTION")
         if not caller.authenticated:
             raise TaskPermissionDeniedError("TASK-UNAUTHENTICATED")
         task_text = validate_task_text(
@@ -322,13 +377,6 @@ class NaturalLanguageTaskService:
             max_depth=self._limits.max_metadata_depth,
             max_items=self._limits.max_metadata_items,
         )
-        effective = merge_execution_constraints(
-            limits=self._limits,
-            caller=caller,
-            requested_max_steps=command.max_steps,
-            requested_read_only=command.read_only,
-            requested_approval=command.require_approval,
-        )
         now = self._clock()
         task_id = self._ids.new_id("T")
         trace_id = validate_correlation_id(command.trace_id) or self._ids.new_id("TRACE")
@@ -340,20 +388,6 @@ class NaturalLanguageTaskService:
             source_id=task_id,
         )
         request_metadata = dict(metadata.root)
-        request_metadata["intake"] = {
-            "request_source": command.source.value,
-            "session_id": session_id,
-            "trace_id": trace_id,
-            "task_text_hash": task_hash,
-            "task_text_length": len(task_text),
-            "output_format": (
-                command.output_format.value if command.output_format is not None else None
-            ),
-            "effective_max_steps": effective.max_steps,
-            "effective_read_only": effective.read_only,
-            "effective_require_approval": effective.require_approval,
-            "task_type": task_type.value,
-        }
         request_metadata["security"] = {
             "finding_count": len(injection_scan.findings),
             "finding_ids": [finding.finding_id for finding in injection_scan.findings],
@@ -372,6 +406,71 @@ class NaturalLanguageTaskService:
             created_at=now,
             metadata=JsonObject(request_metadata),
         )
+        domain_resolution = resolve_task_domain(
+            task_text,
+            explicit_task_type=command.task_type,
+        )
+        if domain_resolution.status is TaskDomainResolutionStatus.AMBIGUOUS:
+            raise TaskIntakeValidationError(
+                "AMBIGUOUS_TASK_TYPE",
+                "Please describe either a supplier quality analysis or an "
+                "Accounts Payable investigation.",
+            )
+        if domain_resolution.status is TaskDomainResolutionStatus.UNSUPPORTED:
+            raise TaskIntakeValidationError(
+                "UNSUPPORTED_TASK_TYPE",
+                "This task is not currently supported. I can help with supplier quality "
+                "analysis and Accounts Payable compliance and exception investigations.",
+            )
+        task_type = domain_resolution.task_type
+        if task_type is None:
+            raise RuntimeError("resolved domain did not contain a task type")
+        if task_type not in caller.allowed_task_types:
+            raise TaskPermissionDeniedError("TASK-TYPE")
+        if command.source is not RequestSource.INTERNAL:
+            submission_decision = self._permission_matrix.evaluate(
+                AuthorizationRequest(
+                    action=Permission.SUBMIT_TASK,
+                    roles=caller.roles,
+                    resource_type="task_collection",
+                    purpose=task_type.value,
+                    scopes=caller.scopes,
+                    is_demo_identity=caller.is_demo_identity,
+                )
+            )
+            if not submission_decision.allowed:
+                raise TaskPermissionDeniedError("TASK-COLLECTION")
+        output_format, output_format_source = resolve_output_format(
+            task_text,
+            explicit_output_format=command.output_format,
+        )
+        effective = merge_execution_constraints(
+            limits=self._limits,
+            caller=caller,
+            requested_max_steps=command.max_steps,
+            requested_read_only=command.read_only,
+            requested_approval=command.require_approval,
+        )
+        protected_metadata = dict(request.metadata.root)
+        protected_metadata["intake"] = {
+            "request_source": command.source.value,
+            "session_id": session_id,
+            "trace_id": trace_id,
+            "task_text_hash": task_hash,
+            "task_text_length": len(task_text),
+            "output_format": output_format.value,
+            "output_format_source": output_format_source,
+            "effective_max_steps": effective.max_steps,
+            "effective_read_only": effective.read_only,
+            "effective_require_approval": effective.require_approval,
+            "task_type": task_type.value,
+            "domain_resolution": {
+                "status": domain_resolution.status.value,
+                "reason_code": domain_resolution.reason_code,
+                "task_type": task_type.value,
+            },
+        }
+        request = request.model_copy(update={"metadata": JsonObject(protected_metadata)})
         context = TrustedTaskContext(
             task_id=task_id,
             trace_id=trace_id,
@@ -395,11 +494,7 @@ class NaturalLanguageTaskService:
             is_demo_identity=caller.is_demo_identity,
             purpose=task_type.value,
             task_type=task_type,
-            output_format=(
-                command.output_format.artifact_type_for(task_type)
-                if command.output_format is not None
-                else None
-            ),
+            output_format=output_format.artifact_type_for(task_type),
             max_steps=effective.max_steps,
             read_only=effective.read_only,
             require_approval=effective.require_approval,
@@ -419,12 +514,20 @@ class NaturalLanguageTaskService:
         caller: TrustedCallerContext,
         *,
         trace_id: str = "",
-    ) -> TaskSummaryView:
-        """Return one authorized, stable task summary."""
+    ) -> TaskDetailView:
+        """Return one authorized task plus its refresh-safe interaction projection."""
         request, state, contract, plan = self._load_authorized(
             task_id, caller, trace_id=trace_id, permission=Permission.READ_TASK
         )
-        return self._task_view(request, state, contract, plan, tenant_id=caller.tenant_id)
+        summary = self._task_view(request, state, contract, plan, tenant_id=caller.tenant_id)
+        return TaskDetailView.from_summary(
+            summary,
+            self._interaction_projection(
+                request,
+                state,
+                tenant_id=caller.tenant_id,
+            ),
+        )
 
     def list_tasks(
         self,
@@ -458,11 +561,9 @@ class NaturalLanguageTaskService:
             offset=offset,
         )
         items = tuple(
-            self._task_view(
+            self._task_list_item_view(
                 repository.request_for(task_id, tenant_id=caller.tenant_id),
                 repository.state_for(task_id, tenant_id=caller.tenant_id),
-                repository.contract_for(task_id, tenant_id=caller.tenant_id),
-                repository.plan_for(task_id, tenant_id=caller.tenant_id),
                 tenant_id=caller.tenant_id,
             )
             for task_id in task_ids
@@ -757,7 +858,7 @@ class NaturalLanguageTaskService:
             task_id=task_id,
             trace_id=_trace_id(request),
             status=state.state.value,
-            task_type=contract.task_type.value if contract is not None else None,
+            task_type=_task_type_for_access(request, contract).value,
             created_at=request.created_at,
             started_at=events[0].timestamp if events else request.created_at,
             completed_at=completed_at,
@@ -788,6 +889,126 @@ class NaturalLanguageTaskService:
             ),
             error_summary=(redact_text(error_summary) if error_summary is not None else None),
             runtime_status=self._runtime_status(task_id, tenant_id, state),
+        )
+
+    def _task_list_item_view(
+        self,
+        request: TaskRequest,
+        state: TaskState,
+        *,
+        tenant_id: str,
+    ) -> TaskListItemView:
+        """Build a sidebar row without reading plans, steps, Evidence, or Artifacts."""
+        return TaskListItemView(
+            task_id=state.task_id,
+            task_summary=_task_summary(request.raw_input, self._output_guard),
+            status=state.state.value,
+            runtime_status=self._runtime_status(state.task_id, tenant_id, state),
+            task_type=_task_type_for_access(request, None).value,
+            created_at=request.created_at,
+        )
+
+    def _interaction_projection(
+        self,
+        request: TaskRequest,
+        state: TaskState,
+        *,
+        tenant_id: str,
+    ) -> TaskInteractionProjectionView:
+        """Reconstruct conversation facts from existing task-scoped authorities."""
+        repository = self._require_repository()
+        task_id = state.task_id
+        clarifications = (
+            self._clarifications.list_by_task(task_id, tenant_id=tenant_id)
+            if self._clarifications is not None
+            else ()
+        )
+        approvals = (
+            self._approvals.list_by_task(task_id, tenant_id=tenant_id)
+            if self._approvals is not None
+            else ()
+        )
+        task_result = repository.task_result_for(task_id, tenant_id=tenant_id)
+        phase_events: list[TaskPhaseEventView] = []
+        for event in sorted(
+            repository.state_events_for(task_id, tenant_id=tenant_id),
+            key=lambda value: (value.timestamp, value.event_id),
+        ):
+            if phase_events and phase_events[-1].phase == event.to_state:
+                continue
+            phase_events.append(
+                TaskPhaseEventView(phase=event.to_state, occurred_at=event.timestamp)
+            )
+        return TaskInteractionProjectionView(
+            schema_version="task-interaction-projection.v1",
+            initial_user_message=InitialUserMessageView(
+                display_text=_safe_display_text(
+                    request.raw_input,
+                    self._output_guard,
+                    source_id=f"{task_id}:initial-user-message",
+                    maximum_length=self._limits.max_task_text_length,
+                    fallback="Task input was withheld by the output safety policy.",
+                ),
+                created_at=request.created_at,
+            ),
+            clarification_rounds=tuple(
+                ClarificationRoundView(
+                    clarification_id=item.clarification_id,
+                    round=item.round,
+                    status=item.status.value,
+                    questions=item.questions,
+                    response_display_text=_clarification_response_display(
+                        item,
+                        self._output_guard,
+                    ),
+                    created_at=item.created_at,
+                    submitted_at=item.submitted_at,
+                    resolved_at=item.resolved_at,
+                )
+                for item in sorted(
+                    clarifications,
+                    key=lambda value: (value.created_at, value.round, value.clarification_id),
+                )
+            ),
+            phase_events=tuple(phase_events),
+            approval_summaries=tuple(
+                ApprovalSummaryView(
+                    approval_id=item.approval_id,
+                    status=item.status.value,
+                    safe_label=_safe_display_text(
+                        item.reason,
+                        self._output_guard,
+                        source_id=f"{task_id}:{item.approval_id}",
+                        maximum_length=500,
+                        fallback="Approval required for a governed action.",
+                        source_type=ContentSourceType.INTERNAL_CONFIGURATION,
+                    ),
+                    resolution_action=(
+                        item.resolution_action.value if item.resolution_action is not None else None
+                    ),
+                    created_at=item.created_at,
+                    resolved_at=item.decided_at,
+                )
+                for item in sorted(
+                    approvals,
+                    key=lambda value: (value.created_at, value.approval_id),
+                )
+            ),
+            result=(
+                TaskResultSummaryView(
+                    final_status=task_result.final_status.value,
+                    safe_summary=_safe_display_text(
+                        task_result.summary,
+                        self._output_guard,
+                        source_id=f"{task_id}:result",
+                        maximum_length=4000,
+                        fallback="The task reached a terminal state.",
+                        source_type=ContentSourceType.LLM_OUTPUT,
+                    ),
+                )
+                if task_result is not None
+                else None
+            ),
         )
 
     def _runtime_status(self, task_id: str, tenant_id: str, state: TaskState) -> str:
@@ -943,18 +1164,69 @@ def _trace_id(request: TaskRequest) -> str:
     return request.id
 
 
-def _task_summary(raw_input: str, output_guard: OutputGuard) -> str:
-    normalized = " ".join(raw_input.split())
+def _domain_resolution_reason(request: TaskRequest) -> str:
+    intake = request.metadata.root.get("intake")
+    resolution = intake.get("domain_resolution") if isinstance(intake, dict) else None
+    reason = resolution.get("reason_code") if isinstance(resolution, dict) else None
+    return reason if isinstance(reason, str) and reason else "UNKNOWN"
+
+
+def _safe_display_text(
+    value: str,
+    output_guard: OutputGuard,
+    *,
+    source_id: str,
+    maximum_length: int,
+    fallback: str,
+    source_type: ContentSourceType = ContentSourceType.USER_INPUT,
+) -> str:
+    normalized = " ".join(redact_text(value).split())
     guarded = output_guard.guard(
         normalized,
-        source_type=ContentSourceType.USER_INPUT,
-        source_id="task-summary",
+        source_type=source_type,
+        source_id=source_id,
         target="api",
     )
     if guarded.disposition is OutputDisposition.BLOCKED or not isinstance(guarded.content, str):
-        return "Task input was withheld by the output safety policy."
-    normalized = guarded.content
-    return normalized if len(normalized) <= 240 else f"{normalized[:237]}..."
+        return fallback
+    content = guarded.content
+    if len(content) <= maximum_length:
+        return content
+    return f"{content[: maximum_length - 3]}..."
+
+
+def _clarification_response_display(
+    clarification: TaskClarification,
+    output_guard: OutputGuard,
+) -> str | None:
+    response = clarification.response
+    if response is None:
+        return None
+    if response.message is not None:
+        content = response.message
+    else:
+        pairs = [
+            f"{key}: {json.dumps(value, ensure_ascii=False, sort_keys=True)}"
+            for key, value in sorted(response.answers.root.items())
+        ]
+        content = "; ".join(pairs)
+    return _safe_display_text(
+        content,
+        output_guard,
+        source_id=f"{clarification.task_id}:{clarification.clarification_id}:response",
+        maximum_length=4000,
+        fallback="Clarification response was withheld by the output safety policy.",
+    )
+
+
+def _task_summary(raw_input: str, output_guard: OutputGuard) -> str:
+    return _safe_display_text(
+        raw_input,
+        output_guard,
+        source_id="task-summary",
+        maximum_length=240,
+        fallback="Task input was withheld by the output safety policy.",
+    )
 
 
 def _evidence_view(item: EvidenceItem, producer: str | None) -> TaskEvidenceView:

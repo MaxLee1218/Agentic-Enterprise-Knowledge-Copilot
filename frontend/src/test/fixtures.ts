@@ -26,6 +26,25 @@ export const task: Task = {
   evidence_count: 3,
   artifact_count: 2,
   error_summary: null,
+  interaction_projection: {
+    schema_version: "task-interaction-projection.v1",
+    initial_user_message: {
+      display_text:
+        "Analyze supplier quality for Q2 2026 and generate a PDF report.",
+      created_at: "2026-08-13T08:00:00Z",
+    },
+    clarification_rounds: [],
+    phase_events: [
+      { phase: "UNDERSTANDING", occurred_at: "2026-08-13T08:00:01Z" },
+      { phase: "COMPLETED", occurred_at: "2026-08-13T08:00:05Z" },
+    ],
+    approval_summaries: [],
+    result: {
+      final_status: "COMPLETED",
+      safe_summary:
+        "The supplier quality analysis completed with verified evidence.",
+    },
+  },
 };
 
 export const waitingTask: Task = {
@@ -36,6 +55,24 @@ export const waitingTask: Task = {
   current_step: "S-DB-01",
   pending_approval_id: "AP-TEST-001",
   artifact_count: 0,
+  interaction_projection: {
+    ...task.interaction_projection,
+    phase_events: [
+      { phase: "UNDERSTANDING", occurred_at: "2026-08-13T08:00:01Z" },
+      { phase: "WAITING_APPROVAL", occurred_at: "2026-08-13T08:00:02Z" },
+    ],
+    approval_summaries: [
+      {
+        approval_id: "AP-TEST-001",
+        status: "PENDING",
+        safe_label: "Database query requires approval.",
+        resolution_action: null,
+        created_at: "2026-08-13T08:00:02Z",
+        resolved_at: null,
+      },
+    ],
+    result: null,
+  },
 };
 
 export const clarificationTask: Task = {
@@ -72,6 +109,47 @@ export const clarificationTask: Task = {
   step_count: 0,
   evidence_count: 0,
   artifact_count: 0,
+  interaction_projection: {
+    ...task.interaction_projection,
+    phase_events: [
+      { phase: "UNDERSTANDING", occurred_at: "2026-08-13T08:00:01Z" },
+      { phase: "WAITING_CLARIFICATION", occurred_at: "2026-08-13T08:00:02Z" },
+    ],
+    clarification_rounds: [
+      {
+        clarification_id: "CLAR-TEST-001",
+        round: 1,
+        status: "PENDING",
+        questions: [
+          {
+            field: "time_range",
+            reason:
+              "An explicit Accounts Payable invoice date range is required.",
+            prompt: "What exact start and end dates should be analyzed?",
+            input_type: "date_range",
+            required: true,
+            allowed_values: [],
+            constraints: {},
+          },
+          {
+            field: "legal_entity_ids",
+            reason: "The caller has more than one authorized legal entity.",
+            prompt: "Select an authorized legal entity.",
+            input_type: "single_select",
+            required: true,
+            allowed_values: ["LE-CN-01", "LE-DE-01"],
+            constraints: {},
+          },
+        ],
+        response_display_text: null,
+        created_at: "2026-08-13T08:00:02Z",
+        submitted_at: null,
+        resolved_at: null,
+      },
+    ],
+    approval_summaries: [],
+    result: null,
+  },
 };
 
 export const accountsPayableTask: Task = {
@@ -82,6 +160,14 @@ export const accountsPayableTask: Task = {
     "Analyze Accounts Payable exceptions from 2026-04-01 to 2026-06-30.",
   step_count: 14,
   artifact_count: 1,
+  interaction_projection: {
+    ...task.interaction_projection,
+    initial_user_message: {
+      display_text:
+        "Analyze Accounts Payable exceptions from 2026-04-01 to 2026-06-30.",
+      created_at: "2026-08-13T08:00:00Z",
+    },
+  },
 };
 
 export const createdTask: TaskCreateResponse = {

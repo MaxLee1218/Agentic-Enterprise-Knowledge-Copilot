@@ -310,11 +310,7 @@ def test_ap_two_round_clarification_resumes_same_task_without_inline_graph(
     try:
         accepted = harness.client.post(
             "/v1/tasks",
-            json={
-                "task": original,
-                "task_type": "accounts_payable_analysis.v1",
-                "output_format": "pdf",
-            },
+            json={"task": original},
         )
         assert accepted.status_code == 202, accepted.text
         task_id = accepted.json()["task_id"]
@@ -395,6 +391,14 @@ def test_ap_two_round_clarification_resumes_same_task_without_inline_graph(
 
     assert completed["task_id"] == task_id
     assert completed["runtime_status"] == "FINISHED"
+    projection = cast(dict[str, object], completed["interaction_projection"])
+    rounds = cast(list[dict[str, object]], projection["clarification_rounds"])
+    assert projection["schema_version"] == "task-interaction-projection.v1"
+    assert cast(dict[str, object], projection["initial_user_message"])["display_text"] == original
+    assert [item["round"] for item in rounds] == [1, 2]
+    assert all(item["status"] == "RESOLVED" for item in rounds)
+    assert all(item["response_display_text"] for item in rounds)
+    assert cast(dict[str, object], projection["result"])["final_status"] == "COMPLETED"
     assert len(artifacts) == 1
     history = harness.api.clarification_repository.list_by_task(
         task_id, tenant_id=harness.tenant_id

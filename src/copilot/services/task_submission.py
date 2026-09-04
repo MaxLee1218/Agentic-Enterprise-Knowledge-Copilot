@@ -126,6 +126,8 @@ class TaskSubmissionService:
             raise TaskSubmissionBackpressureError(
                 retry_after_seconds=exc.retry_after_seconds
             ) from exc
+        if not reused:
+            self._intake.audit_domain_resolution(request, context, caller)
         with self._observability.bind_context(
             task_id=persisted.task_id,
             trace_id=persisted.trace_id,
@@ -134,12 +136,24 @@ class TaskSubmissionService:
             user_id=context.user_id,
             session_id=context.session_id,
         ):
+            intake_metadata = request.metadata.root.get("intake")
+            domain_resolution = (
+                intake_metadata.get("domain_resolution")
+                if isinstance(intake_metadata, dict)
+                else None
+            )
             self._observability.emit(
                 EventName.TASK_CREATED,
                 fields={
                     "status": persisted.task_status.value,
                     "runtime_status": persisted.runtime_status.value,
                     "idempotency_reused": reused,
+                    "task_type": context.task_type.value,
+                    "domain_resolution_reason": (
+                        domain_resolution.get("reason_code")
+                        if isinstance(domain_resolution, dict)
+                        else "UNKNOWN"
+                    ),
                 },
             )
         return persisted

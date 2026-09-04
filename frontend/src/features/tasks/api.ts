@@ -16,6 +16,7 @@ import type {
   TaskCreateRequest,
   TaskCreateResponse,
   TaskList,
+  TaskSummary,
   TaskStatus,
 } from "../../api/types";
 
@@ -35,8 +36,14 @@ export async function listTasks(params: TaskListParams): Promise<TaskList> {
 
 export async function createTask(
   input: TaskCreateRequest,
+  idempotencyKey?: string,
 ): Promise<TaskCreateResponse> {
-  return unwrap(await apiClient.POST("/v1/tasks", { body: input }));
+  return unwrap(
+    await apiClient.POST("/v1/tasks", {
+      body: input,
+      params: { header: { "Idempotency-Key": idempotencyKey } },
+    }),
+  );
 }
 
 export async function getTask(taskId: string): Promise<Task> {
@@ -71,7 +78,7 @@ export async function getArtifacts(taskId: string): Promise<ArtifactList> {
   );
 }
 
-export async function cancelTask(taskId: string): Promise<Task> {
+export async function cancelTask(taskId: string): Promise<TaskSummary> {
   return unwrap(
     await apiClient.POST("/v1/tasks/{task_id}/cancel", {
       params: { path: { task_id: taskId } },

@@ -153,6 +153,16 @@
         "title": "ApprovalDetailResponse",
         "type": "object"
       },
+      "ApprovalResolutionAction": {
+        "description": "One-time human action used to resolve a pending approval.",
+        "enum": [
+          "APPROVE",
+          "EDIT",
+          "REJECT"
+        ],
+        "title": "ApprovalResolutionAction",
+        "type": "string"
+      },
       "ApprovalResolutionRequest": {
         "additionalProperties": false,
         "description": "One strictly validated approval resolution request body.",
@@ -257,6 +267,72 @@
           "trace_id"
         ],
         "title": "ApprovalResolutionResponse",
+        "type": "object"
+      },
+      "ApprovalStatus": {
+        "description": "Immutable approval decision states.",
+        "enum": [
+          "PENDING",
+          "APPROVED",
+          "REJECTED",
+          "EXPIRED",
+          "REVOKED"
+        ],
+        "title": "ApprovalStatus",
+        "type": "string"
+      },
+      "ApprovalSummaryResponse": {
+        "additionalProperties": false,
+        "description": "Safe approval interaction summary without controlled arguments.",
+        "properties": {
+          "approval_id": {
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "resolution_action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalResolutionAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "safe_label": {
+            "title": "Safe Label",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApprovalStatus"
+          }
+        },
+        "required": [
+          "approval_id",
+          "status",
+          "safe_label",
+          "resolution_action",
+          "created_at",
+          "resolved_at"
+        ],
+        "title": "ApprovalSummaryResponse",
         "type": "object"
       },
       "ArtifactListResponse": {
@@ -467,6 +543,83 @@
         "title": "ClarificationQuestionResponse",
         "type": "object"
       },
+      "ClarificationRoundResponse": {
+        "additionalProperties": false,
+        "description": "One complete or pending clarification interaction round.",
+        "properties": {
+          "clarification_id": {
+            "title": "Clarification Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/PendingClarificationQuestionResponse"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "response_display_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Display Text"
+          },
+          "round": {
+            "minimum": 1.0,
+            "title": "Round",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ClarificationStatus"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          }
+        },
+        "required": [
+          "clarification_id",
+          "round",
+          "status",
+          "questions",
+          "response_display_text",
+          "created_at",
+          "submitted_at",
+          "resolved_at"
+        ],
+        "title": "ClarificationRoundResponse",
+        "type": "object"
+      },
       "ClarificationStatus": {
         "description": "One-round clarification lifecycle; only ``PENDING`` accepts a response.",
         "enum": [
@@ -581,6 +734,27 @@
           "status"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "InitialUserMessageResponse": {
+        "additionalProperties": false,
+        "description": "Authorized display text for the immutable first message.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_text": {
+            "title": "Display Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_text",
+          "created_at"
+        ],
+        "title": "InitialUserMessageResponse",
         "type": "object"
       },
       "JsonValue": {},
@@ -837,6 +1011,161 @@
         "title": "RuntimeStatus",
         "type": "string"
       },
+      "TaskDetailResponse": {
+        "additionalProperties": false,
+        "description": "Task detail enriched with a reconstructible interaction projection.",
+        "properties": {
+          "artifact_count": {
+            "title": "Artifact Count",
+            "type": "integer"
+          },
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step"
+          },
+          "error_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Summary"
+          },
+          "evidence_count": {
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "interaction_projection": {
+            "$ref": "#/components/schemas/TaskInteractionProjectionResponse"
+          },
+          "pending_approval_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Approval Id"
+          },
+          "pending_clarification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingClarificationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runtime_status": {
+            "$ref": "#/components/schemas/RuntimeStatus"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "step_count": {
+            "title": "Step Count",
+            "type": "integer"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "task_summary": {
+            "title": "Task Summary",
+            "type": "string"
+          },
+          "task_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "trace_id",
+          "status",
+          "runtime_status",
+          "task_type",
+          "created_at",
+          "started_at",
+          "completed_at",
+          "cancelled_at",
+          "current_step",
+          "task_summary",
+          "pending_approval_id",
+          "pending_clarification",
+          "step_count",
+          "evidence_count",
+          "artifact_count",
+          "error_summary",
+          "interaction_projection"
+        ],
+        "title": "TaskDetailResponse",
+        "type": "object"
+      },
       "TaskErrorResponse": {
         "additionalProperties": false,
         "description": "Uniform transport error returned before a workflow result exists.",
@@ -1012,13 +1341,113 @@
         "title": "TaskEvidenceResponse",
         "type": "object"
       },
+      "TaskInteractionProjectionResponse": {
+        "additionalProperties": false,
+        "description": "Versioned Task-scoped projection used only for presentation.",
+        "properties": {
+          "approval_summaries": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalSummaryResponse"
+            },
+            "title": "Approval Summaries",
+            "type": "array"
+          },
+          "clarification_rounds": {
+            "items": {
+              "$ref": "#/components/schemas/ClarificationRoundResponse"
+            },
+            "title": "Clarification Rounds",
+            "type": "array"
+          },
+          "initial_user_message": {
+            "$ref": "#/components/schemas/InitialUserMessageResponse"
+          },
+          "phase_events": {
+            "items": {
+              "$ref": "#/components/schemas/TaskPhaseEventResponse"
+            },
+            "title": "Phase Events",
+            "type": "array"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskResultSummaryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schema_version": {
+            "pattern": "^task-interaction-projection\\.v1$",
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "initial_user_message",
+          "clarification_rounds",
+          "phase_events",
+          "approval_summaries",
+          "result"
+        ],
+        "title": "TaskInteractionProjectionResponse",
+        "type": "object"
+      },
+      "TaskListItemResponse": {
+        "additionalProperties": false,
+        "description": "Lightweight sidebar item with no task-detail collection counts.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "runtime_status": {
+            "$ref": "#/components/schemas/RuntimeStatus"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "task_summary": {
+            "title": "Task Summary",
+            "type": "string"
+          },
+          "task_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "task_id",
+          "task_summary",
+          "status",
+          "runtime_status",
+          "task_type",
+          "created_at"
+        ],
+        "title": "TaskListItemResponse",
+        "type": "object"
+      },
       "TaskListResponse": {
         "additionalProperties": false,
         "description": "Bounded current-user task history ordered newest-first.",
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/TaskResponse"
+              "$ref": "#/components/schemas/TaskListItemResponse"
             },
             "title": "Items",
             "type": "array"
@@ -1057,6 +1486,26 @@
         ],
         "title": "TaskOutputFormat",
         "type": "string"
+      },
+      "TaskPhaseEventResponse": {
+        "additionalProperties": false,
+        "description": "One durable lifecycle phase shown as quiet conversation status copy.",
+        "properties": {
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/TaskStatus"
+          }
+        },
+        "required": [
+          "phase",
+          "occurred_at"
+        ],
+        "title": "TaskPhaseEventResponse",
+        "type": "object"
       },
       "TaskResponse": {
         "additionalProperties": false,
@@ -1207,6 +1656,25 @@
           "error_summary"
         ],
         "title": "TaskResponse",
+        "type": "object"
+      },
+      "TaskResultSummaryResponse": {
+        "additionalProperties": false,
+        "description": "Evidence-safe terminal conversation result.",
+        "properties": {
+          "final_status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "safe_summary": {
+            "title": "Safe Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "final_status",
+          "safe_summary"
+        ],
+        "title": "TaskResultSummaryResponse",
         "type": "object"
       },
       "TaskStatus": {
@@ -1690,7 +2158,7 @@
     },
     "/v1/tasks/{task_id}": {
       "get": {
-        "description": "Return an authorized task summary through the application service.",
+        "description": "Return authorized task detail and its refresh-safe interaction projection.",
         "operationId": "get_task",
         "parameters": [
           {
@@ -1708,7 +2176,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TaskResponse"
+                  "$ref": "#/components/schemas/TaskDetailResponse"
                 }
               }
             },

@@ -109,3 +109,4 @@ What becomes easier or harder, including operational and migration effects?
 | [ADR-017](ADR-017-postgresql-backed-queue-v1.md) | Accepted | 2026-08-26 | Use PostgreSQL-backed at-least-once Queue v1 behind the existing transactional outbox |
 | [ADR-018](ADR-018-deterministic-plan-compilation.md) | Accepted | 2026-08-30 | Compile lightweight untrusted ProposedPlans into existing canonical TaskPlans using deterministic authorities |
 | [ADR-019](ADR-019-interactive-clarification-resume.md) | Accepted | 2026-09-01 | Suspend incomplete Tasks durably and resume the same checkpoint through Understanding after authorized human input |
+| [ADR-020](ADR-020-chat-first-task-workspace.md) | Accepted | 2026-09-02 | Present one governed Task as one conversation thread with backend domain resolution and a Task-scoped read projection |

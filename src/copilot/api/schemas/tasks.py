@@ -9,8 +9,11 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
 from copilot.contracts import (
+    ApprovalResolutionAction,
+    ApprovalStatus,
     ArtifactType,
     ClarificationInputType,
+    ClarificationStatus,
     EvidenceType,
     TaskStatus,
     TaskType,
@@ -144,12 +147,99 @@ class TaskResponse(BaseModel):
     error_summary: str | None
 
 
+class TaskListItemResponse(BaseModel):
+    """Lightweight sidebar item with no task-detail collection counts."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str
+    task_summary: str
+    status: TaskStatus
+    runtime_status: RuntimeStatus
+    task_type: TaskType | None
+    created_at: datetime
+
+
+class InitialUserMessageResponse(BaseModel):
+    """Authorized display text for the immutable first message."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    display_text: str
+    created_at: datetime
+
+
+class ClarificationRoundResponse(BaseModel):
+    """One complete or pending clarification interaction round."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    clarification_id: str
+    round: int = Field(ge=1)
+    status: ClarificationStatus
+    questions: tuple[PendingClarificationQuestionResponse, ...]
+    response_display_text: str | None
+    created_at: datetime
+    submitted_at: datetime | None
+    resolved_at: datetime | None
+
+
+class TaskPhaseEventResponse(BaseModel):
+    """One durable lifecycle phase shown as quiet conversation status copy."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    phase: TaskStatus
+    occurred_at: datetime
+
+
+class ApprovalSummaryResponse(BaseModel):
+    """Safe approval interaction summary without controlled arguments."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    approval_id: str
+    status: ApprovalStatus
+    safe_label: str
+    resolution_action: ApprovalResolutionAction | None
+    created_at: datetime
+    resolved_at: datetime | None
+
+
+class TaskResultSummaryResponse(BaseModel):
+    """Evidence-safe terminal conversation result."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    final_status: TaskStatus
+    safe_summary: str
+
+
+class TaskInteractionProjectionResponse(BaseModel):
+    """Versioned Task-scoped projection used only for presentation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: str = Field(pattern=r"^task-interaction-projection\.v1$")
+    initial_user_message: InitialUserMessageResponse
+    clarification_rounds: tuple[ClarificationRoundResponse, ...]
+    phase_events: tuple[TaskPhaseEventResponse, ...]
+    approval_summaries: tuple[ApprovalSummaryResponse, ...]
+    result: TaskResultSummaryResponse | None
+
+
+class TaskDetailResponse(TaskResponse):
+    """Task detail enriched with a reconstructible interaction projection."""
+
+    interaction_projection: TaskInteractionProjectionResponse
+
+
 class TaskListResponse(BaseModel):
     """Bounded current-user task history ordered newest-first."""
 
     model_config = ConfigDict(extra="forbid")
 
-    items: tuple[TaskResponse, ...]
+    items: tuple[TaskListItemResponse, ...]
     total: int = Field(ge=0)
     limit: int = Field(ge=1, le=100)
     offset: int = Field(ge=0)
@@ -214,17 +304,25 @@ class TaskEvidenceListResponse(BaseModel):
 
 
 __all__ = [
+    "ApprovalSummaryResponse",
+    "ClarificationRoundResponse",
+    "InitialUserMessageResponse",
     "NaturalLanguageTaskSubmission",
     "PendingClarificationQuestionResponse",
     "PendingClarificationResponse",
     "PublicStepStatus",
     "TaskArtifactResponse",
+    "TaskDetailResponse",
     "TaskEvidenceListResponse",
     "TaskEvidenceResponse",
     "TaskErrorResponse",
     "TaskFailureResponse",
+    "TaskInteractionProjectionResponse",
+    "TaskListItemResponse",
     "TaskListResponse",
+    "TaskPhaseEventResponse",
     "TaskResponse",
+    "TaskResultSummaryResponse",
     "TaskStepResponse",
     "TaskStepsResponse",
     "TaskSubmissionResponse",

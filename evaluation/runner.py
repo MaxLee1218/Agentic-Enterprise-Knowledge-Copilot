@@ -37,6 +37,7 @@ from evaluation.dataset_loader import LoadedDataset, canonical_hash
 from evaluation.evaluators import (
     AccountsPayableEvaluator,
     ClarificationEvaluator,
+    DomainResolutionEvaluator,
     EfficiencyEvaluator,
     GroundingEvaluator,
     NumericAccuracyEvaluator,
@@ -63,6 +64,7 @@ class EvaluationRunner:
         self._config = config
         self._evaluators: tuple[Evaluator, ...] = (
             TaskSuccessEvaluator(),
+            DomainResolutionEvaluator(),
             ClarificationEvaluator(),
             PlanQualityEvaluator(),
             ToolSelectionEvaluator(),

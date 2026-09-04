@@ -9,9 +9,16 @@ from copilot.api.dependencies import (
     get_task_service,
     get_task_submission_service,
 )
-from copilot.api.mappers import task_evidence_response, task_response, task_step_response
+from copilot.api.mappers import (
+    task_detail_response,
+    task_evidence_response,
+    task_list_item_response,
+    task_response,
+    task_step_response,
+)
 from copilot.api.schemas.tasks import (
     NaturalLanguageTaskSubmission,
+    TaskDetailResponse,
     TaskErrorResponse,
     TaskEvidenceListResponse,
     TaskListResponse,
@@ -51,7 +58,7 @@ def list_tasks(
     """Return one bounded tenant- and owner-scoped task history page."""
     page = service.list_tasks(caller, status=status, limit=limit, offset=offset)
     return TaskListResponse(
-        items=tuple(task_response(item) for item in page.items),
+        items=tuple(task_list_item_response(item) for item in page.items),
         total=page.total,
         limit=page.limit,
         offset=page.offset,
@@ -100,7 +107,7 @@ def submit_task(
 
 @router.get(
     "/{task_id}",
-    response_model=TaskResponse,
+    response_model=TaskDetailResponse,
     operation_id="get_task",
     responses={
         403: {"model": TaskErrorResponse},
@@ -114,14 +121,14 @@ def get_task(
     request: Request,
     service: Annotated[NaturalLanguageTaskService, Depends(get_task_service)],
     caller: Annotated[TrustedCallerContext, Depends(get_caller_context)],
-) -> TaskResponse:
-    """Return an authorized task summary through the application service."""
+) -> TaskDetailResponse:
+    """Return authorized task detail and its refresh-safe interaction projection."""
     view = service.get_task(
         task_id,
         caller,
         trace_id=str(request.state.trace_id),
     )
-    return task_response(view)
+    return task_detail_response(view)
 
 
 @router.get(

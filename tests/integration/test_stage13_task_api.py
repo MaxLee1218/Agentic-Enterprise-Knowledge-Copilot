@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import cast
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -129,6 +130,54 @@ def test_retryable_knowledge_timeout_retries_as_a_separate_tool_attempt(
         container.close()
 
 
+def test_workspace_intake_persists_domain_resolution_and_defaults_to_pdf(
+    tmp_path: Path,
+) -> None:
+    client, container = _client(tmp_path)
+    try:
+        with client:
+            created = client.post(
+                "/v1/tasks",
+                json={"task": "Analyze Q2 2026 supplier quality issues."},
+            )
+            assert created.status_code == 202
+            task_id = created.json()["task_id"]
+            request = container.repository.request_for(
+                task_id,
+                tenant_id="TENANT-DEMO",
+            )
+            intake = request.metadata.root["intake"]
+            assert isinstance(intake, dict)
+            assert intake["output_format"] == "pdf"
+            assert intake["output_format_source"] == "DOMAIN_DEFAULT"
+            assert intake["domain_resolution"] == {
+                "status": "RESOLVED",
+                "reason_code": "SUPPLIER_QUALITY_LANGUAGE_MATCH",
+                "task_type": "supplier_quality_analysis.v1",
+            }
+            resolution_audits = [
+                record
+                for record in container.workflow_audit.list(
+                    tenant_id="TENANT-DEMO",
+                    task_id=task_id,
+                )
+                if record.event == "task_domain_resolved"
+            ]
+            assert len(resolution_audits) == 1
+            assert resolution_audits[0].metadata.root["reason_code"] == (
+                "SUPPLIER_QUALITY_LANGUAGE_MATCH"
+            )
+            assert "Analyze" not in str(resolution_audits[0].metadata.root)
+            execute_accepted_task(container, task_id, tenant_id="TENANT-DEMO")
+            artifacts = client.get(f"/v1/tasks/{task_id}/artifacts").json()["artifacts"]
+
+        assert len(artifacts) == 1
+        assert artifacts[0]["format"] == "PDF"
+        assert artifacts[0]["media_type"] == "application/pdf"
+    finally:
+        container.close()
+
+
 def test_complete_task_can_be_queried_with_steps_evidence_and_artifact(tmp_path: Path) -> None:
     client, container = _client(tmp_path)
     try:
@@ -149,6 +198,15 @@ def test_complete_task_can_be_queried_with_steps_evidence_and_artifact(tmp_path:
         assert task.json()["current_step"] is None
         assert task.json()["step_count"] == 4
         assert task.json()["artifact_count"] == 1
+        projection = task.json()["interaction_projection"]
+        assert projection["schema_version"] == "task-interaction-projection.v1"
+        assert projection["initial_user_message"]["display_text"] == TASK_TEXT
+        assert projection["clarification_rounds"] == []
+        assert projection["approval_summaries"] == []
+        assert projection["result"]["final_status"] == "COMPLETED"
+        assert projection["result"]["safe_summary"]
+        assert projection["phase_events"][-1]["phase"] == "COMPLETED"
+        assert [event["phase"] for event in projection["phase_events"]].count("EXECUTING") == 1
         assert len(steps.json()["steps"]) == 4
         assert all("input" not in item for item in steps.json()["steps"])
         assert evidence.json()["evidence"]
@@ -168,7 +226,10 @@ def test_complete_task_can_be_queried_with_steps_evidence_and_artifact(tmp_path:
         container.close()
 
 
-def test_task_history_is_owner_scoped_filtered_and_paginated(tmp_path: Path) -> None:
+def test_task_history_is_owner_scoped_filtered_and_paginated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     client, container = _client(tmp_path, persistent=True)
     try:
         owner = TrustedCallerContext(
@@ -194,6 +255,11 @@ def test_task_history_is_owner_scoped_filtered_and_paginated(tmp_path: Path) -> 
             execute_accepted_task(container, hidden.json()["task_id"], tenant_id="TENANT-DEMO")
             application.dependency_overrides[get_caller_context] = lambda: owner
 
+            def fail_if_detail_is_loaded(*_args: object, **_kwargs: object) -> object:
+                raise AssertionError("task history must not load TaskContract detail")
+
+            monkeypatch.setattr(container.repository, "contract_for", fail_if_detail_is_loaded)
+
             page = client.get("/v1/tasks", params={"limit": 1, "offset": 0})
             waiting = client.get(
                 "/v1/tasks",
@@ -208,6 +274,14 @@ def test_task_history_is_owner_scoped_filtered_and_paginated(tmp_path: Path) -> 
         assert page.json()["limit"] == 1
         assert len(page.json()["items"]) == 1
         assert page.json()["items"][0]["task_id"] == second.json()["task_id"]
+        assert set(page.json()["items"][0]) == {
+            "task_id",
+            "task_summary",
+            "status",
+            "runtime_status",
+            "task_type",
+            "created_at",
+        }
         assert waiting.status_code == 200
         assert waiting.json()["total"] == 1
         assert waiting.json()["items"][0]["status"] == "WAITING_APPROVAL"

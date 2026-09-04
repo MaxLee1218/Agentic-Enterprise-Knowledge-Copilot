@@ -451,6 +451,20 @@ production readiness. See the [Stage 19 report](stage-19-queue-worker-execution.
 
 ## 7. Extension Rules
 
+### Conversational frontend
+
+The implemented frontend stage is governed by the frozen
+[Conversational Task Workspace contract](design/conversational-task-workspace.md) and
+[ADR-020](adr/ADR-020-chat-first-task-workspace.md). The target presents one Task as one
+conversation thread, keeps New Task unpersisted until the first valid message, resolves the
+supported domain in backend Task Understanding, and reconstructs the thread from a versioned
+Task-detail read projection. It does not add a Conversation aggregate, message table, alternate
+execution path, natural-language approval, memory, streaming, or general chat.
+
+The executable structure, read projections, responsive behavior, security boundary, and test
+strategy are described by [`frontend-architecture.md`](frontend-architecture.md). The change does
+not modify Queue/Worker/lease/fencing semantics or either frozen domain's business rules.
+
 ### Adding a tool
 
 Every new tool requires:

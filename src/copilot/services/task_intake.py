@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
@@ -48,6 +49,30 @@ class TaskOutputFormat(StrEnum):
                 TaskOutputFormat.JSON: ArtifactType.ACCOUNTS_PAYABLE_REPORT_JSON,
             },
         }[task_type][self]
+
+
+class TaskDomainResolutionStatus(StrEnum):
+    """Closed non-executable outcomes produced before domain-specific understanding."""
+
+    RESOLVED = "RESOLVED"
+    AMBIGUOUS = "AMBIGUOUS"
+    UNSUPPORTED = "UNSUPPORTED"
+
+
+class TaskDomainResolution(BaseModel):
+    """Deterministic supported-domain classification derived from untrusted task text."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: TaskDomainResolutionStatus
+    task_type: TaskType | None = None
+    reason_code: str = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_outcome(self) -> TaskDomainResolution:
+        if (self.status is TaskDomainResolutionStatus.RESOLVED) != (self.task_type is not None):
+            raise ValueError("only RESOLVED domain outcomes contain a task_type")
+        return self
 
 
 class NaturalLanguageTaskCommand(BaseModel):
@@ -183,6 +208,114 @@ class TaskIntakeValidationError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
+
+
+_SUPPLIER_QUALITY_SIGNALS = (
+    r"\bsupplier\s+quality\b",
+    r"\b(?:analyze|analyse|investigate|review)\b.{0,48}\bsuppliers?\b",
+    r"\bquality\s+(?:issue|issues|analysis|deviation|deviations|trend|trends)\b",
+    r"\bdefect(?:s|\s+rate|\s+rates)?\b",
+    r"\bnonconform(?:ance|ances|ing)?\b",
+    r"\breject(?:ion|ions|ed)?\s+(?:rate|rates|lot|lots)?\b",
+    r"供应商质量",
+    r"供应商(?:问题|分析|偏差)",
+    r"质量(?:问题|分析|偏差|趋势)",
+    r"(?:缺陷|不良)率?",
+)
+
+_ACCOUNTS_PAYABLE_SIGNALS = (
+    r"\baccounts?\s+payable\b",
+    r"\bap\b",
+    r"\ba\s*/\s*p\b",
+    r"\binvoice(?:s|\s+exception|\s+exceptions|\s+compliance)?\b",
+    r"\bpayment\s+(?:exception|exceptions|compliance|term|terms|timing)\b",
+    r"\boverpayment(?:s|\s+exception|\s+exceptions)?\b",
+    r"\bthree[- ]way\s+match(?:ing)?\b",
+    r"\bpurchase\s+order(?:s)?\b",
+    r"应付账款",
+    r"发票",
+    r"付款(?:异常|合规|条款)",
+)
+
+_PDF_SIGNAL = re.compile(r"(?i)(?:\bpdf\b|PDF报告|PDF 报告)")
+_JSON_SIGNAL = re.compile(r"(?i)(?:\bjson\b|JSON报告|JSON 报告)")
+_UNSUPPORTED_OUTPUT_SIGNAL = re.compile(
+    r"(?i)(?:\b(?:csv|xlsx?|spreadsheet|powerpoint|pptx?|docx?|word)\b|电子表格|幻灯片)"
+)
+
+
+def resolve_task_domain(
+    task_text: str,
+    *,
+    explicit_task_type: TaskType | None = None,
+) -> TaskDomainResolution:
+    """Resolve one enabled domain without consulting caller purpose or selecting a tool."""
+    if explicit_task_type is not None:
+        return TaskDomainResolution(
+            status=TaskDomainResolutionStatus.RESOLVED,
+            task_type=explicit_task_type,
+            reason_code="EXPLICIT_COMPATIBILITY_TASK_TYPE",
+        )
+    supplier_quality = any(
+        re.search(pattern, task_text, re.IGNORECASE) for pattern in _SUPPLIER_QUALITY_SIGNALS
+    )
+    accounts_payable = any(
+        re.search(pattern, task_text, re.IGNORECASE) for pattern in _ACCOUNTS_PAYABLE_SIGNALS
+    )
+    if supplier_quality and accounts_payable:
+        return TaskDomainResolution(
+            status=TaskDomainResolutionStatus.AMBIGUOUS,
+            reason_code="MULTIPLE_SUPPORTED_DOMAINS",
+        )
+    if supplier_quality:
+        return TaskDomainResolution(
+            status=TaskDomainResolutionStatus.RESOLVED,
+            task_type=TaskType.SUPPLIER_QUALITY_ANALYSIS_V1,
+            reason_code="SUPPLIER_QUALITY_LANGUAGE_MATCH",
+        )
+    if accounts_payable:
+        return TaskDomainResolution(
+            status=TaskDomainResolutionStatus.RESOLVED,
+            task_type=TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1,
+            reason_code="ACCOUNTS_PAYABLE_LANGUAGE_MATCH",
+        )
+    return TaskDomainResolution(
+        status=TaskDomainResolutionStatus.UNSUPPORTED,
+        reason_code="NO_SUPPORTED_DOMAIN_MATCH",
+    )
+
+
+def resolve_output_format(
+    task_text: str,
+    *,
+    explicit_output_format: TaskOutputFormat | None = None,
+) -> tuple[TaskOutputFormat, str]:
+    """Extract an explicit supported format or apply the manifest-owned PDF default."""
+    pdf_requested = _PDF_SIGNAL.search(task_text) is not None
+    json_requested = _JSON_SIGNAL.search(task_text) is not None
+    if pdf_requested and json_requested:
+        raise TaskIntakeValidationError(
+            "AMBIGUOUS_OUTPUT_FORMAT",
+            "Request one output format: PDF or JSON.",
+        )
+    text_format = (
+        TaskOutputFormat.PDF if pdf_requested else TaskOutputFormat.JSON if json_requested else None
+    )
+    if explicit_output_format is not None:
+        if text_format is not None and text_format is not explicit_output_format:
+            raise TaskIntakeValidationError(
+                "CONFLICTING_OUTPUT_FORMAT",
+                "The structured output option conflicts with the natural-language request.",
+            )
+        return explicit_output_format, "EXPLICIT_COMPATIBILITY_OPTION"
+    if text_format is not None:
+        return text_format, "NATURAL_LANGUAGE_REQUEST"
+    if _UNSUPPORTED_OUTPUT_SIGNAL.search(task_text) is not None:
+        raise TaskIntakeValidationError(
+            "UNSUPPORTED_OUTPUT_FORMAT",
+            "This workspace currently supports PDF and JSON reports.",
+        )
+    return TaskOutputFormat.PDF, "DOMAIN_DEFAULT"
 
 
 def validate_task_text(value: str, *, max_length: int) -> str:

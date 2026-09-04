@@ -1,4 +1,5 @@
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -52,6 +53,19 @@ export function useTaskList(params: TaskListParams) {
   });
 }
 
+export function useTaskHistory(pageSize = 40) {
+  return useInfiniteQuery({
+    queryKey: [...queryKeys.taskCollections, "history", pageSize],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      listTasks({ limit: pageSize, offset: pageParam }),
+    getNextPageParam: (lastPage) => {
+      const next = lastPage.offset + lastPage.items.length;
+      return next < lastPage.total ? next : undefined;
+    },
+  });
+}
+
 export function useTask(taskId: string): UseQueryResult<Task> {
   return useQuery({
     queryKey: queryKeys.task(taskId),
@@ -61,28 +75,28 @@ export function useTask(taskId: string): UseQueryResult<Task> {
   });
 }
 
-export function useSteps(taskId: string, status?: TaskStatus) {
+export function useSteps(taskId: string, status?: TaskStatus, enabled = true) {
   return useQuery({
     queryKey: queryKeys.steps(taskId),
     queryFn: () => getSteps(taskId),
-    enabled: Boolean(taskId),
+    enabled: Boolean(taskId) && enabled,
     refetchInterval: pollingInterval(status),
   });
 }
 
-export function useEvidence(taskId: string) {
+export function useEvidence(taskId: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.evidence(taskId),
     queryFn: () => getEvidence(taskId),
-    enabled: Boolean(taskId),
+    enabled: Boolean(taskId) && enabled,
   });
 }
 
-export function useArtifacts(taskId: string) {
+export function useArtifacts(taskId: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.artifacts(taskId),
     queryFn: () => getArtifacts(taskId),
-    enabled: Boolean(taskId),
+    enabled: Boolean(taskId) && enabled,
   });
 }
 
@@ -116,7 +130,14 @@ function invalidateTaskQueries(
 export function useCreateTask() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: TaskCreateRequest) => createTask(input),
+    mutationFn: (
+      input:
+        | TaskCreateRequest
+        | { request: TaskCreateRequest; idempotencyKey: string },
+    ) =>
+      "request" in input
+        ? createTask(input.request, input.idempotencyKey)
+        : createTask(input),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: queryKeys.taskCollections }),
   });
@@ -185,7 +206,9 @@ export function refreshRelatedOnStatusChange(
   current: TaskStatus | undefined,
   queryClient: ReturnType<typeof useQueryClient>,
 ) {
-  if (!previous || !current || previous === current) return;
+  if (!current || previous === current) return;
+  void queryClient.invalidateQueries({ queryKey: queryKeys.taskCollections });
+  if (!previous) return;
   void queryClient.invalidateQueries({ queryKey: queryKeys.steps(taskId) });
   void queryClient.invalidateQueries({ queryKey: queryKeys.evidence(taskId) });
   void queryClient.invalidateQueries({ queryKey: queryKeys.artifacts(taskId) });

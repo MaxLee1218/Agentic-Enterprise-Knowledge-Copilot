@@ -2315,6 +2315,8 @@ class GraphNodeRuntime:
     def record_submission(self, state: AgentGraphState) -> None:
         """Write a minimized audit event after persistence and before graph execution."""
         context = state["intake_context"]
+        intake = state["request"].metadata.root.get("intake")
+        resolution = intake.get("domain_resolution") if isinstance(intake, dict) else None
         self._emit(
             state,
             "TASK_SUBMITTED",
@@ -2331,6 +2333,13 @@ class GraphNodeRuntime:
                     "effective_require_approval": context.require_approval,
                     "output_format": (
                         context.output_format.value if context.output_format is not None else None
+                    ),
+                    "output_format_source": (
+                        intake.get("output_format_source") if isinstance(intake, dict) else None
+                    ),
+                    "task_type": context.task_type.value,
+                    "domain_resolution_reason": (
+                        resolution.get("reason_code") if isinstance(resolution, dict) else "UNKNOWN"
                     ),
                 }
             ),

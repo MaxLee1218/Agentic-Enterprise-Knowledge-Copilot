@@ -2,6 +2,7 @@
 
 from evaluation.evaluators.accounts_payable import AccountsPayableEvaluator
 from evaluation.evaluators.clarification import ClarificationEvaluator
+from evaluation.evaluators.domain_resolution import DomainResolutionEvaluator
 from evaluation.evaluators.efficiency import EfficiencyEvaluator
 from evaluation.evaluators.grounding import GroundingEvaluator
 from evaluation.evaluators.numeric_accuracy import NumericAccuracyEvaluator
@@ -16,6 +17,7 @@ from evaluation.evaluators.usage_cost import UsageCostEvaluator
 __all__ = [
     "AccountsPayableEvaluator",
     "ClarificationEvaluator",
+    "DomainResolutionEvaluator",
     "EfficiencyEvaluator",
     "GroundingEvaluator",
     "NumericAccuracyEvaluator",

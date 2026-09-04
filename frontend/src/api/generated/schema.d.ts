@@ -88,7 +88,7 @@ export interface paths {
         };
         /**
          * Get Task
-         * @description Return an authorized task summary through the application service.
+         * @description Return authorized task detail and its refresh-safe interaction projection.
          */
         get: operations["get_task"];
         put?: never;
@@ -302,6 +302,12 @@ export interface components {
             tool_version: string;
         };
         /**
+         * ApprovalResolutionAction
+         * @description One-time human action used to resolve a pending approval.
+         * @enum {string}
+         */
+        ApprovalResolutionAction: "APPROVE" | "EDIT" | "REJECT";
+        /**
          * ApprovalResolutionRequest
          * @description One strictly validated approval resolution request body.
          */
@@ -343,6 +349,31 @@ export interface components {
             task_status: string;
             /** Trace Id */
             trace_id: string;
+        };
+        /**
+         * ApprovalStatus
+         * @description Immutable approval decision states.
+         * @enum {string}
+         */
+        ApprovalStatus: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | "REVOKED";
+        /**
+         * ApprovalSummaryResponse
+         * @description Safe approval interaction summary without controlled arguments.
+         */
+        ApprovalSummaryResponse: {
+            /** Approval Id */
+            approval_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            resolution_action: components["schemas"]["ApprovalResolutionAction"] | null;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Safe Label */
+            safe_label: string;
+            status: components["schemas"]["ApprovalStatus"];
         };
         /**
          * ArtifactListResponse
@@ -428,6 +459,30 @@ export interface components {
             required: boolean;
         };
         /**
+         * ClarificationRoundResponse
+         * @description One complete or pending clarification interaction round.
+         */
+        ClarificationRoundResponse: {
+            /** Clarification Id */
+            clarification_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Questions */
+            questions: components["schemas"]["PendingClarificationQuestionResponse"][];
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Response Display Text */
+            response_display_text: string | null;
+            /** Round */
+            round: number;
+            status: components["schemas"]["ClarificationStatus"];
+            /** Submitted At */
+            submitted_at: string | null;
+        };
+        /**
          * ClarificationStatus
          * @description One-round clarification lifecycle; only ``PENDING`` accepts a response.
          * @enum {string}
@@ -482,6 +537,19 @@ export interface components {
              * @constant
              */
             status: "ok";
+        };
+        /**
+         * InitialUserMessageResponse
+         * @description Authorized display text for the immutable first message.
+         */
+        InitialUserMessageResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Display Text */
+            display_text: string;
         };
         JsonValue: unknown;
         /**
@@ -585,6 +653,46 @@ export interface components {
          */
         RuntimeStatus: "READY" | "LEASED" | "WAITING_RETRY" | "SUSPENDED" | "FINISHED";
         /**
+         * TaskDetailResponse
+         * @description Task detail enriched with a reconstructible interaction projection.
+         */
+        TaskDetailResponse: {
+            /** Artifact Count */
+            artifact_count: number;
+            /** Cancelled At */
+            cancelled_at: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current Step */
+            current_step: string | null;
+            /** Error Summary */
+            error_summary: string | null;
+            /** Evidence Count */
+            evidence_count: number;
+            interaction_projection: components["schemas"]["TaskInteractionProjectionResponse"];
+            /** Pending Approval Id */
+            pending_approval_id: string | null;
+            pending_clarification: components["schemas"]["PendingClarificationResponse"] | null;
+            runtime_status: components["schemas"]["RuntimeStatus"];
+            /** Started At */
+            started_at: string | null;
+            status: components["schemas"]["TaskStatus"];
+            /** Step Count */
+            step_count: number;
+            /** Task Id */
+            task_id: string;
+            /** Task Summary */
+            task_summary: string;
+            task_type: components["schemas"]["TaskType"] | null;
+            /** Trace Id */
+            trace_id: string;
+        };
+        /**
          * TaskErrorResponse
          * @description Uniform transport error returned before a workflow result exists.
          */
@@ -647,12 +755,46 @@ export interface components {
             type: components["schemas"]["EvidenceType"];
         };
         /**
+         * TaskInteractionProjectionResponse
+         * @description Versioned Task-scoped projection used only for presentation.
+         */
+        TaskInteractionProjectionResponse: {
+            /** Approval Summaries */
+            approval_summaries: components["schemas"]["ApprovalSummaryResponse"][];
+            /** Clarification Rounds */
+            clarification_rounds: components["schemas"]["ClarificationRoundResponse"][];
+            initial_user_message: components["schemas"]["InitialUserMessageResponse"];
+            /** Phase Events */
+            phase_events: components["schemas"]["TaskPhaseEventResponse"][];
+            result: components["schemas"]["TaskResultSummaryResponse"] | null;
+            /** Schema Version */
+            schema_version: string;
+        };
+        /**
+         * TaskListItemResponse
+         * @description Lightweight sidebar item with no task-detail collection counts.
+         */
+        TaskListItemResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            runtime_status: components["schemas"]["RuntimeStatus"];
+            status: components["schemas"]["TaskStatus"];
+            /** Task Id */
+            task_id: string;
+            /** Task Summary */
+            task_summary: string;
+            task_type: components["schemas"]["TaskType"] | null;
+        };
+        /**
          * TaskListResponse
          * @description Bounded current-user task history ordered newest-first.
          */
         TaskListResponse: {
             /** Items */
-            items: components["schemas"]["TaskResponse"][];
+            items: components["schemas"]["TaskListItemResponse"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -666,6 +808,18 @@ export interface components {
          * @enum {string}
          */
         TaskOutputFormat: "pdf" | "json";
+        /**
+         * TaskPhaseEventResponse
+         * @description One durable lifecycle phase shown as quiet conversation status copy.
+         */
+        TaskPhaseEventResponse: {
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            phase: components["schemas"]["TaskStatus"];
+        };
         /**
          * TaskResponse
          * @description Stable public task-management summary.
@@ -704,6 +858,15 @@ export interface components {
             task_type: components["schemas"]["TaskType"] | null;
             /** Trace Id */
             trace_id: string;
+        };
+        /**
+         * TaskResultSummaryResponse
+         * @description Evidence-safe terminal conversation result.
+         */
+        TaskResultSummaryResponse: {
+            final_status: components["schemas"]["TaskStatus"];
+            /** Safe Summary */
+            safe_summary: string;
         };
         /**
          * TaskStatus
@@ -996,7 +1159,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TaskResponse"];
+                    "application/json": components["schemas"]["TaskDetailResponse"];
                 };
             };
             /** @description Forbidden */

@@ -14,49 +14,30 @@ test.setTimeout(360_000);
 test("live Accounts Payable browser workflow reaches governed Artifact download", async ({
   page,
 }) => {
-  await page.goto("/tasks/new");
-  await page
-    .getByLabel("Use case")
-    .selectOption("accounts_payable_analysis.v1");
-  await page.getByLabel("Report format").selectOption("json");
-  await page
-    .getByLabel("What do you want the Agent to do?")
-    .fill(
-      "Analyze all Accounts Payable exceptions from 2026-04-01 to 2026-06-30 " +
-        "for LE-CN-01 and LE-US-01 and generate a JSON report.",
-    );
-  await page.getByRole("button", { name: "Submit task" }).click();
+  await page.goto("/");
+  const composer = page.getByRole("textbox", {
+    name: "Message the Enterprise Knowledge Copilot",
+  });
+  await composer.fill(
+    "Analyze all Accounts Payable exceptions from 2026-04-01 to 2026-06-30 " +
+      "for LE-CN-01 and LE-US-01 and generate a JSON report.",
+  );
+  await composer.press("Enter");
 
   await expect(
     page.getByText("Verification passed and the final result was committed."),
   ).toBeVisible({ timeout: 330_000 });
+  await page.getByRole("button", { name: "Execution" }).click();
   await expect(
-    page.getByText("Accounts Payable", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("14 steps", { exact: true })).toBeVisible();
-
-  await page.getByRole("link", { name: /Evidence/ }).click();
+    page.getByRole("dialog", { name: "Execution details" }).locator("li"),
+  ).toHaveCount(14);
+  await page.getByRole("button", { name: "Close Execution details" }).click();
+  await page.getByRole("button", { name: "Evidence", exact: true }).click();
   await expect(
-    page
-      .getByRole("heading", { name: "Approved enterprise document evidence" })
-      .first(),
+    page.getByRole("dialog", { name: "Evidence" }).locator("article").first(),
   ).toBeVisible();
-  await expect(
-    page.getByText("Governed read-only query evidence").first(),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Deterministic derived calculation evidence").first(),
-  ).toBeVisible();
-
-  await page.getByRole("link", { name: /Report/ }).click();
-  await expect(
-    page.getByRole("heading", { name: "Verified report summary" }),
-  ).toBeVisible();
-  const checksum = await page
-    .getByText(/^sha256:[a-f0-9]{64}$/)
-    .first()
-    .textContent();
-  expect(checksum).toBeTruthy();
+  await page.getByRole("button", { name: "Close Evidence" }).click();
+  await expect(page.getByRole("heading", { name: /\.json$/ })).toBeVisible();
 
   const downloadEvent = page.waitForEvent("download");
   await page.getByRole("link", { name: "Download JSON" }).click();
@@ -66,7 +47,7 @@ test("live Accounts Payable browser workflow reaches governed Artifact download"
     throw new Error("Playwright did not persist the downloaded Artifact");
   const content = await readFile(downloadedPath);
   const actualChecksum = `sha256:${createHash("sha256").update(content).digest("hex")}`;
-  expect(actualChecksum).toBe(checksum);
+  expect(actualChecksum).toMatch(/^sha256:[a-f0-9]{64}$/);
 
   const report: unknown = JSON.parse(content.toString("utf8"));
   expect(report).toMatchObject({

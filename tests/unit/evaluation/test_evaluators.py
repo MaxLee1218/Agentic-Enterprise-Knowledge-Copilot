@@ -7,6 +7,7 @@ from evaluation.contracts import MetricStatus
 from evaluation.dataset_loader import load_dataset
 from evaluation.evaluators.accounts_payable import AccountsPayableEvaluator
 from evaluation.evaluators.clarification import ClarificationEvaluator
+from evaluation.evaluators.domain_resolution import DomainResolutionEvaluator
 from evaluation.evaluators.numeric_accuracy import NumericAccuracyEvaluator
 from evaluation.evaluators.safety import SafetyEvaluator
 from evaluation.evaluators.task_success import TaskSuccessEvaluator
@@ -56,6 +57,38 @@ def test_expected_rejection_and_clarification_are_task_success(tmp_path: Path) -
 
     assert TaskSuccessEvaluator().evaluate(reject_case, reject)[0].value == 1
     assert TaskSuccessEvaluator().evaluate(missing_case, missing)[0].value == 1
+
+
+def test_domain_resolution_evaluator_covers_supported_ambiguous_and_unsupported_text(
+    tmp_path: Path,
+) -> None:
+    supplier_case, execution = _execute("normal-q2-analysis", tmp_path / "supplier")
+    evaluator = DomainResolutionEvaluator()
+    assert evaluator.evaluate(supplier_case, execution)[0].value == 1
+
+    ambiguous = supplier_case.model_copy(
+        update={
+            "tags": (*supplier_case.tags, "expect_ambiguous_domain"),
+            "task_input": supplier_case.task_input.model_copy(
+                update={
+                    "raw_input": (
+                        "Analyze supplier quality and Accounts Payable invoice exceptions."
+                    )
+                }
+            ),
+        }
+    )
+    unsupported = supplier_case.model_copy(
+        update={
+            "tags": (*supplier_case.tags, "expect_unsupported_domain"),
+            "task_input": supplier_case.task_input.model_copy(
+                update={"raw_input": "Send a customer marketing email."}
+            ),
+        }
+    )
+
+    assert evaluator.evaluate(ambiguous, execution)[0].value == 1
+    assert evaluator.evaluate(unsupported, execution)[0].value == 1
 
 
 def test_clarification_metrics_cover_required_fields_and_scope_safety(

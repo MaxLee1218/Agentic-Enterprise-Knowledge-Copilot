@@ -31,9 +31,15 @@ export function ConfirmDialog({
   }, [open]);
 
   return (
-    <dialog ref={dialogRef} className="confirm-dialog" onCancel={onClose}>
-      <h2>{title}</h2>
-      <p>{message}</p>
+    <dialog
+      ref={dialogRef}
+      className="confirm-dialog"
+      aria-labelledby="confirm-dialog-title"
+      aria-describedby="confirm-dialog-message"
+      onCancel={onClose}
+    >
+      <h2 id="confirm-dialog-title">{title}</h2>
+      <p id="confirm-dialog-message">{message}</p>
       <div className="button-row button-row--end">
         <button
           type="button"

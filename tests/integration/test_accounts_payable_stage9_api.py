@@ -108,7 +108,9 @@ def _client(tmp_path: Path) -> tuple[TestClient, WorkflowContainer]:
     return TestClient(app), container
 
 
-def test_public_selector_runs_ap_and_exposes_existing_task_resources(tmp_path: Path) -> None:
+def test_natural_language_domain_resolution_runs_ap_and_exposes_task_resources(
+    tmp_path: Path,
+) -> None:
     client, container = _client(tmp_path)
     owner = _owner()
     app = cast(FastAPI, client.app)
@@ -123,15 +125,13 @@ def test_public_selector_runs_ap_and_exposes_existing_task_resources(tmp_path: P
             app.dependency_overrides[get_caller_context] = lambda: supplier_only
             denied = client.post(
                 "/v1/tasks",
-                json={"task": _TASK_TEXT, "task_type": "accounts_payable_analysis.v1"},
+                json={"task": f"{_TASK_TEXT} and generate a JSON report"},
             )
             app.dependency_overrides[get_caller_context] = lambda: owner
             created = client.post(
                 "/v1/tasks",
                 json={
-                    "task": _TASK_TEXT,
-                    "task_type": "accounts_payable_analysis.v1",
-                    "output_format": "json",
+                    "task": f"{_TASK_TEXT} and generate a JSON report",
                 },
             )
             assert created.status_code == 202, created.text
@@ -176,9 +176,7 @@ def test_finance_assignment_and_download_scope_fail_closed(tmp_path: Path) -> No
             created = client.post(
                 "/v1/tasks",
                 json={
-                    "task": _TASK_TEXT,
-                    "task_type": "accounts_payable_analysis.v1",
-                    "output_format": "json",
+                    "task": f"{_TASK_TEXT} and generate a JSON report",
                 },
             )
             task_id = created.json()["task_id"]

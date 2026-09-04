@@ -26,7 +26,9 @@ export type RuntimeStatus = components["schemas"]["RuntimeStatus"];
 export type Step = components["schemas"]["TaskStepResponse"];
 export type StepList = components["schemas"]["TaskStepsResponse"];
 export type StepStatus = components["schemas"]["PublicStepStatus"];
-export type Task = components["schemas"]["TaskResponse"];
+export type Task = components["schemas"]["TaskDetailResponse"];
+export type TaskSummary = components["schemas"]["TaskResponse"];
+export type TaskListItem = components["schemas"]["TaskListItemResponse"];
 export type TaskCreateRequest =
   components["schemas"]["NaturalLanguageTaskSubmission"];
 export type TaskCreateResponse =
