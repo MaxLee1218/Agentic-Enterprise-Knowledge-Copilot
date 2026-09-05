@@ -32,6 +32,66 @@ describe("Chat-first Task Workspace", () => {
     expect(await screen.findByText(task.task_summary)).toBeVisible();
   });
 
+  it("groups task history into the four frozen date buckets", async () => {
+    const now = new Date();
+    const createdAt = (daysAgo: number) => {
+      const value = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() - daysAgo,
+        12,
+      );
+      return value.toISOString();
+    };
+    const entries = [
+      ["T-TODAY", "Today task", 0],
+      ["T-YESTERDAY", "Yesterday task", 1],
+      ["T-WEEK", "This week task", 5],
+      ["T-OLDER", "Older task", 8],
+    ] as const;
+    server.use(
+      http.get("*/api/v1/tasks", () =>
+        HttpResponse.json({
+          items: entries.map(([taskId, summary, daysAgo]) => ({
+            task_id: taskId,
+            task_summary: summary,
+            status: "COMPLETED",
+            runtime_status: "FINISHED",
+            task_type: "supplier_quality_analysis.v1",
+            created_at: createdAt(daysAgo),
+          })),
+          total: entries.length,
+          limit: 40,
+          offset: 0,
+        }),
+      ),
+    );
+
+    renderApp("/");
+    for (const group of ["Today", "Yesterday", "Previous 7 days", "Older"]) {
+      expect(await screen.findByRole("heading", { name: group })).toBeVisible();
+    }
+    expect(
+      screen.queryByRole("heading", { name: "Previous 30 days" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps collapsed sidebar actions accessible", async () => {
+    const user = userEvent.setup();
+    renderApp("/");
+    await screen.findByText(task.task_summary);
+    await user.click(
+      screen.getByRole("button", { name: "Collapse task history" }),
+    );
+    expect(screen.getByRole("link", { name: "New task" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "System" })).toBeVisible();
+    expect(screen.queryByText(task.task_summary)).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Expand task history" }),
+    );
+    expect(await screen.findByText(task.task_summary)).toBeVisible();
+  });
+
   it("submits only natural-language task text with an Idempotency-Key", async () => {
     const user = userEvent.setup();
     let requestBody: unknown;
@@ -128,6 +188,15 @@ describe("Chat-first Task Workspace", () => {
     expect(
       within(evidenceDrawer).getByText(/Approved policy defines/),
     ).toBeVisible();
+    expect(
+      within(evidenceDrawer).getByText("sha256:query-fingerprint"),
+    ).toBeVisible();
+    expect(
+      within(evidenceDrawer).getByText("defect_count / inspected_count"),
+    ).toBeVisible();
+    expect(
+      within(evidenceDrawer).getAllByText("EV-DB-01").length,
+    ).toBeGreaterThan(0);
     await user.click(
       within(evidenceDrawer).getByRole("button", { name: "Close Evidence" }),
     );
@@ -188,6 +257,77 @@ describe("Chat-first Task Workspace", () => {
     );
     expect(composer).toHaveValue("");
   });
+
+  it("preserves clarification text and refreshes after a stale conflict", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("*/api/v1/tasks/:taskId", () =>
+        HttpResponse.json(clarificationTask),
+      ),
+      http.post("*/api/v1/tasks/:taskId/clarifications/:clarificationId", () =>
+        HttpResponse.json(
+          {
+            error_code: "CLARIFICATION_STALE",
+            message: "The clarification has already moved forward.",
+            task_id: clarificationTask.task_id,
+            trace_id: clarificationTask.trace_id,
+            details: {},
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    renderApp(`/tasks/${clarificationTask.task_id}`);
+    const composer = await screen.findByRole("textbox", {
+      name: "Message the Enterprise Knowledge Copilot",
+    });
+    await user.type(composer, "Use LE-CN-01.{Enter}");
+    expect(
+      await screen.findByText(
+        "This request already moved forward. The latest task state is loading.",
+      ),
+    ).toBeVisible();
+    expect(composer).toHaveValue("Use LE-CN-01.");
+  });
+
+  it.each(["FAILED", "CANCELLED"] as const)(
+    "keeps a %s task read-only",
+    async (status) => {
+      const terminalTask = {
+        ...task,
+        status,
+        interaction_projection: {
+          ...task.interaction_projection,
+          result: {
+            final_status: status,
+            safe_summary:
+              status === "FAILED"
+                ? "I couldn't complete this task safely."
+                : "This task was cancelled.",
+          },
+        },
+      };
+      server.use(
+        http.get("*/api/v1/tasks/:taskId", () =>
+          HttpResponse.json(terminalTask),
+        ),
+      );
+      renderApp(`/tasks/${task.task_id}`);
+      expect(
+        await screen.findByText(status === "FAILED" ? "Failed" : "Cancelled", {
+          selector: ".status-badge",
+        }),
+      ).toBeVisible();
+      expect(
+        screen.getByRole("textbox", {
+          name: "Message the Enterprise Knowledge Copilot",
+        }),
+      ).toBeDisabled();
+      expect(
+        screen.getByRole("link", { name: "Start a new task" }),
+      ).toBeVisible();
+    },
+  );
 
   it("renders an explicit approval card and submits an approve decision", async () => {
     const user = userEvent.setup();

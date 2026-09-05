@@ -63,7 +63,7 @@ structured card; verified reports are Artifact cards in the conversation.
 
 The desktop shell uses a collapsible dark-green history sidebar. Mobile uses a modal task-history
 drawer with a focus trap, Escape dismissal, and focus return. History is grouped deterministically
-into Today, Yesterday, Previous 7 days, Previous 30 days, and Older, with server pagination.
+into Today, Yesterday, Previous 7 days, and Older, with server pagination.
 
 ## 5. Submission and supported-domain resolution
 

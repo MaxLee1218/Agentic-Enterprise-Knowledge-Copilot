@@ -3,13 +3,18 @@ import { statusLabel, statusTone } from "../utils/status";
 
 interface StatusBadgeProps {
   status: TaskStatus | StepStatus;
+  label?: string;
 }
 
-export function StatusBadge({ status }: StatusBadgeProps) {
+export function StatusBadge({ status, label }: StatusBadgeProps) {
   return (
-    <span className={`status-badge status-badge--${statusTone(status)}`}>
+    <span
+      className={`status-badge status-badge--${statusTone(status)}`}
+      role="status"
+      aria-live="polite"
+    >
       <span className="status-badge__mark" aria-hidden="true" />
-      {statusLabel(status)}
+      {label ?? statusLabel(status)}
     </span>
   );
 }

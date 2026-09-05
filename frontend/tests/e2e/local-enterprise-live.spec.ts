@@ -25,7 +25,7 @@ test("live Accounts Payable browser workflow reaches governed Artifact download"
   await composer.press("Enter");
 
   await expect(
-    page.getByText("Verification passed and the final result was committed."),
+    page.getByText("Verification passed and the task is complete."),
   ).toBeVisible({ timeout: 330_000 });
   await page.getByRole("button", { name: "Execution" }).click();
   await expect(

@@ -81,7 +81,7 @@ Tool、Queue adapter、Repository 或文件路径。独立 Worker 从 PostgreSQL
 |---|---|---|---|---:|
 | POST | `/v1/tasks` | `NaturalLanguageTaskSubmission` | `TaskSubmissionResponse` | 202 |
 | GET | `/v1/tasks` | `status?`, `limit`, `offset` | `TaskListResponse` | 200 |
-| GET | `/v1/tasks/{task_id}` | — | `TaskResponse` | 200 |
+| GET | `/v1/tasks/{task_id}` | — | `TaskDetailResponse` | 200 |
 | GET | `/v1/tasks/{task_id}/steps` | — | `TaskStepsResponse` | 200 |
 | GET | `/v1/tasks/{task_id}/evidence` | — | `TaskEvidenceListResponse` | 200 |
 | GET | `/v1/tasks/{task_id}/artifacts` | — | `ArtifactListResponse` | 200 |

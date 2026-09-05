@@ -89,14 +89,23 @@ export function runtimeLabel(
   taskStatus: TaskStatus,
   runtimeStatus: RuntimeStatus,
 ): string {
-  if (taskStatus === "WAITING_APPROVAL") return "Waiting approval";
+  if (taskStatus === "WAITING_APPROVAL") return "Waiting for approval";
   if (taskStatus === "WAITING_CLARIFICATION") return "Waiting for information";
   if (taskStatus === "COMPLETED") return "Completed";
   if (taskStatus === "FAILED") return "Failed";
   if (taskStatus === "CANCELLED") return "Cancelled";
-  if (runtimeStatus === "READY") return "Queued";
-  if (runtimeStatus === "LEASED") return "Running";
-  if (runtimeStatus === "WAITING_RETRY") return "Retry scheduled";
+  if (taskStatus === "RETRYING" || runtimeStatus === "WAITING_RETRY")
+    return "Retrying";
+  if (
+    taskStatus === "UNDERSTANDING" ||
+    (taskStatus === "CREATED" && runtimeStatus === "LEASED")
+  )
+    return "Understanding";
+  if (taskStatus === "PLANNING") return "Planning";
+  if (taskStatus === "EXECUTING") return "Executing";
+  if (taskStatus === "REPLANNING") return "Replanning";
+  if (taskStatus === "VERIFYING") return "Verifying";
+  if (taskStatus === "CREATED" || runtimeStatus === "READY") return "Queued";
   if (runtimeStatus === "SUSPENDED") return "Suspended";
   return "Finalizing";
 }

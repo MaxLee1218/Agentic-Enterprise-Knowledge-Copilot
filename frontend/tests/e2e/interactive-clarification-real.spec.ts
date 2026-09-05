@@ -20,8 +20,7 @@ test("real API and Worker driver complete the exact AP clarification demo", asyn
   const taskUrl = page.url();
   const taskId = taskUrl.split("/").at(-1);
   expect(taskId).toBeTruthy();
-  await expect(page.getByText("Waiting for information").first()).toBeVisible();
-  await expect(page.getByText("Waiting for information").first()).toBeVisible();
+  await expect(page.getByRole("status")).toHaveText("Waiting for information");
   await composer.fill("Use 2026-08-01 through 2026-08-31.");
   await composer.press("Enter");
 
@@ -32,7 +31,7 @@ test("real API and Worker driver complete the exact AP clarification demo", asyn
   await composer.fill("Use legal entity LE-CN-01.");
   await composer.press("Enter");
 
-  await expect(page.getByText("COMPLETED").first()).toBeVisible({
+  await expect(page.getByRole("status")).toHaveText("Completed", {
     timeout: 60_000,
   });
   await expect(page).toHaveURL(taskUrl);
@@ -49,6 +48,7 @@ test("real API and Worker driver complete the exact AP clarification demo", asyn
   await expect(
     page
       .getByRole("complementary", { name: "Task history" })
+      .locator(`a[href="${new URL(taskUrl).pathname}"]`)
       .getByText("Completed", { exact: true }),
   ).toBeVisible();
 });
@@ -66,7 +66,7 @@ test("real API resolves a direct Supplier request without a browser selector", a
   );
   await composer.press("Enter");
 
-  await expect(page.getByText("COMPLETED", { exact: true })).toBeVisible({
+  await expect(page.getByRole("status")).toHaveText("Completed", {
     timeout: 60_000,
   });
   await expect(

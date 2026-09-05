@@ -332,6 +332,113 @@ test("sidebar switches independent tasks and refresh preserves the selected task
   await expect(
     page.getByText(completedTask().interaction_projection.result.safe_summary),
   ).toBeVisible();
+
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`/tasks/${secondTaskId}$`));
+  await page.goForward();
+  await expect(page).toHaveURL(new RegExp(`/tasks/${taskId}$`));
+});
+
+test("waiting approval uses an explicit governed card", async ({ page }) => {
+  const approvalId = "AP-WORKSPACE-E2E-001";
+  const waiting = {
+    ...completedTask(),
+    status: "WAITING_APPROVAL",
+    runtime_status: "SUSPENDED",
+    completed_at: null,
+    pending_approval_id: approvalId,
+    artifact_count: 0,
+    interaction_projection: {
+      ...completedTask().interaction_projection,
+      phase_events: [
+        {
+          phase: "WAITING_APPROVAL",
+          occurred_at: "2026-09-01T08:00:03Z",
+        },
+      ],
+      approval_summaries: [
+        {
+          approval_id: approvalId,
+          status: "PENDING",
+          safe_label: "Controlled database access requires approval.",
+          resolution_action: null,
+          created_at: "2026-09-01T08:00:03Z",
+          resolved_at: null,
+        },
+      ],
+      result: null,
+    },
+  };
+  let decision: unknown;
+  await routeHistory(page);
+  await page.route(`**/api/v1/tasks/${taskId}`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(waiting),
+    }),
+  );
+  await page.route(
+    `**/api/v1/tasks/${taskId}/approvals/${approvalId}`,
+    async (route) => {
+      if (route.request().method() === "POST") {
+        decision = route.request().postDataJSON();
+        return route.fulfill({
+          status: 202,
+          contentType: "application/json",
+          body: JSON.stringify({
+            task_id: taskId,
+            approval_id: approvalId,
+            approval_status: "APPROVED",
+            resolution_action: "APPROVE",
+            task_status: "EXECUTING",
+            runtime_status: "READY",
+            trace_id: traceId,
+            status_url: `/v1/tasks/${taskId}`,
+            accepted_at: "2026-09-01T08:00:04Z",
+          }),
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          approval_id: approvalId,
+          task_id: taskId,
+          status: "PENDING",
+          step_id: "S-DB-01",
+          planning_version: 1,
+          tool_name: "database_query",
+          tool_version: "1.1",
+          editable_fields: ["row_limit"],
+          proposed_arguments: { row_limit: 100 },
+          resolved_arguments: null,
+          reason: "A governed database action requires human approval.",
+          resolution_action: null,
+          resolution_reason: null,
+          created_at: "2026-09-01T08:00:03Z",
+          expires_at: "2099-09-01T08:00:03Z",
+          resolved_at: null,
+          resolved_by: null,
+        }),
+      });
+    },
+  );
+
+  await page.goto(`/tasks/${taskId}`);
+  await expect(
+    page.getByText("Waiting for approval", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("textbox", {
+      name: "Message the Enterprise Knowledge Copilot",
+    }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("heading", { name: "Review a controlled action" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Approve action" }).click();
+  await expect.poll(() => decision).toEqual({ action: "approve" });
 });
 
 test("mobile task history is a dismissible drawer", async ({ page }) => {
@@ -346,4 +453,57 @@ test("mobile task history is a dismissible drawer", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Open task history" }),
   ).toBeFocused();
+});
+
+test("mobile keeps execution details available", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await routeHistory(page);
+  await page.route(`**/api/v1/tasks/${taskId}`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(completedTask()),
+    }),
+  );
+  await page.route(`**/api/v1/tasks/${taskId}/artifacts`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ task_id: taskId, artifacts: [] }),
+    }),
+  );
+  await page.route(`**/api/v1/tasks/${taskId}/steps`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        task_id: taskId,
+        steps: [
+          {
+            step_id: "S-MOBILE-01",
+            tool_name: "analysis_engine",
+            purpose: "Analyze the governed dataset.",
+            status: "SUCCESS",
+            depends_on: [],
+            attempt_count: 1,
+            retry_count: 0,
+            started_at: "2026-09-01T08:00:03Z",
+            completed_at: "2026-09-01T08:00:04Z",
+            latency_ms: 1000,
+            evidence_ids: [],
+            error_code: null,
+            error_message: null,
+          },
+        ],
+      }),
+    }),
+  );
+
+  await page.goto(`/tasks/${taskId}`);
+  const execution = page.getByRole("button", { name: "Execution" });
+  await expect(execution).toBeVisible();
+  await execution.click();
+  await expect(
+    page.getByRole("dialog", { name: "Execution details" }),
+  ).toBeVisible();
 });

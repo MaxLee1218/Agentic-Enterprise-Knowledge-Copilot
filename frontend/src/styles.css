@@ -2287,9 +2287,6 @@ tbody tr:hover {
     padding-inline: 7px;
     font-size: 0.68rem;
   }
-  .conversation-title-block .conversation-status > span:last-child {
-    display: none;
-  }
   .conversation-scroll {
     padding: 28px 16px 18px;
   }
@@ -2336,9 +2333,6 @@ tbody tr:hover {
 }
 
 @media (max-width: 540px) {
-  .conversation-actions .text-button:nth-child(2) {
-    display: none;
-  }
   .conversation-topbar__label {
     display: none;
   }

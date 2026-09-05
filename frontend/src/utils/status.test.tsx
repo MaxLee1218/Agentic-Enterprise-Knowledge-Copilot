@@ -37,10 +37,13 @@ describe("authoritative task statuses", () => {
 
   it("maps Task and runtime state without exposing Worker or lease internals", () => {
     expect(runtimeLabel("CREATED", "READY")).toBe("Queued");
-    expect(runtimeLabel("EXECUTING", "LEASED")).toBe("Running");
-    expect(runtimeLabel("EXECUTING", "WAITING_RETRY")).toBe("Retry scheduled");
+    expect(runtimeLabel("CREATED", "LEASED")).toBe("Understanding");
+    expect(runtimeLabel("UNDERSTANDING", "LEASED")).toBe("Understanding");
+    expect(runtimeLabel("PLANNING", "LEASED")).toBe("Planning");
+    expect(runtimeLabel("EXECUTING", "LEASED")).toBe("Executing");
+    expect(runtimeLabel("EXECUTING", "WAITING_RETRY")).toBe("Retrying");
     expect(runtimeLabel("WAITING_APPROVAL", "SUSPENDED")).toBe(
-      "Waiting approval",
+      "Waiting for approval",
     );
     expect(runtimeLabel("WAITING_CLARIFICATION", "SUSPENDED")).toBe(
       "Waiting for information",

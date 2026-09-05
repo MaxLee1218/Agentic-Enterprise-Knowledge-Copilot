@@ -4,13 +4,7 @@ import type { TaskListItem } from "../api/types";
 import { useTaskHistory } from "../features/tasks/queries";
 import { runtimeLabel, statusTone } from "../utils/status";
 
-const GROUPS = [
-  "Today",
-  "Yesterday",
-  "Previous 7 days",
-  "Previous 30 days",
-  "Older",
-] as const;
+const GROUPS = ["Today", "Yesterday", "Previous 7 days", "Older"] as const;
 type GroupName = (typeof GROUPS)[number];
 
 function dayStart(value: Date): number {
@@ -28,7 +22,6 @@ function groupName(createdAt: string): GroupName {
   if (age <= 0) return "Today";
   if (age === 1) return "Yesterday";
   if (age <= 7) return "Previous 7 days";
-  if (age <= 30) return "Previous 30 days";
   return "Older";
 }
 
@@ -86,7 +79,13 @@ export function TaskSidebar({
         </button>
       </div>
 
-      <NavLink className="new-task-button" to="/" onClick={closeMobile}>
+      <NavLink
+        className="new-task-button"
+        to="/"
+        onClick={closeMobile}
+        aria-label="New task"
+        title={collapsed ? "New task" : undefined}
+      >
         <span aria-hidden="true">＋</span>
         {!collapsed && <span>New Task</span>}
       </NavLink>
@@ -160,7 +159,13 @@ export function TaskSidebar({
         </div>
       )}
 
-      <NavLink className="system-link" to="/system" onClick={closeMobile}>
+      <NavLink
+        className="system-link"
+        to="/system"
+        onClick={closeMobile}
+        aria-label="System"
+        title={collapsed ? "System" : undefined}
+      >
         <span aria-hidden="true">◌</span>
         {!collapsed && <span>System</span>}
       </NavLink>

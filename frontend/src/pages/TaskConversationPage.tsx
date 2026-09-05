@@ -275,8 +275,10 @@ export function TaskConversationPage() {
           <p className="conversation-topbar__label">Task conversation</p>
           <h1 id="task-conversation-title">{taskTitle(detail)}</h1>
           <div className="conversation-status">
-            <StatusBadge status={detail.status} />
-            <span>{runtimeLabel(detail.status, detail.runtime_status)}</span>
+            <StatusBadge
+              status={detail.status}
+              label={runtimeLabel(detail.status, detail.runtime_status)}
+            />
           </div>
         </div>
         <div className="conversation-actions">
@@ -401,6 +403,40 @@ export function TaskConversationPage() {
                   <dt>Produced by</dt>
                   <dd>{item.produced_by}</dd>
                 </div>
+                <div>
+                  <dt>Evidence ID</dt>
+                  <dd>{item.evidence_id}</dd>
+                </div>
+                {item.document_source && (
+                  <div>
+                    <dt>Document source</dt>
+                    <dd>{item.document_source}</dd>
+                  </div>
+                )}
+                {item.query_id && (
+                  <div>
+                    <dt>Query fingerprint</dt>
+                    <dd>{item.query_id}</dd>
+                  </div>
+                )}
+                {item.formula && (
+                  <div>
+                    <dt>Calculation</dt>
+                    <dd>{item.formula}</dd>
+                  </div>
+                )}
+                {item.lineage.length > 0 && (
+                  <div>
+                    <dt>Lineage</dt>
+                    <dd>{item.lineage.join(" → ")}</dd>
+                  </div>
+                )}
+                {item.input_evidence_ids.length > 0 && (
+                  <div>
+                    <dt>Calculation inputs</dt>
+                    <dd>{item.input_evidence_ids.join(", ")}</dd>
+                  </div>
+                )}
               </dl>
             </article>
           ))}

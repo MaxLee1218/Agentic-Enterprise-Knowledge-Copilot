@@ -9,12 +9,18 @@ export function AppShell() {
   const location = useLocation();
   const dialogRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileWasOpen = useRef(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(
     () => window.localStorage.getItem(SIDEBAR_PREFERENCE) === "true",
   );
 
   useEffect(() => setMobileOpen(false), [location.pathname]);
+
+  useEffect(() => {
+    if (mobileWasOpen.current && !mobileOpen) menuButtonRef.current?.focus();
+    mobileWasOpen.current = mobileOpen;
+  }, [mobileOpen]);
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -26,7 +32,6 @@ export function AppShell() {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setMobileOpen(false);
-        menuButtonRef.current?.focus();
         return;
       }
       if (event.key !== "Tab" || !focusable?.length) return;
