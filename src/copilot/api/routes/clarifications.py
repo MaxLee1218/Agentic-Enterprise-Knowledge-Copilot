@@ -30,6 +30,12 @@ def _detail(clarification: TaskClarification) -> ClarificationDetailResponse:
         task_id=clarification.task_id,
         status=clarification.status,
         round=clarification.round,
+        kind=clarification.kind,
+        candidate_version=(
+            clarification.candidate_interpretation.version_hash
+            if clarification.candidate_interpretation is not None
+            else None
+        ),
         questions=tuple(
             ClarificationQuestionResponse(
                 field=question.field,

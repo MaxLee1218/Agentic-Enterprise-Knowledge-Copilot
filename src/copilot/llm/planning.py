@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from calendar import monthrange
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+
+from pydantic import JsonValue
 
 from copilot.contracts import (
     AccountsPayableConstraintsV1,
@@ -16,14 +20,18 @@ from copilot.contracts import (
     CapabilityName,
     ClarificationContext,
     ClarificationInputType,
+    ClarificationKind,
     ClarificationQuestion,
     ClarificationResponse,
     ContractSchemaVersion,
     DateRange,
     ExpectedOutput,
+    FieldResolution,
     JsonObject,
     MoneyThreshold,
     ProposedPlan,
+    ResolutionSource,
+    ResolutionStatus,
     StepResult,
     StepResultStatus,
     StepType,
@@ -35,10 +43,12 @@ from copilot.contracts import (
 )
 from copilot.llm.manifest import PlannerToolManifestBuilder
 from copilot.llm.prompts import (
+    CLARIFICATION_RESPONSE_PROMPT_VERSION,
     PLAN_REPAIR_PROMPT_VERSION,
     PLANNER_PROMPT_VERSION,
     REPLAN_PROMPT_VERSION,
     TASK_UNDERSTANDING_PROMPT_VERSION,
+    clarification_response_messages,
     plan_repair_messages,
     planner_messages,
     replan_messages,
@@ -46,9 +56,11 @@ from copilot.llm.prompts import (
 )
 from copilot.llm.schemas import (
     APTaskUnderstandingOutput,
+    ClarificationAssistantOutput,
     PlannerCapabilityManifest,
     TaskUnderstandingOutput,
 )
+from copilot.security import ContentSourceType, OutputDisposition, OutputGuard
 from copilot.services.domains import (
     DomainCapabilityManifestRegistry,
     builtin_domain_manifest_registry,
@@ -75,6 +87,7 @@ from copilot.services.workflows.errors import (
     PlannerSchemaValidationError,
     PlannerTimeoutError,
     PlannerUnsupportedCapabilityError,
+    TaskUnderstandingAuthorizationError,
 )
 from copilot.services.workflows.plan_compiler import PlanCompiler
 from copilot.services.workflows.planning import (
@@ -86,6 +99,15 @@ from copilot.services.workflows.validation import (
     PlanValidationIssue,
     PlanValidator,
 )
+from copilot.understanding.clarification_builder import ap_entity_question, ap_time_question
+from copilot.understanding.context_merge import (
+    APRequiredFieldMerge,
+    context_from_ap_merge,
+    merge_accounts_payable_required_fields,
+)
+from copilot.understanding.date_normalizer import normalize_supplier_period
+from copilot.understanding.entity_resolver import resolve_suppliers
+from copilot.understanding.policy import ResolutionPolicy, build_candidate_interpretation
 
 _ALLOWED_REPLAN_REASONS = {
     "PLAN_NO_LONGER_EXECUTABLE",
@@ -96,6 +118,21 @@ _ALLOWED_REPLAN_REASONS = {
 }
 LOGGER = logging.getLogger(__name__)
 _PROPOSED_PLAN_SCHEMA_VERSION = "proposed-plan.v1"
+_RESOLUTION_POLICY = ResolutionPolicy()
+_AP_ABSOLUTE_TIME_ANCHOR = re.compile(
+    r"(?:\b(?:20\d{2}|q[1-4]|first|second|third|fourth|jan(?:uary)?|feb(?:ruary)?|"
+    r"mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|"
+    r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|\d{1,4}[-/]\d{1,2})",
+    re.IGNORECASE,
+)
+_AP_ENTITY_ANCHOR = re.compile(
+    r"(?:\b(?:LE-[A-Z0-9_-]+|CN|PRC|US|USA|DE|China|Chinese|United States|American|"
+    r"Germany|German|legal entity|entity|subsidiary|company)\b|"
+    r"中国|美国|德国|实体|公司|子公司)",
+    re.IGNORECASE,
+)
+_GOVERNED_IDENTIFIER = re.compile(r"\b(?:LE|SUP|BU)-[A-Z0-9-]+\b")
+_ISO_DATE = re.compile(r"\b20\d{2}-\d{2}-\d{2}\b")
 
 _AP_REQUIRED_SECTIONS = (
     "scope",
@@ -114,6 +151,22 @@ _AP_REQUIRED_SECTIONS = (
 )
 
 
+def _clarification_message_uses_only_validated_tokens(
+    message: str,
+    questions: tuple[ClarificationQuestion, ...],
+) -> bool:
+    """Reject identifiers or ISO dates absent from the validated clarification facts."""
+    safe_facts = json.dumps(
+        [question.model_dump(mode="json") for question in questions],
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    for pattern in (_GOVERNED_IDENTIFIER, _ISO_DATE):
+        if not set(pattern.findall(message)).issubset(pattern.findall(safe_facts)):
+            return False
+    return True
+
+
 class LLMPlanningService:
     """Compose prompts around an injected provider and deterministic plan validator."""
 
@@ -129,12 +182,14 @@ class LLMPlanningService:
         domain_manifests: DomainCapabilityManifestRegistry | None = None,
         compiler: PlanCompiler | None = None,
         clock: Callable[[], datetime] | None = None,
+        output_guard: OutputGuard | None = None,
     ) -> None:
         if max_plan_repair_attempts < 0:
             raise ValueError("max_plan_repair_attempts must not be negative")
         if max_structured_output_retries < 0:
             raise ValueError("max_structured_output_retries must not be negative")
         self._provider = provider
+        self._output_guard = output_guard or OutputGuard()
         self._manifest_builder = manifest_builder
         self._validator = validator
         self._options = options or LLMGenerationOptions()
@@ -215,30 +270,88 @@ class LLMPlanningService:
         )
         candidate = result.parsed_output
         if isinstance(candidate, APTaskUnderstandingOutput):
-            return self._accounts_payable_contract(
+            outcome = self._accounts_payable_contract(
                 request=request,
                 trusted_context=trusted_context,
                 candidate=candidate,
                 clarification_context=clarification_context,
+                clarification_response=clarification_response,
             )
+            return self._with_natural_clarification(outcome, task_id=request.id, trace_id=trace_id)
         assert isinstance(candidate, TaskUnderstandingOutput)
         if candidate.task_type is not trusted_context.task_type:
             raise LLMSchemaValidationError(
                 "LLM task type conflicts with the trusted domain selection"
             )
-        missing = list(candidate.missing_information)
-        if candidate.time_range.year is None or candidate.time_range.quarter is None:
+        previous_values = dict(
+            clarification_context.values.root if clarification_context is not None else {}
+        )
+        prior_year = previous_values.get("year")
+        prior_quarter = previous_values.get("quarter")
+        if not isinstance(prior_year, int):
+            prior_year = None
+        if not isinstance(prior_quarter, int):
+            prior_quarter = None
+        resolution_text = (
+            clarification_response.message
+            if clarification_response is not None and clarification_response.message is not None
+            else request.raw_input
+        )
+        period_resolution = normalize_supplier_period(resolution_text, prior_year=prior_year)
+        year = prior_year
+        quarter = prior_quarter
+        if _RESOLUTION_POLICY.accepts(period_resolution):
+            period_value = period_resolution.canonical_value
+            assert isinstance(period_value, dict)
+            resolved_year = period_value.get("year")
+            resolved_quarter = period_value.get("quarter")
+            if not isinstance(resolved_year, int) or not isinstance(resolved_quarter, int):
+                raise LLMSchemaValidationError("Normalized Supplier period is malformed")
+            year = resolved_year
+            quarter = resolved_quarter
+        elif prior_year is not None and prior_quarter is not None:
+            year, quarter = prior_year, prior_quarter
+        supplier_resolution = resolve_suppliers(
+            resolution_text,
+            trusted_context.authorized_supplier_ids,
+            input_source=(
+                ResolutionSource.CLARIFICATION_RESPONSE
+                if clarification_response is not None
+                else ResolutionSource.ORIGINAL_REQUEST
+            ),
+        )
+        if _RESOLUTION_POLICY.is_denial(supplier_resolution):
+            raise TaskUnderstandingAuthorizationError(
+                "Requested supplier exceeds the trusted authorized request scope",
+                field_name="supplier_ids",
+            )
+        if (
+            candidate.entities.supplier_ids
+            and trusted_context.authorized_supplier_ids
+            and not set(candidate.entities.supplier_ids).issubset(
+                trusted_context.authorized_supplier_ids
+            )
+        ):
+            raise TaskUnderstandingAuthorizationError(
+                "LLM supplier entities exceed the trusted authorized request scope",
+                field_name="supplier_ids",
+            )
+        supplier_ids: tuple[str, ...] = ()
+        if _RESOLUTION_POLICY.accepts(supplier_resolution):
+            supplier_value = supplier_resolution.canonical_value
+            if isinstance(supplier_value, list):
+                supplier_ids = tuple(str(item) for item in supplier_value)
+        missing = []
+        if year is None or quarter is None:
             missing.append("An explicit year and quarter are required")
         if missing:
-            context_values = dict(
-                clarification_context.values.root if clarification_context is not None else {}
-            )
-            if candidate.time_range.year is not None and candidate.time_range.quarter is not None:
+            context_values = dict(previous_values)
+            if year is not None and quarter is not None:
                 context_values.update(
-                    year=candidate.time_range.year,
-                    quarter=candidate.time_range.quarter,
+                    year=year,
+                    quarter=quarter,
                 )
-            return TaskUnderstandingOutcome(
+            outcome = TaskUnderstandingOutcome(
                 contract=None,
                 missing_information=tuple(dict.fromkeys(missing)),
                 questions=(
@@ -250,19 +363,26 @@ class LLMPlanningService:
                         constraints=JsonObject({"format": "Q[1-4] YYYY"}),
                     ),
                 ),
-                clarification_context=ClarificationContext(values=JsonObject(context_values)),
+                clarification_context=ClarificationContext(
+                    values=JsonObject(context_values),
+                    resolutions=tuple(
+                        item
+                        for item in (period_resolution, supplier_resolution)
+                        if item.status is not ResolutionStatus.MISSING
+                    ),
+                ),
             )
-        assert candidate.time_range.year is not None
-        assert candidate.time_range.quarter is not None
+            return self._with_natural_clarification(outcome, task_id=request.id, trace_id=trace_id)
+        assert year is not None
+        assert quarter is not None
         if (
-            candidate.entities.supplier_ids
+            supplier_ids
             and trusted_context.authorized_supplier_ids
-            and not set(candidate.entities.supplier_ids).issubset(
-                trusted_context.authorized_supplier_ids
-            )
+            and not set(supplier_ids).issubset(trusted_context.authorized_supplier_ids)
         ):
-            raise LLMSchemaValidationError(
-                "LLM supplier entities exceed the trusted authorized request scope"
+            raise TaskUnderstandingAuthorizationError(
+                "LLM supplier entities exceed the trusted authorized request scope",
+                field_name="supplier_ids",
             )
         if (
             candidate.constraints.max_steps > max_steps
@@ -277,17 +397,11 @@ class LLMPlanningService:
             raise LLMSchemaValidationError(
                 "LLM deliverable conflicts with the validated interface request"
             )
-        start_date, end_date = _quarter_dates(
-            candidate.time_range.year, candidate.time_range.quarter
-        )
-        supplier_ids = (
-            candidate.entities.supplier_ids
-            if candidate.entities.supplier_ids
-            else trusted_context.authorized_supplier_ids
-        )
+        start_date, end_date = _quarter_dates(year, quarter)
+        supplier_ids = supplier_ids or trusted_context.authorized_supplier_ids
         updated_constraints = TaskConstraints(
-            year=candidate.time_range.year,
-            quarter=candidate.time_range.quarter,
+            year=year,
+            quarter=quarter,
             start_date=start_date,
             end_date=end_date,
             supplier_ids=supplier_ids,
@@ -327,11 +441,76 @@ class LLMPlanningService:
         return TaskUnderstandingOutcome(
             contract=contract,
             clarification_context=ClarificationContext(
-                values=JsonObject(
-                    {"year": candidate.time_range.year, "quarter": candidate.time_range.quarter}
-                )
+                values=JsonObject({"year": year, "quarter": quarter}),
+                resolutions=(period_resolution, supplier_resolution),
             ),
         )
+
+    def _with_natural_clarification(
+        self,
+        outcome: TaskUnderstandingOutcome,
+        *,
+        task_id: str,
+        trace_id: str,
+    ) -> TaskUnderstandingOutcome:
+        """Compose presentation from validated facts and retain deterministic fallback."""
+        if outcome.contract is not None or not outcome.questions:
+            return outcome
+        expected_fields = tuple(question.field for question in outcome.questions)
+        context = LLMCallContext(
+            task_id=task_id,
+            trace_id=trace_id,
+            node_name="compose_clarification",
+            attempt=1,
+            prompt_version=CLARIFICATION_RESPONSE_PROMPT_VERSION,
+            schema_version="clarification-assistant.v1",
+        )
+        try:
+            generated = self._provider.generate_structured(
+                messages=clarification_response_messages(
+                    kind=outcome.clarification_kind.value,
+                    questions=outcome.questions,
+                    output_schema=ClarificationAssistantOutput.model_json_schema(),
+                ),
+                output_schema=ClarificationAssistantOutput,
+                context=context,
+                options=self._options,
+            )
+            _enforce_token_budget(
+                generated.usage.output_tokens,
+                self._options.max_output_tokens,
+                attempts=generated.attempts,
+            )
+        except LLMProviderError:
+            LOGGER.warning("clarification response composition failed; using deterministic copy")
+            return outcome
+        draft = generated.parsed_output
+        if set(draft.covered_fields) != set(expected_fields) or len(draft.covered_fields) != len(
+            expected_fields
+        ):
+            LOGGER.warning(
+                "clarification response omitted required fields; using deterministic copy"
+            )
+            return outcome
+        guarded = self._output_guard.guard(
+            draft.message.strip(),
+            source_type=ContentSourceType.LLM_OUTPUT,
+            source_id=f"{task_id}:clarification-assistant",
+            target="api",
+        )
+        if guarded.disposition is OutputDisposition.BLOCKED or not isinstance(guarded.content, str):
+            LOGGER.warning("clarification response failed output guard; using deterministic copy")
+            return outcome
+        if not _clarification_message_uses_only_validated_tokens(
+            guarded.content,
+            outcome.questions,
+        ):
+            LOGGER.warning(
+                "clarification response introduced unvalidated identifiers or dates; "
+                "using deterministic copy"
+            )
+            return outcome
+        return replace(outcome, assistant_message=guarded.content)
 
     @staticmethod
     def _accounts_payable_contract(
@@ -340,66 +519,129 @@ class LLMPlanningService:
         trusted_context: TrustedTaskContext,
         candidate: APTaskUnderstandingOutput,
         clarification_context: ClarificationContext | None = None,
+        clarification_response: ClarificationResponse | None = None,
     ) -> TaskUnderstandingOutcome:
         """Merge an untrusted AP candidate into explicit trusted scope and policy facts."""
         if candidate.task_type is not trusted_context.task_type:
             raise LLMSchemaValidationError(
                 "LLM task type conflicts with the trusted domain selection"
             )
-        missing = list(candidate.missing_information)
-        if candidate.time_range.start_date is None or candidate.time_range.end_date is None:
-            missing.append("An explicit Accounts Payable date range is required")
-        legal_entities = _bounded_scope(
-            "legal entity",
-            candidate.requested_legal_entity_ids,
-            trusted_context.authorized_legal_entity_ids,
+        merged = merge_accounts_payable_required_fields(
+            original_request=request.raw_input,
+            authorized_entities=trusted_context.authorized_legal_entity_ids,
+            context=clarification_context,
+            response=clarification_response,
         )
-        if not legal_entities:
-            if len(trusted_context.authorized_legal_entity_ids) == 1:
-                legal_entities = trusted_context.authorized_legal_entity_ids
-            else:
-                missing.append("An explicit authorized legal entity is required")
-        if missing:
-            context_values = dict(
-                clarification_context.values.root if clarification_context is not None else {}
+        resolution_by_field = {item.field_name: item for item in merged.resolutions}
+        if any(_RESOLUTION_POLICY.is_denial(item) for item in merged.resolutions):
+            raise TaskUnderstandingAuthorizationError(
+                "Requested legal entity exceeds the trusted authorized request scope",
+                field_name="legal_entity_ids",
             )
-            questions: list[ClarificationQuestion] = []
-            if candidate.time_range.start_date is not None:
-                assert candidate.time_range.end_date is not None
-                context_values["start_date"] = candidate.time_range.start_date.isoformat()
-                context_values["end_date"] = candidate.time_range.end_date.isoformat()
-            else:
-                questions.append(
-                    ClarificationQuestion(
-                        field="time_range",
-                        reason=(
-                            "Accounts Payable analysis requires an explicit inclusive date range."
-                        ),
-                        prompt="What exact start and end dates should be analyzed?",
-                        input_type=ClarificationInputType.DATE_RANGE,
-                        constraints=JsonObject({"format": "YYYY-MM-DD"}),
-                    )
-                )
-            if legal_entities:
-                context_values["legal_entity_ids"] = list(legal_entities)
-            else:
-                questions.append(
-                    ClarificationQuestion(
-                        field="legal_entity_ids",
-                        reason="A legal entity must be selected within the caller's current scope.",
-                        prompt="Which authorized legal entity should be analyzed?",
-                        input_type=ClarificationInputType.SINGLE_SELECT,
-                        allowed_values=trusted_context.authorized_legal_entity_ids,
-                    )
-                )
+        resolution_text = (
+            clarification_response.message
+            if clarification_response is not None and clarification_response.message is not None
+            else request.raw_input
+        )
+        merged = _apply_guarded_ap_model_candidates(
+            merged,
+            candidate=candidate,
+            source_text=resolution_text,
+            snapshot_at=trusted_context.policy_snapshot_at,
+            authorized_entities=trusted_context.authorized_legal_entity_ids,
+        )
+        resolution_by_field = {item.field_name: item for item in merged.resolutions}
+        context = context_from_ap_merge(merged)
+        if merged.candidate is not None:
             return TaskUnderstandingOutcome(
                 contract=None,
-                missing_information=tuple(dict.fromkeys(missing)),
-                questions=tuple(questions),
-                clarification_context=ClarificationContext(values=JsonObject(context_values)),
+                missing_information=("The candidate interpretation requires confirmation",),
+                questions=(
+                    ClarificationQuestion(
+                        field="confirmation",
+                        reason=(
+                            "A semantic interpretation requires confirmation before it becomes "
+                            "governed scope."
+                        ),
+                        prompt=(
+                            f"I understood that as {merged.candidate.display_text}. "
+                            "Should I continue?"
+                        ),
+                        input_type=ClarificationInputType.TEXT,
+                    ),
+                ),
+                clarification_context=context,
+                clarification_kind=ClarificationKind.CANDIDATE_CONFIRMATION,
+                candidate_interpretation=merged.candidate,
             )
-        assert candidate.time_range.start_date is not None
-        assert candidate.time_range.end_date is not None
+        missing: list[str] = []
+        questions: list[ClarificationQuestion] = []
+        time_resolution = resolution_by_field["time_range"]
+        entity_resolution = resolution_by_field["legal_entity_ids"]
+        if (
+            merged.start_date is None
+            or merged.end_date is None
+            or time_resolution.status
+            in {
+                ResolutionStatus.MISSING,
+                ResolutionStatus.INVALID,
+                ResolutionStatus.AMBIGUOUS,
+            }
+        ):
+            missing.append("An explicit Accounts Payable date range is required")
+            questions.append(
+                ClarificationQuestion(
+                    field="time_range",
+                    reason=time_resolution.reason,
+                    prompt=ap_time_question(time_resolution, entity_resolution),
+                    input_type=ClarificationInputType.DATE_RANGE,
+                    constraints=JsonObject(
+                        {
+                            "accepted_examples": [
+                                "2025",
+                                "August 2026",
+                                "second half of 2025",
+                                "2025-01-01 to 2025-12-31",
+                            ]
+                        }
+                    ),
+                )
+            )
+        if not merged.legal_entity_ids or entity_resolution.status in {
+            ResolutionStatus.MISSING,
+            ResolutionStatus.AMBIGUOUS,
+            ResolutionStatus.INVALID,
+        }:
+            missing.append("An explicit authorized legal entity is required")
+            alternatives = tuple(str(item) for item in entity_resolution.alternatives)
+            questions.append(
+                ClarificationQuestion(
+                    field="legal_entity_ids",
+                    reason=entity_resolution.reason,
+                    prompt=ap_entity_question(time_resolution, entity_resolution),
+                    input_type=ClarificationInputType.SINGLE_SELECT,
+                    allowed_values=alternatives or trusted_context.authorized_legal_entity_ids,
+                )
+            )
+        if questions:
+            return TaskUnderstandingOutcome(
+                contract=None,
+                missing_information=tuple(missing),
+                questions=tuple(questions),
+                clarification_context=context,
+                clarification_kind=(
+                    ClarificationKind.AMBIGUITY_RESOLUTION
+                    if any(item.status is ResolutionStatus.AMBIGUOUS for item in merged.resolutions)
+                    else ClarificationKind.MISSING_INFORMATION
+                ),
+            )
+        assert merged.start_date is not None
+        assert merged.end_date is not None
+        legal_entities = _bounded_scope(
+            "legal entity",
+            merged.legal_entity_ids,
+            trusted_context.authorized_legal_entity_ids,
+        )
         supplier_ids = _bounded_scope(
             "supplier",
             candidate.requested_supplier_ids,
@@ -467,11 +709,12 @@ class LLMPlanningService:
             trusted_context.deadline_at,
             request.created_at + timedelta(seconds=180),
         )
+        try:
+            time_range = DateRange(start_date=merged.start_date, end_date=merged.end_date)
+        except ValueError as exc:
+            raise LLMSchemaValidationError(str(exc)) from exc
         constraints = AccountsPayableConstraintsV1(
-            time_range=DateRange(
-                start_date=candidate.time_range.start_date,
-                end_date=candidate.time_range.end_date,
-            ),
+            time_range=time_range,
             supplier_ids=supplier_ids,
             legal_entity_ids=legal_entities,
             business_unit_ids=business_units,
@@ -518,15 +761,7 @@ class LLMPlanningService:
                 ),
                 created_at=request.created_at,
             ),
-            clarification_context=ClarificationContext(
-                values=JsonObject(
-                    {
-                        "start_date": candidate.time_range.start_date.isoformat(),
-                        "end_date": candidate.time_range.end_date.isoformat(),
-                        "legal_entity_ids": list(legal_entities),
-                    }
-                )
-            ),
+            clarification_context=context,
         )
 
     def create_validated_plan(
@@ -993,6 +1228,222 @@ def _invalid_candidate(error: LLMSchemaValidationError) -> object:
             "bounded_raw_candidate": error.raw_output,
             "representation": "untrusted_text",
         }
+
+
+def _apply_guarded_ap_model_candidates(
+    merged: APRequiredFieldMerge,
+    *,
+    candidate: APTaskUnderstandingOutput,
+    source_text: str,
+    snapshot_at: datetime | None,
+    authorized_entities: tuple[str, ...],
+) -> APRequiredFieldMerge:
+    """Retain bounded model candidates only behind explicit user confirmation."""
+    with_time = _apply_guarded_ap_time_candidate(
+        merged,
+        candidate=candidate,
+        source_text=source_text,
+        snapshot_at=snapshot_at,
+    )
+    return _apply_guarded_ap_entity_candidate(
+        with_time,
+        candidate=candidate,
+        source_text=source_text,
+        authorized_entities=authorized_entities,
+    )
+
+
+def _apply_guarded_ap_time_candidate(
+    merged: APRequiredFieldMerge,
+    *,
+    candidate: APTaskUnderstandingOutput,
+    source_text: str,
+    snapshot_at: datetime | None,
+) -> APRequiredFieldMerge:
+    """Retain model dates only as a bounded confirmation candidate."""
+    resolutions = {item.field_name: item for item in merged.resolutions}
+    current = resolutions["time_range"]
+    candidate_start = candidate.time_range.start_date
+    candidate_end = candidate.time_range.end_date
+
+    if merged.start_date is not None and merged.end_date is not None:
+        candidate_start, candidate_end = merged.start_date, merged.end_date
+        requires_confirmation = False
+    else:
+        requires_confirmation = True
+        if (
+            candidate_start is None
+            or candidate_end is None
+            or _AP_ABSOLUTE_TIME_ANCHOR.search(source_text) is None
+        ):
+            return merged
+
+    value: dict[str, JsonValue] = {
+        "start_date": candidate_start.isoformat(),
+        "end_date": candidate_end.isoformat(),
+    }
+    try:
+        DateRange(start_date=candidate_start, end_date=candidate_end)
+    except ValueError as exc:
+        invalid = current.model_copy(
+            update={
+                "status": ResolutionStatus.INVALID,
+                "candidate_value": value,
+                "canonical_value": None,
+                "reason": str(exc),
+                "validation_errors": ("DATE_RANGE_INVALID",),
+                "requires_confirmation": False,
+            }
+        )
+        resolutions["time_range"] = invalid
+        return _replace_ap_resolutions(
+            merged,
+            resolutions,
+            start_date=None,
+            end_date=None,
+            legal_entity_ids=merged.legal_entity_ids,
+        )
+    if snapshot_at is not None and candidate_end > snapshot_at.date():
+        snapshot_date = snapshot_at.date().isoformat()
+        invalid = current.model_copy(
+            update={
+                "status": ResolutionStatus.INVALID,
+                "candidate_value": value,
+                "canonical_value": None,
+                "reason": (
+                    f"The requested period ends on {candidate_end.isoformat()}, but the "
+                    f"authorized data snapshot only covers through {snapshot_date}."
+                ),
+                "validation_errors": ("DATE_RANGE_AFTER_SNAPSHOT",),
+                "requires_confirmation": False,
+            }
+        )
+        resolutions["time_range"] = invalid
+        return _replace_ap_resolutions(
+            merged,
+            resolutions,
+            start_date=None,
+            end_date=None,
+            legal_entity_ids=merged.legal_entity_ids,
+        )
+    if not requires_confirmation:
+        return merged
+
+    proposed = FieldResolution(
+        field_name="time_range",
+        status=ResolutionStatus.CONFIRMATION_REQUIRED,
+        raw_text=None,
+        candidate_value=value,
+        canonical_value=None,
+        reason="The model inferred a complete absolute period from the user's date expression.",
+        source=ResolutionSource.LLM_EXTRACTION,
+        requires_confirmation=True,
+    )
+    resolutions["time_range"] = proposed
+    return _replace_ap_resolutions(
+        merged,
+        resolutions,
+        start_date=None,
+        end_date=None,
+        legal_entity_ids=merged.legal_entity_ids,
+    )
+
+
+def _apply_guarded_ap_entity_candidate(
+    merged: APRequiredFieldMerge,
+    *,
+    candidate: APTaskUnderstandingOutput,
+    source_text: str,
+    authorized_entities: tuple[str, ...],
+) -> APRequiredFieldMerge:
+    """Allow an entity interpretation only inside scope and only as a confirmation candidate."""
+    resolutions = {item.field_name: item for item in merged.resolutions}
+    current = resolutions["legal_entity_ids"]
+    if current.status in {
+        ResolutionStatus.EXACT,
+        ResolutionStatus.NORMALIZED,
+        ResolutionStatus.CONFIRMATION_REQUIRED,
+        ResolutionStatus.UNAUTHORIZED,
+    }:
+        return merged
+    proposed_entities = tuple(
+        dict.fromkeys(item.upper() for item in candidate.requested_legal_entity_ids)
+    )
+    if not proposed_entities or _AP_ENTITY_ANCHOR.search(source_text) is None:
+        return merged
+    authorized = {item.upper() for item in authorized_entities}
+    if not set(proposed_entities).issubset(authorized):
+        LOGGER.warning("model entity candidate exceeded authorized scope; ignoring candidate")
+        return merged
+    alternatives = {str(item).upper() for item in current.alternatives}
+    if alternatives and (
+        not set(proposed_entities).issubset(alternatives) or set(proposed_entities) == alternatives
+    ):
+        return merged
+    proposed = FieldResolution(
+        field_name="legal_entity_ids",
+        status=ResolutionStatus.CONFIRMATION_REQUIRED,
+        raw_text=None,
+        candidate_value=list(proposed_entities),
+        canonical_value=None,
+        reason=(
+            "The model matched the user's entity expression to identifiers inside the current "
+            "authorized scope."
+        ),
+        source=ResolutionSource.LLM_EXTRACTION,
+        requires_confirmation=True,
+    )
+    resolutions["legal_entity_ids"] = proposed
+    return _replace_ap_resolutions(
+        merged,
+        resolutions,
+        start_date=merged.start_date,
+        end_date=merged.end_date,
+        legal_entity_ids=(),
+    )
+
+
+def _replace_ap_resolutions(
+    merged: APRequiredFieldMerge,
+    resolutions: dict[str, FieldResolution],
+    *,
+    start_date: date | None,
+    end_date: date | None,
+    legal_entity_ids: tuple[str, ...],
+) -> APRequiredFieldMerge:
+    """Replace resolution state and rebuild the exact version-bound candidate."""
+    confirmable = tuple(
+        item
+        for item in resolutions.values()
+        if item.status is ResolutionStatus.CONFIRMATION_REQUIRED
+    )
+    return replace(
+        merged,
+        start_date=start_date,
+        end_date=end_date,
+        legal_entity_ids=legal_entity_ids,
+        resolutions=tuple(resolutions.values()),
+        candidate=(
+            build_candidate_interpretation(confirmable, _ap_candidate_display(confirmable))
+            if confirmable
+            else None
+        ),
+    )
+
+
+def _ap_candidate_display(resolutions: tuple[FieldResolution, ...]) -> str:
+    parts: list[str] = []
+    for item in resolutions:
+        if item.field_name == "time_range" and isinstance(item.candidate_value, dict):
+            start = item.candidate_value.get("start_date")
+            end = item.candidate_value.get("end_date")
+            if isinstance(start, str) and isinstance(end, str):
+                parts.append(f"{start} through {end}")
+        elif item.field_name == "legal_entity_ids" and isinstance(item.candidate_value, list):
+            identifiers = [str(value) for value in item.candidate_value]
+            if identifiers:
+                parts.append(f"legal entity {', '.join(identifiers)}")
+    return " and ".join(parts) or "the displayed interpretation"
 
 
 def _llm_validation_error_dicts(

@@ -74,6 +74,18 @@ See [Dataset authoring](../evaluation/datasets/README.md) for versioning and cas
 
 ## Metrics
 
+The dedicated `natural_language_clarification_v1.jsonl` suite exercises AP and Supplier
+normalization, partial carry-forward, relative time, ambiguity, confirmation, unauthorized scope,
+and durable resume. Its clarification evaluator adds normalization accuracy, ambiguity detection
+accuracy, unauthorized resolution rate, field carry-forward accuracy, confirmation resolution
+accuracy, resolved-field regression rate, and clarification resume success. Unauthorized
+resolution and resolved-field regression are zero-tolerance safety gates. Existing aggregate
+reporting continues to provide average clarification rounds.
+
+AP v1.2 additionally measures model-candidate confirmation precision, false direct-acceptance rate,
+assistant-message required-field coverage, deterministic fallback, and resistance to instructions
+embedded in clarification text. Model-composed prose is never an authorization or numeric oracle.
+
 | Metric | Definition | Direction | Missing data |
 |---|---|---|---|
 | Task Success Rate | cases satisfying `ExpectedOutcome` / valid evaluated cases | higher | harness errors are not success |

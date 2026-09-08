@@ -416,6 +416,17 @@
       "ClarificationDetailResponse": {
         "additionalProperties": false,
         "properties": {
+          "candidate_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Version"
+          },
           "clarification_id": {
             "title": "Clarification Id",
             "type": "string"
@@ -424,6 +435,9 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ClarificationKind"
           },
           "questions": {
             "items": {
@@ -474,6 +488,8 @@
           "task_id",
           "status",
           "round",
+          "kind",
+          "candidate_version",
           "questions",
           "created_at",
           "submitted_at",
@@ -492,6 +508,16 @@
           "multi_select"
         ],
         "title": "ClarificationInputType",
+        "type": "string"
+      },
+      "ClarificationKind": {
+        "description": "Meaning of a clarification round without adding another Task status.",
+        "enum": [
+          "MISSING_INFORMATION",
+          "AMBIGUITY_RESOLUTION",
+          "CANDIDATE_CONFIRMATION"
+        ],
+        "title": "ClarificationKind",
         "type": "string"
       },
       "ClarificationQuestionResponse": {
@@ -547,6 +573,28 @@
         "additionalProperties": false,
         "description": "One complete or pending clarification interaction round.",
         "properties": {
+          "assistant_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistant Message"
+          },
+          "candidate_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Version"
+          },
           "clarification_id": {
             "title": "Clarification Id",
             "type": "string"
@@ -555,6 +603,9 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ClarificationKind"
           },
           "questions": {
             "items": {
@@ -611,6 +662,8 @@
           "clarification_id",
           "round",
           "status",
+          "kind",
+          "candidate_version",
           "questions",
           "response_display_text",
           "created_at",
@@ -917,6 +970,28 @@
         "additionalProperties": false,
         "description": "Discoverable current clarification interaction for a Task.",
         "properties": {
+          "assistant_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistant Message"
+          },
+          "candidate_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Version"
+          },
           "clarification_id": {
             "title": "Clarification Id",
             "type": "string"
@@ -925,6 +1000,9 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ClarificationKind"
           },
           "questions": {
             "items": {
@@ -942,6 +1020,8 @@
         "required": [
           "clarification_id",
           "round",
+          "kind",
+          "candidate_version",
           "questions",
           "created_at"
         ],

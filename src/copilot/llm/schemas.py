@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from copilot.contracts import (
     APExceptionType,
@@ -145,6 +145,22 @@ class APTaskUnderstandingOutput(BaseModel):
         return self
 
 
+class ClarificationAssistantOutput(BaseModel):
+    """Natural presentation generated only from validated clarification facts."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    message: str = Field(min_length=1, max_length=4000)
+    covered_fields: tuple[str, ...] = Field(min_length=1, max_length=20)
+
+    @field_validator("covered_fields")
+    @classmethod
+    def validate_fields(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        if len(values) != len(set(values)):
+            raise ValueError("covered_fields must be unique")
+        return values
+
+
 class PlannerCapabilityManifestEntry(BaseModel):
     """Semantic capability view with all executable Registry metadata removed."""
 
@@ -171,6 +187,7 @@ __all__ = [
     "APDateRangeCandidate",
     "APDeliverableCandidate",
     "APTaskUnderstandingOutput",
+    "ClarificationAssistantOutput",
     "TaskUnderstandingOutput",
     "UnderstandingConstraints",
     "UnderstandingDeliverable",

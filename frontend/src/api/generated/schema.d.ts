@@ -415,6 +415,8 @@ export interface components {
         };
         /** ClarificationDetailResponse */
         ClarificationDetailResponse: {
+            /** Candidate Version */
+            candidate_version: string | null;
             /** Clarification Id */
             clarification_id: string;
             /**
@@ -422,6 +424,7 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            kind: components["schemas"]["ClarificationKind"];
             /** Questions */
             questions: components["schemas"]["ClarificationQuestionResponse"][];
             /** Resolved At */
@@ -440,6 +443,12 @@ export interface components {
          * @enum {string}
          */
         ClarificationInputType: "text" | "date" | "date_range" | "single_select" | "multi_select";
+        /**
+         * ClarificationKind
+         * @description Meaning of a clarification round without adding another Task status.
+         * @enum {string}
+         */
+        ClarificationKind: "MISSING_INFORMATION" | "AMBIGUITY_RESOLUTION" | "CANDIDATE_CONFIRMATION";
         /** ClarificationQuestionResponse */
         ClarificationQuestionResponse: {
             /** Allowed Values */
@@ -463,6 +472,10 @@ export interface components {
          * @description One complete or pending clarification interaction round.
          */
         ClarificationRoundResponse: {
+            /** Assistant Message */
+            assistant_message?: string | null;
+            /** Candidate Version */
+            candidate_version: string | null;
             /** Clarification Id */
             clarification_id: string;
             /**
@@ -470,6 +483,7 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            kind: components["schemas"]["ClarificationKind"];
             /** Questions */
             questions: components["schemas"]["PendingClarificationQuestionResponse"][];
             /** Resolved At */
@@ -611,6 +625,10 @@ export interface components {
          * @description Discoverable current clarification interaction for a Task.
          */
         PendingClarificationResponse: {
+            /** Assistant Message */
+            assistant_message?: string | null;
+            /** Candidate Version */
+            candidate_version: string | null;
             /** Clarification Id */
             clarification_id: string;
             /**
@@ -618,6 +636,7 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            kind: components["schemas"]["ClarificationKind"];
             /** Questions */
             questions: components["schemas"]["PendingClarificationQuestionResponse"][];
             /** Round */

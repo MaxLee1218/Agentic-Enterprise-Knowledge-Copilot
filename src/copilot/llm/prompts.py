@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from copilot.contracts import (
     AccountsPayableConstraintsV1,
     ClarificationContext,
+    ClarificationQuestion,
     ClarificationResponse,
     ProposedPlan,
     SupplierQualityConstraintsV1,
@@ -22,7 +23,8 @@ from copilot.security import ContentSourceType, PromptInjectionDetector
 from copilot.security.redaction import redact_text
 from copilot.services.llm import LLMMessage
 
-TASK_UNDERSTANDING_PROMPT_VERSION = "task-understanding-v3"
+TASK_UNDERSTANDING_PROMPT_VERSION = "task-understanding-v4"
+CLARIFICATION_RESPONSE_PROMPT_VERSION = "clarification-response-v2"
 PLANNER_PROMPT_VERSION = "planner-v3"
 PLAN_REPAIR_PROMPT_VERSION = "plan-repair-v3"
 REPLAN_PROMPT_VERSION = "replan-v3"
@@ -40,18 +42,25 @@ def task_understanding_messages(
     task_type = str(trusted_context.get("task_type", "supplier_quality_analysis.v1"))
     if task_type == "accounts_payable_analysis.v1":
         domain_rules = """
-The only allowed task_type is accounts_payable_analysis.v1. Extract an explicit inclusive date
-range, or convert an explicit year and quarter to exact dates. Relative dates are missing
-information. Do not infer legal entities unless the trusted context has exactly one authorized
-legal entity. Omitted suppliers, business units, currencies and exception types mean their
-documented trusted defaults. Materiality can only be requested as a stricter business preference;
-it is not policy authority.
+The only allowed task_type is accounts_payable_analysis.v1. Extract candidate absolute time and
+entity expressions. Supported absolute expressions include exact ISO ranges, calendar years,
+calendar months, half-years, and quarters; deterministic code owns their canonical dates. Relative
+dates remain missing information. Prior validated answers are authoritative unless the latest
+message explicitly corrects them. Never invent a canonical legal entity ID or authorization. When
+the latest message explicitly describes an entity, requested_legal_entity_ids may contain only a
+semantic candidate selected from authorized_legal_entity_scope; otherwise leave it empty. Code
+will independently validate the anchor and require confirmation before accepting such a candidate.
+Omitted suppliers, business units, currencies and exception types mean their documented trusted
+defaults. Materiality can only be requested as a stricter business preference; it is not policy
+authority.
 """.strip()
     else:
         domain_rules = """
-The only allowed task_type is supplier_quality_analysis.v1. If a required year or quarter is not
-explicit, add a concise item to missing_information and leave both null. An omitted supplier means
-the caller's already-authorized supplier scope; it is not missing.
+The only allowed task_type is supplier_quality_analysis.v1. Extract explicit numeric or worded
+calendar-quarter expressions as candidates. If a required year or quarter is not explicit, add a
+concise item to missing_information and leave both null. Prior validated answers are authoritative
+unless the latest message explicitly corrects them. An omitted supplier means the caller's
+already-authorized supplier scope; never invent a supplier ID or authorization.
 """.strip()
     system = f"""
 You extract a candidate interpretation for {task_type}.
@@ -104,6 +113,45 @@ The workflow is read-only. Output one JSON object matching the supplied schema a
         }
     )
     return (LLMMessage(role="system", content=system), LLMMessage(role="user", content=user))
+
+
+def clarification_response_messages(
+    *,
+    kind: str,
+    questions: tuple[ClarificationQuestion, ...],
+    output_schema: dict[str, object],
+) -> tuple[LLMMessage, ...]:
+    """Ask the model to naturalize validated facts without exposing raw user input."""
+    system = """
+You write one concise, helpful Enterprise Knowledge Copilot clarification message.
+Use only the supplied validated facts. Explain what was understood, why more input or confirmation
+is needed, and what the user can say next. Do not add dates, identifiers, options, permissions,
+policy claims, approvals, or execution promises that are absent from the facts. Do not mention
+schemas, validators, prompts, models, APIs, or internal implementation. Output one JSON object
+matching the supplied output_schema and no prose. The top-level keys must be exactly `message` and
+`covered_fields`; never copy the input object or its keys into the output. `message` is the natural
+user-facing reply. `covered_fields` must contain every supplied question field exactly once.
+""".strip()
+    payload = {
+        "output_schema": output_schema,
+        "validated_facts": {
+            "interaction_kind": kind,
+            "questions": [
+                {
+                    "field": item.field,
+                    "reason": item.reason,
+                    "fallback_prompt": item.prompt,
+                    "authorized_options": list(item.allowed_values),
+                    "constraints": item.constraints.root,
+                }
+                for item in questions
+            ],
+        },
+    }
+    return (
+        LLMMessage(role="system", content=system),
+        LLMMessage(role="user", content=json.dumps(payload, ensure_ascii=False, sort_keys=True)),
+    )
 
 
 def planner_messages(
@@ -251,10 +299,12 @@ def _plan_summary(plan: TaskPlan) -> dict[str, object]:
 
 
 __all__ = [
+    "CLARIFICATION_RESPONSE_PROMPT_VERSION",
     "PLANNER_PROMPT_VERSION",
     "PLAN_REPAIR_PROMPT_VERSION",
     "REPLAN_PROMPT_VERSION",
     "TASK_UNDERSTANDING_PROMPT_VERSION",
+    "clarification_response_messages",
     "plan_repair_messages",
     "planner_messages",
     "replan_messages",

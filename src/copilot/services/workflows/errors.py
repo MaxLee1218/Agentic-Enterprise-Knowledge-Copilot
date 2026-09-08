@@ -2,6 +2,8 @@
 
 from enum import StrEnum
 
+from copilot.services.llm import LLMSchemaValidationError
+
 
 class WorkflowError(RuntimeError):
     """Base deterministic workflow error."""
@@ -25,6 +27,16 @@ class VerificationError(WorkflowError):
 
 class WorkflowRecoveryError(WorkflowError):
     """Raised when durable domain state and a checkpoint cannot be reconciled safely."""
+
+
+class TaskUnderstandingAuthorizationError(LLMSchemaValidationError):
+    """Reject a natural-language business-field candidate outside trusted scope."""
+
+    audit_code = "TASK_SCOPE_UNAUTHORIZED"
+
+    def __init__(self, message: str, *, field_name: str) -> None:
+        super().__init__(message)
+        self.field_name = field_name
 
 
 class PlannerErrorCode(StrEnum):

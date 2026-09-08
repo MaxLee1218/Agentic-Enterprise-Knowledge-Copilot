@@ -91,10 +91,14 @@ Tool、Queue adapter、Repository 或文件路径。独立 Worker 从 PostgreSQL
 | POST | `/v1/tasks/{task_id}/clarifications/{clarification_id}` | `ClarificationSubmissionRequest` | `ClarificationSubmissionResponse` | 202 |
 
 Task detail 在 `WAITING_CLARIFICATION` 时直接包含 `pending_clarification`（ID、轮次、创建时间、
-结构化问题、输入类型、约束和当前授权候选值）；前端不需要从 Audit 推断。POST 可以提交部分
+`kind`、可选 `candidate_version`、结构化问题、输入类型、约束和当前授权候选值）；前端不需要从 Audit 推断。POST 可以提交部分
 `answers` 和/或最多 4000 字符的 `message`。接口验证当前 owner/tenant/role/task type/scope、问题
 字段、日期/选择类型和 suspended Checkpoint，在一个事务中接受回答并调度 resume；不 inline 调用
 Graph。成功响应的 `task_status` 为 `UNDERSTANDING`，同一响应指纹可幂等重试。
+
+`kind` 为 `MISSING_INFORMATION`、`AMBIGUITY_RESOLUTION` 或 `CANDIDATE_CONFIRMATION`。自然语言
+`yes`/`no`/纠正仍提交到同一 clarification endpoint；它们只影响当前绑定的解释候选。审批不接受
+该消息接口，仍须调用 approval endpoint 并提交结构化 `approve`、`edit` 或 `reject` 动作。
 
 Clarification 稳定错误为：403 `CLARIFICATION_ACCESS_DENIED`；404
 `CLARIFICATION_NOT_FOUND`；409 `CLARIFICATION_ALREADY_RESOLVED` 或

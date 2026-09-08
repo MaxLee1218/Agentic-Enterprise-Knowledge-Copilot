@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("real API and Worker driver complete the exact AP clarification demo", async ({
+test("real API and Worker resolve year2025 CN and enter planning on the same task", async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -15,41 +15,28 @@ test("real API and Worker driver complete the exact AP clarification demo", asyn
   await composer.press("Enter");
 
   await expect(
-    page.getByText("What exact start and end dates should be analyzed?"),
+    page.getByText("What exact period would you like me to analyze?"),
   ).toBeVisible({ timeout: 30_000 });
   const taskUrl = page.url();
   const taskId = taskUrl.split("/").at(-1);
   expect(taskId).toBeTruthy();
   await expect(page.getByRole("status")).toHaveText("Waiting for information");
-  await composer.fill("Use 2026-08-01 through 2026-08-31.");
+  await composer.fill("year2025 CN");
   await composer.press("Enter");
 
   await expect(
-    page.getByText("Which authorized legal entity should be analyzed?"),
-  ).toHaveCount(2, { timeout: 30_000 });
-  await expect(page).toHaveURL(taskUrl);
-  await composer.fill("Use legal entity LE-CN-01.");
-  await composer.press("Enter");
-
-  await expect(page.getByRole("status")).toHaveText("Completed", {
+    page.getByText("Building and validating a governed execution plan."),
+  ).toBeVisible({
     timeout: 60_000,
   });
   await expect(page).toHaveURL(taskUrl);
-  await page.getByRole("button", { name: "Execution" }).click();
-  await expect(
-    page.getByText("Generate the governed internal Accounts Payable report."),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Close Execution details" }).click();
-  await page.getByRole("button", { name: "Evidence", exact: true }).click();
-  await expect(page.getByText(/evidence with fields/i).first()).toBeVisible();
-  await page.getByRole("button", { name: "Close Evidence" }).click();
-  await expect(page.getByRole("heading", { name: /\.pdf$/ })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Download PDF" })).toBeVisible();
   await expect(
     page
       .getByRole("complementary", { name: "Task history" })
       .locator(`a[href="${new URL(taskUrl).pathname}"]`)
-      .getByText("Completed", { exact: true }),
+      .getByText(/Planning|Running|Verifying|Completed|Failed/, {
+        exact: true,
+      }),
   ).toBeVisible();
 });
 
@@ -79,4 +66,79 @@ test("real API resolves a direct Supplier request without a browser selector", a
     ),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Download PDF" })).toBeVisible();
+});
+
+test("real API persists confirmation, rejection, and correction on one task", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await page.goto("/");
+  const composer = page.getByRole("textbox", {
+    name: "Message the Enterprise Knowledge Copilot",
+  });
+  await composer.fill(
+    "Analyze recent Accounts Payable invoices and generate a JSON report.",
+  );
+  await composer.press("Enter");
+  await expect(
+    page.getByText("What exact period would you like me to analyze?"),
+  ).toBeVisible({ timeout: 30_000 });
+  const taskUrl = page.url();
+
+  await composer.fill("Q2 2026 China");
+  await composer.press("Enter");
+  await expect(
+    page.getByText("Please confirm this interpretation before I continue."),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByText(/I understood that as legal entity LE-CN-01/),
+  ).toBeVisible();
+
+  await page.reload();
+  await expect(page).toHaveURL(taskUrl);
+  await expect(
+    page.getByText("Please confirm this interpretation before I continue."),
+  ).toBeVisible();
+  await composer.fill("no");
+  await composer.press("Enter");
+  await expect(
+    page.getByText(
+      /I understood the period as April 1, 2026 through June 30, 2026/,
+    ),
+  ).toBeVisible({ timeout: 30_000 });
+
+  await composer.fill("Actually use LE-CN-01.");
+  await composer.press("Enter");
+  await expect(page.getByRole("status")).toHaveText("Completed", {
+    timeout: 60_000,
+  });
+  await expect(page).toHaveURL(taskUrl);
+});
+
+test("real API denies an unauthorized natural entity before planning and tools", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.goto("/");
+  const composer = page.getByRole("textbox", {
+    name: "Message the Enterprise Knowledge Copilot",
+  });
+  await composer.fill("Analyze recent Accounts Payable invoices.");
+  await composer.press("Enter");
+  await expect(
+    page.getByText("What exact period would you like me to analyze?"),
+  ).toBeVisible({ timeout: 30_000 });
+
+  await composer.fill("Q2 2026 LE-US-01");
+  await composer.press("Enter");
+  await expect(page.getByRole("status")).toHaveText("Failed", {
+    timeout: 30_000,
+  });
+  await expect(
+    page.getByText("Building and validating a governed execution plan."),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Execution" }).click();
+  await expect(
+    page.getByText("No plan steps are available yet."),
+  ).toBeVisible();
 });

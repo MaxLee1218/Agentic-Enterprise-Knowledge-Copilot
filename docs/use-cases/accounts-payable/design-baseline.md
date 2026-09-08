@@ -1,9 +1,16 @@
 # Accounts Payable v1 Design Baseline
 
-**Baseline ID:** `accounts-payable-design.v1.1`
-**Status:** `FROZEN — INTERACTIVE CLARIFICATION AMENDMENT ACCEPTED`
+**Baseline ID:** `accounts-payable-design.v1.2`
+**Status:** `FROZEN — GOVERNED SEMANTIC CLARIFICATION AMENDMENT ACCEPTED`
 **Freeze date:** 2026-09-01
 **Implementation status:** `STAGE 12 NOT READY; CLARIFICATION RELEASE GATES REQUIRED`
+
+### v1.2 amendment
+
+ADR-022 authorizes schema-valid model candidates only as confirmation-bound interpretations after
+deterministic anchor, limit, snapshot and authorization checks. It also authorizes a bounded model
+call to compose persisted clarification wording from typed safe facts, with deterministic fallback.
+Questions and TaskContract remain authoritative; model prose cannot authorize execution.
 
 ### v1.1 amendment
 
@@ -54,6 +61,8 @@ These accepted decisions are part of the baseline:
   controlled document versions, effective dates and checksums.
 - [ADR-011](../../adr/ADR-011-accounts-payable-business-data-model.md): add a narrow, tenant-scoped
   AP business schema, reuse suppliers and preserve the business/platform database boundary.
+- [ADR-022](../../adr/ADR-022-governed-semantic-clarification-and-response.md): guard semantic
+  candidates behind confirmation and generate natural clarification wording from validated facts.
 
 ## 3. Frozen identifiers and versions
 

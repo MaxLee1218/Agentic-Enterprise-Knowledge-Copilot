@@ -15,9 +15,11 @@ from copilot.contracts import (
     ApprovalRequirement,
     Artifact,
     ArtifactType,
+    CandidateInterpretation,
     CapabilityName,
     ClarificationContext,
     ClarificationInputType,
+    ClarificationKind,
     ClarificationQuestion,
     ClarificationResponse,
     ClarificationStatus,
@@ -25,9 +27,12 @@ from copilot.contracts import (
     DateRange,
     ErrorType,
     ExpectedOutput,
+    FieldResolution,
     JsonObject,
     MoneyThreshold,
     ReportLanguage,
+    ResolutionSource,
+    ResolutionStatus,
     RetryPolicy,
     StepResult,
     StepResultStatus,
@@ -68,9 +73,11 @@ _CHECKPOINT_ALLOWED_TYPES = (
     ApprovalRequirement,
     Artifact,
     ArtifactType,
+    CandidateInterpretation,
     CapabilityName,
     ClarificationContext,
     ClarificationInputType,
+    ClarificationKind,
     ClarificationQuestion,
     ClarificationResponse,
     ClarificationStatus,
@@ -78,9 +85,12 @@ _CHECKPOINT_ALLOWED_TYPES = (
     DateRange,
     ErrorType,
     ExpectedOutput,
+    FieldResolution,
     JsonObject,
     MoneyThreshold,
     ReportLanguage,
+    ResolutionSource,
+    ResolutionStatus,
     RequestSource,
     RetryPolicy,
     StepExecutionRecord,
@@ -244,6 +254,9 @@ class AgentGraphState(TypedDict):
     clarification_id: str | None
     clarification_round: int
     clarification_questions: list[ClarificationQuestion]
+    clarification_kind: ClarificationKind
+    candidate_interpretation: CandidateInterpretation | None
+    clarification_assistant_message: str | None
     clarification_context: ClarificationContext
     clarification_response: ClarificationResponse | None
     step_results: Annotated[list[StepResult], merge_step_results]
@@ -355,6 +368,9 @@ def initial_graph_state(
         clarification_id=None,
         clarification_round=0,
         clarification_questions=[],
+        clarification_kind=ClarificationKind.MISSING_INFORMATION,
+        candidate_interpretation=None,
+        clarification_assistant_message=None,
         clarification_context=ClarificationContext(),
         clarification_response=None,
         step_results=[],

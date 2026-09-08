@@ -709,6 +709,26 @@ def _document_metadata_issues(
     score_valid = isinstance(score, int | float) and not isinstance(score, bool) and score >= 0
     effective_from = _date(reference.get("effective_from"))
     effective_to = _date(reference.get("effective_to"))
+    policy_period_mismatch = (
+        effective_from is not None
+        and effective_to is not None
+        and (
+            effective_from > constraints.time_range.start_date
+            or effective_to < constraints.time_range.end_date
+        )
+    )
+    if policy_period_mismatch:
+        assert effective_from is not None
+        assert effective_to is not None
+        invalid_message = (
+            "Available Accounts Payable policy evidence is effective "
+            f"{effective_from.isoformat()} through {effective_to.isoformat()} and does not "
+            "cover the requested period "
+            f"{constraints.time_range.start_date.isoformat()} through "
+            f"{constraints.time_range.end_date.isoformat()}"
+        )
+    else:
+        invalid_message = "AP Document Evidence lacks exact policy provenance metadata"
     invalid = (
         any(
             not isinstance(reference.get(key), str) or not reference.get(key)
@@ -720,8 +740,7 @@ def _document_metadata_issues(
         or not score_valid
         or effective_from is None
         or effective_to is None
-        or effective_from > constraints.time_range.start_date
-        or effective_to < constraints.time_range.end_date
+        or policy_period_mismatch
         or not _strings(reference.get("bound_rule_ids"))
         or reference.get("collection_id") != "accounts-payable-policy-v1"
         or reference.get("policy_rule_set_version") != constraints.policy_rule_set_version
@@ -732,7 +751,7 @@ def _document_metadata_issues(
         (
             _issue(
                 "AP_DOCUMENT_METADATA_INVALID",
-                "AP Document Evidence lacks exact policy provenance metadata",
+                invalid_message,
                 verifier,
                 item.task_id,
                 item=item,

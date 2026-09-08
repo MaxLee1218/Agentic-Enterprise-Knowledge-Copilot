@@ -424,8 +424,17 @@ def test_clarification_survives_worker_restart_and_duplicate_resume_delivery_is_
             },
         )
         task_id = accepted.json()["task_id"]
+        first_waiting = harness.run_until(task_id, {"WAITING_CLARIFICATION"})
+        first_pending = cast(dict[str, object], first_waiting["pending_clarification"])
+        interpreted = harness.client.post(
+            f"/v1/tasks/{task_id}/clarifications/{first_pending['clarification_id']}",
+            json={"message": "Q2 2026 China"},
+        )
+        assert interpreted.status_code == 202
         waiting = harness.run_until(task_id, {"WAITING_CLARIFICATION"})
         pending = cast(dict[str, object], waiting["pending_clarification"])
+        assert pending["kind"] == "CANDIDATE_CONFIRMATION"
+        assert isinstance(pending["candidate_version"], str)
 
         harness.worker.close()
         harness.worker = build_worker_application(harness.settings)
@@ -438,17 +447,15 @@ def test_clarification_survives_worker_restart_and_duplicate_resume_delivery_is_
 
         answered = harness.client.post(
             f"/v1/tasks/{task_id}/clarifications/{pending['clarification_id']}",
-            json={
-                "answers": {
-                    "time_range": {
-                        "start_date": "2026-04-01",
-                        "end_date": "2026-06-30",
-                    },
-                    "legal_entity_ids": "LE-CN-01",
-                }
-            },
+            json={"message": "yes, continue"},
         )
         assert answered.status_code == 202
+        duplicate_answer = harness.client.post(
+            f"/v1/tasks/{task_id}/clarifications/{pending['clarification_id']}",
+            json={"message": "yes, continue"},
+        )
+        assert duplicate_answer.status_code == 202
+        assert duplicate_answer.json()["reused"] is True
         completed = harness.run_until(task_id, {"COMPLETED"})
         assert completed["artifact_count"] == 1
         assert harness.api.async_runtime_repository is not None
@@ -459,7 +466,7 @@ def test_clarification_survives_worker_restart_and_duplicate_resume_delivery_is_
         resumed_dispatch = harness.api.async_runtime_repository.get(
             snapshot.current_dispatch_id or "", tenant_id=harness.tenant_id
         ).dispatch
-        assert resumed_dispatch.execution_generation == 2
+        assert resumed_dispatch.execution_generation == 3
 
         harness.worker.container.task_queue.rearm(resumed_dispatch)
         harness.worker.runtime.run_once()
@@ -550,6 +557,12 @@ def test_clarification_then_approval_resume_share_one_task_lifecycle(
         assert approval_wait["pending_clarification"] is None
         approval_id = approval_wait["pending_approval_id"]
         assert isinstance(approval_id, str)
+        forged_yes = harness.client.post(
+            f"/v1/tasks/{task_id}/clarifications/{pending['clarification_id']}",
+            json={"message": "yes"},
+        )
+        assert forged_yes.status_code == 409
+        assert harness.client.get(f"/v1/tasks/{task_id}").json()["status"] == "WAITING_APPROVAL"
 
         approver = owner.model_copy(
             update={

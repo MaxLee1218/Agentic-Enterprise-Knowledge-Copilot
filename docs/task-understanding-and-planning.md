@@ -11,6 +11,46 @@ The Planner receives that validated Contract and one explicitly selected domain 
 manifest. It does not select a domain, clarify missing information, discover global/MCP tools or
 execute anything.
 
+## Natural-language clarification resolution
+
+Clarification supplements the immutable original request through a separate, persisted
+`ClarificationContext`. Each mandatory field has a `FieldResolution` status (`EXACT`,
+`NORMALIZED`, `CONFIRMATION_REQUIRED`, `AMBIGUOUS`, `MISSING`, `INVALID`, or `UNAUTHORIZED`) and a
+source. The latest response may correct a previously accepted field; omitted fields carry forward
+from validated context.
+
+The deterministic normalizers support these current domain expressions:
+
+- AP: two ISO dates; a calendar year (`2025`, `year2025`, `full year 2025`); a named or abbreviated
+  month; first/second calendar half; and Q1–Q4.
+- Supplier Quality: Q1–Q4 in year-first, quarter-first, English worded, German `N. Quartal`, and
+  Chinese `第N季度` forms.
+- Entity scope: exact legal-entity/supplier IDs and documented natural labels matched only inside
+  the caller's current authorized set.
+
+Month ends come from the standard calendar library, including leap-year February. Relative time
+(`recently`, `last period`, `the usual period`, `a while ago`) never becomes an implicit duration.
+The resulting canonical dates still pass the frozen AP 366-day and snapshot validations.
+
+Under AP v1.2, a complete model-extracted value that the narrower normalizer cannot parse may be
+retained as `CONFIRMATION_REQUIRED` only when the latest message contains a deterministic semantic
+anchor and the candidate passes ordering, duration, snapshot and authorized-set checks. Explicit
+confirmation promotes that exact persisted candidate; model output never enters TaskContract
+directly. A second bounded structured call may turn the resulting safe field resolutions into a
+natural assistant message. It receives no raw user message and falls back to deterministic copy.
+
+Unique two-letter country codes can normalize directly. A unique country name is an
+interpretation-bearing candidate and requires confirmation. Multiple authorized matches remain
+ambiguous and expose only those alternatives. A missing authorized match is denied before
+planning. Model-extracted mandatory scope candidates are never accepted without those
+deterministic checks.
+
+`yes`, `correct`, `that's right`, `go ahead with that`, and `sounds good` confirm only the exact
+persisted `CandidateInterpretation`. `no` rejects that candidate; correction phrases such as
+`no, use ...`, `actually ...`, and `change ...` re-run deterministic resolution while retaining
+unmodified accepted fields. All successful clarification paths re-enter `UNDERSTANDING`, validate
+the complete `TaskContract`, and only then invoke the Planner.
+
 ## ProposedPlan and canonical TaskPlan
 
 The `planner-v3` model output is a non-executable `ProposedPlan`:

@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from copilot.contracts import (
     ClarificationInputType,
+    ClarificationKind,
     ClarificationStatus,
     RuntimeStatus,
     TaskStatus,
@@ -33,6 +34,8 @@ class ClarificationDetailResponse(BaseModel):
     task_id: str
     status: ClarificationStatus
     round: int = Field(ge=1)
+    kind: ClarificationKind
+    candidate_version: str | None
     questions: tuple[ClarificationQuestionResponse, ...]
     created_at: datetime
     submitted_at: datetime | None

@@ -13,6 +13,7 @@ from copilot.contracts import (
     ApprovalStatus,
     ArtifactType,
     ClarificationInputType,
+    ClarificationKind,
     ClarificationStatus,
     EvidenceType,
     TaskStatus,
@@ -119,6 +120,9 @@ class PendingClarificationResponse(BaseModel):
 
     clarification_id: str
     round: int = Field(ge=1)
+    kind: ClarificationKind
+    candidate_version: str | None
+    assistant_message: str | None = None
     questions: tuple[PendingClarificationQuestionResponse, ...]
     created_at: datetime
 
@@ -177,6 +181,9 @@ class ClarificationRoundResponse(BaseModel):
     clarification_id: str
     round: int = Field(ge=1)
     status: ClarificationStatus
+    kind: ClarificationKind
+    candidate_version: str | None
+    assistant_message: str | None = None
     questions: tuple[PendingClarificationQuestionResponse, ...]
     response_display_text: str | None
     created_at: datetime

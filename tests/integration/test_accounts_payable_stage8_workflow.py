@@ -183,11 +183,70 @@ def test_ap_missing_date_waits_before_planning_or_tools(tmp_path: Path) -> None:
             )
 
         assert captured.value.status == TaskStatus.WAITING_CLARIFICATION.value
+        pending = container.clarification_repository.get_pending_for_task(
+            captured.value.task_id, tenant_id=TENANT_ID
+        )
+        assert pending is not None
+        assert pending.assistant_message is not None
+        detail = container.task_service.get_task(captured.value.task_id, _caller())
+        assert detail.interaction_projection is not None
+        assert detail.interaction_projection.clarification_rounds[0].assistant_message == (
+            pending.assistant_message
+        )
         assert container.repository.plan_for(captured.value.task_id, tenant_id=TENANT_ID) is None
         assert container.ap_knowledge_tool.call_count == 0
         assert container.ap_database_tool.call_count == 0
         assert container.ap_analytics_tool.call_count == 0
         assert container.ap_report_tool.call_count == 0
+
+
+def test_ap_policy_period_failure_explains_how_to_retry(tmp_path: Path) -> None:
+    with _container(tmp_path) as container:
+        execution = container.task_service.submit(
+            NaturalLanguageTaskCommand(
+                task=(
+                    "Analyze all Accounts Payable exceptions from 2025-01-01 to 2025-12-31 "
+                    "for LE-CN-01"
+                ),
+                output_format=TaskOutputFormat.JSON,
+                source=RequestSource.INTERNAL,
+            ),
+            _caller(),
+        )
+
+        assert execution.task_result.final_status is TaskStatus.FAILED
+        assert execution.verification_result is not None
+        assert execution.verification_result.status is VerificationStatus.FAILED
+        assert "does not cover the requested period 2025-01-01 through 2025-12-31" in (
+            execution.task_result.summary
+        )
+        assert "Please revise the requested period or scope and submit a new task" in (
+            execution.task_result.summary
+        )
+
+
+def test_ap_unauthorized_natural_entity_is_audited_before_planning_or_tools(
+    tmp_path: Path,
+) -> None:
+    with _container(tmp_path) as container:
+        execution = container.task_service.submit(
+            NaturalLanguageTaskCommand(
+                task="Analyze Accounts Payable exceptions in Q2 2026 for LE-DE-01",
+                output_format=TaskOutputFormat.JSON,
+                source=RequestSource.INTERNAL,
+            ),
+            _caller(),
+        )
+
+        task_id = execution.task_result.task_id
+        assert execution.task_result.final_status is TaskStatus.FAILED
+        assert execution.errors[0].error_code == "LLM_SCHEMA_VALIDATION_ERROR"
+        assert container.repository.plan_for(task_id, tenant_id=TENANT_ID) is None
+        assert container.ap_knowledge_tool.call_count == 0
+        assert container.ap_database_tool.call_count == 0
+        audit = container.workflow_audit.list(tenant_id=TENANT_ID, task_id=task_id)
+        rejected = next(item for item in audit if item.event == "TASK_FIELD_AUTHORIZATION_REJECTED")
+        assert rejected.metadata.root == {"field": "legal_entity_ids"}
 
 
 def test_ap_approval_edit_resumes_without_replaying_completed_work(tmp_path: Path) -> None:

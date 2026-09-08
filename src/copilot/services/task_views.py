@@ -26,6 +26,9 @@ class TaskClarificationView:
 
     clarification_id: str
     round: int
+    kind: str
+    candidate_version: str | None
+    assistant_message: str | None
     questions: tuple[ClarificationQuestion, ...]
     created_at: datetime
 
@@ -78,6 +81,9 @@ class ClarificationRoundView:
     clarification_id: str
     round: int
     status: str
+    kind: str
+    candidate_version: str | None
+    assistant_message: str | None
     questions: tuple[ClarificationQuestion, ...]
     response_display_text: str | None
     created_at: datetime

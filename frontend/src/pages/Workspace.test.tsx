@@ -246,16 +246,156 @@ describe("Chat-first Task Workspace", () => {
     const composer = screen.getByRole("textbox", {
       name: "Message the Enterprise Knowledge Copilot",
     });
-    await user.type(
-      composer,
-      "Use 2026-04-01 through 2026-06-30 for LE-CN-01.{Enter}",
-    );
+    await user.type(composer, "year2025 CN{Enter}");
     await waitFor(() =>
       expect(body).toEqual({
-        message: "Use 2026-04-01 through 2026-06-30 for LE-CN-01.",
+        message: "year2025 CN",
       }),
     );
     expect(composer).toHaveValue("");
+  });
+
+  it.each([
+    [
+      "AMBIGUITY_RESOLUTION",
+      "I need you to resolve one ambiguity before I continue.",
+      "I found multiple authorized matching legal entities: LE-CN-01, LE-CN-02. Which one should I use?",
+    ],
+    [
+      "CANDIDATE_CONFIRMATION",
+      "Please confirm this interpretation before I continue.",
+      "I understood that as April 1 through June 30, 2026 and legal entity LE-CN-01. Should I continue?",
+    ],
+  ] as const)(
+    "renders %s as a natural-language interaction",
+    async (kind, lead, prompt) => {
+      const originalRound =
+        clarificationTask.interaction_projection.clarification_rounds[0]!;
+      const originalQuestion = originalRound.questions[0]!;
+      const interaction = {
+        ...clarificationTask,
+        pending_clarification: {
+          ...clarificationTask.pending_clarification!,
+          kind,
+          candidate_version:
+            kind === "CANDIDATE_CONFIRMATION" ? "a".repeat(64) : null,
+          questions: [
+            {
+              ...clarificationTask.pending_clarification!.questions[0],
+              field:
+                kind === "CANDIDATE_CONFIRMATION"
+                  ? "confirmation"
+                  : "legal_entity_ids",
+              prompt,
+            },
+          ],
+        },
+        interaction_projection: {
+          ...clarificationTask.interaction_projection,
+          clarification_rounds: [
+            {
+              ...originalRound,
+              kind,
+              candidate_version:
+                kind === "CANDIDATE_CONFIRMATION" ? "a".repeat(64) : null,
+              questions: [
+                {
+                  ...originalQuestion,
+                  field:
+                    kind === "CANDIDATE_CONFIRMATION"
+                      ? "confirmation"
+                      : "legal_entity_ids",
+                  prompt,
+                },
+              ],
+            },
+          ],
+        },
+      };
+      server.use(
+        http.get("*/api/v1/tasks/:taskId", () =>
+          HttpResponse.json(interaction),
+        ),
+      );
+
+      renderApp(`/tasks/${clarificationTask.task_id}`);
+
+      expect(await screen.findByText(lead)).toBeVisible();
+      expect(screen.getByText(prompt)).toBeVisible();
+      expect(
+        screen.getByRole("textbox", {
+          name: "Message the Enterprise Knowledge Copilot",
+        }),
+      ).toBeEnabled();
+    },
+  );
+
+  it("renders a persisted model-composed clarification instead of template copy", async () => {
+    const naturalMessage =
+      "I understood January 1 through July 1, 2026 for LE-CN-01. Should I continue with that scope?";
+    const interaction = {
+      ...clarificationTask,
+      pending_clarification: {
+        ...clarificationTask.pending_clarification!,
+        assistant_message: naturalMessage,
+      },
+      interaction_projection: {
+        ...clarificationTask.interaction_projection,
+        clarification_rounds: [
+          {
+            ...clarificationTask.interaction_projection
+              .clarification_rounds[0]!,
+            assistant_message: naturalMessage,
+          },
+        ],
+      },
+    };
+    server.use(
+      http.get("*/api/v1/tasks/:taskId", () => HttpResponse.json(interaction)),
+    );
+
+    renderApp(`/tasks/${clarificationTask.task_id}`);
+
+    expect(await screen.findByText(naturalMessage)).toBeVisible();
+    expect(
+      screen.queryByText(
+        "I need a little more information before I can continue.",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps an unauthorized natural clarification in the composer on denial", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("*/api/v1/tasks/:taskId", () =>
+        HttpResponse.json(clarificationTask),
+      ),
+      http.post("*/api/v1/tasks/:taskId/clarifications/:clarificationId", () =>
+        HttpResponse.json(
+          {
+            error_code: "CLARIFICATION_SCOPE_DENIED",
+            message: "That legal entity is outside your authorized scope.",
+            task_id: clarificationTask.task_id,
+            trace_id: clarificationTask.trace_id,
+            details: {},
+          },
+          { status: 403 },
+        ),
+      ),
+    );
+    renderApp(`/tasks/${clarificationTask.task_id}`);
+    const composer = await screen.findByRole("textbox", {
+      name: "Message the Enterprise Knowledge Copilot",
+    });
+
+    await user.type(composer, "Actually use LE-DE-01.{Enter}");
+
+    expect(
+      await screen.findByText(
+        "That legal entity is outside your authorized scope.",
+      ),
+    ).toBeVisible();
+    expect(composer).toHaveValue("Actually use LE-DE-01.");
   });
 
   it("preserves clarification text and refreshes after a stale conflict", async () => {
@@ -293,6 +433,7 @@ describe("Chat-first Task Workspace", () => {
   it.each(["FAILED", "CANCELLED"] as const)(
     "keeps a %s task read-only",
     async (status) => {
+      const user = userEvent.setup();
       const terminalTask = {
         ...task,
         status,
@@ -323,9 +464,23 @@ describe("Chat-first Task Workspace", () => {
           name: "Message the Enterprise Knowledge Copilot",
         }),
       ).toBeDisabled();
-      expect(
-        screen.getByRole("link", { name: "Start a new task" }),
-      ).toBeVisible();
+      const newTaskLink = screen.getByRole("link", {
+        name:
+          status === "FAILED"
+            ? "Revise request in a new task"
+            : "Start a new task",
+      });
+      expect(newTaskLink).toBeVisible();
+      if (status === "FAILED") {
+        await user.click(newTaskLink);
+        expect(
+          screen.getByRole("textbox", {
+            name: "Message the Enterprise Knowledge Copilot",
+          }),
+        ).toHaveValue(
+          terminalTask.interaction_projection.initial_user_message.display_text,
+        );
+      }
     },
   );
 

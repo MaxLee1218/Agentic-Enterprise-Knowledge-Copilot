@@ -31,6 +31,7 @@ from copilot.llm.schemas import (
     APDateRangeCandidate,
     APDeliverableCandidate,
     APTaskUnderstandingOutput,
+    ClarificationAssistantOutput,
     TaskUnderstandingOutput,
     UnderstandingConstraints,
     UnderstandingDeliverable,
@@ -62,6 +63,11 @@ _SUPPLIER = re.compile(r"\b(?:SUP|S)-[A-Za-z0-9][A-Za-z0-9_-]*\b", re.IGNORECASE
 _LEGAL_ENTITY = re.compile(r"\bLE-[A-Za-z0-9][A-Za-z0-9_-]*\b", re.IGNORECASE)
 _BUSINESS_UNIT = re.compile(r"\bBU-[A-Za-z0-9][A-Za-z0-9_-]*\b", re.IGNORECASE)
 _ISO_DATE = re.compile(r"(?<!\d)(20\d{2})-(0[1-9]|1[0-2])-([0-2]\d|3[01])(?!\d)")
+_ABBREVIATED_END_RANGE = re.compile(
+    r"(?<!\d)(20\d{2})-(0[1-9]|1[0-2])-([0-2]\d|3[01])\s*(?:to|through|until|[-–—])\s*"
+    r"(0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])(?!\d)",
+    re.IGNORECASE,
+)
 _CURRENCY = re.compile(r"\b[A-Z]{3}\b")
 _CHINESE_QUARTERS = {"一": 1, "二": 2, "三": 3, "四": 4, "1": 1, "2": 2, "3": 3, "4": 4}
 
@@ -108,6 +114,8 @@ class OfflineMockLLM:
             parsed = cast(TModel, self._understand(payload))
         elif output_schema is APTaskUnderstandingOutput:
             parsed = cast(TModel, self._understand_accounts_payable(payload))
+        elif output_schema is ClarificationAssistantOutput:
+            parsed = cast(TModel, self._compose_clarification(payload))
         elif output_schema is ProposedPlan:
             parsed = cast(TModel, self._propose(payload))
         elif output_schema is TaskPlan:
@@ -132,6 +140,28 @@ class OfflineMockLLM:
             raw_output_chars=raw_output_chars,
             raw_output_hash=raw_output_hash,
         )
+
+    @staticmethod
+    def _compose_clarification(payload: dict[str, object]) -> ClarificationAssistantOutput:
+        validated_facts = payload.get("validated_facts")
+        if not isinstance(validated_facts, dict):
+            raise LLMSchemaValidationError("Clarification validated facts must be an object")
+        questions = validated_facts.get("questions")
+        if not isinstance(questions, list) or not questions:
+            raise LLMSchemaValidationError("Clarification facts require at least one question")
+        fields: list[str] = []
+        prompts: list[str] = []
+        for item in questions:
+            if not isinstance(item, dict):
+                raise LLMSchemaValidationError("Clarification question must be an object")
+            field = item.get("field")
+            prompt = item.get("fallback_prompt")
+            if not isinstance(field, str) or not isinstance(prompt, str):
+                raise LLMSchemaValidationError("Clarification facts are incomplete")
+            fields.append(field)
+            prompts.append(prompt)
+        message = " ".join(prompts)
+        return ClarificationAssistantOutput(message=message, covered_fields=tuple(fields))
 
     @staticmethod
     def _propose(payload: dict[str, object]) -> ProposedPlan:
@@ -321,12 +351,29 @@ class OfflineMockLLM:
         original = str(payload["untrusted_user_input"])
         context, raw = _clarification_input(payload)
         trusted = cast(dict[str, object], payload["trusted_context"])
-        dates = [date.fromisoformat(match.group(0)) for match in _ISO_DATE.finditer(raw)]
+        dates: list[date] = []
+        for match in _ISO_DATE.finditer(raw):
+            try:
+                dates.append(date.fromisoformat(match.group(0)))
+            except ValueError:
+                continue
         start_date: date | None = None
         end_date: date | None = None
         if len(dates) >= 2:
             start_date, end_date = dates[0], dates[1]
         else:
+            abbreviated = _ABBREVIATED_END_RANGE.search(raw)
+            if abbreviated is not None:
+                year = int(abbreviated.group(1))
+                start_date = date(year, int(abbreviated.group(2)), int(abbreviated.group(3)))
+                end_date = date(year, int(abbreviated.group(4)), int(abbreviated.group(5)))
+            elif (
+                "new year's day" in raw.casefold()
+                and "july first" in raw.casefold()
+                and "twenty twenty-six" in raw.casefold()
+            ):
+                start_date = date(2026, 1, 1)
+                end_date = date(2026, 7, 1)
             year_match = _YEAR.search(raw)
             quarter_match = _QUARTER.search(raw) or _GERMAN_QUARTER.search(raw)
             quarter = int(quarter_match.group(1)) if quarter_match is not None else None
@@ -334,7 +381,7 @@ class OfflineMockLLM:
                 chinese = re.search(r"第([一二三四1234])季度", raw)
                 if chinese is not None:
                     quarter = _CHINESE_QUARTERS[chinese.group(1)]
-            if year_match is not None and quarter is not None:
+            if start_date is None and year_match is not None and quarter is not None:
                 year = int(year_match.group(1))
                 month = (quarter - 1) * 3 + 1
                 start_date = date(year, month, 1)
@@ -382,7 +429,6 @@ class OfflineMockLLM:
         for currency, amount in re.findall(
             r"\b([A-Z]{3})\s*(?:materiality|threshold)?\s*([0-9]+(?:\.[0-9]+)?)",
             raw,
-            re.IGNORECASE,
         ):
             requested_materiality.append(
                 MoneyThreshold(currency=currency.upper(), amount=Decimal(amount))
@@ -408,6 +454,24 @@ class OfflineMockLLM:
             )
         )
         legal_entities = tuple(dict.fromkeys(item.upper() for item in _LEGAL_ENTITY.findall(raw)))
+        if not legal_entities:
+            authorized_entities = tuple(
+                str(item).upper()
+                for item in cast(list[object], trusted.get("authorized_legal_entity_scope", []))
+            )
+            semantic_country = None
+            if re.search(r"\b(?:PRC|Chinese)\b|中国", raw, re.IGNORECASE):
+                semantic_country = "CN"
+            elif re.search(r"\bAmerican\b|美国", raw, re.IGNORECASE):
+                semantic_country = "US"
+            if semantic_country is not None:
+                matches = tuple(
+                    item
+                    for item in authorized_entities
+                    if len(item.split("-")) >= 3 and item.split("-")[1] == semantic_country
+                )
+                if len(matches) == 1:
+                    legal_entities = matches
         context_entities = context.get("legal_entity_ids")
         if isinstance(context_entities, list) and all(
             isinstance(item, str) for item in context_entities

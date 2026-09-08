@@ -84,6 +84,9 @@ export const clarificationTask: Task = {
   pending_clarification: {
     clarification_id: "CLAR-TEST-001",
     round: 1,
+    kind: "MISSING_INFORMATION",
+    candidate_version: null,
+    assistant_message: null,
     created_at: "2026-08-13T08:00:02Z",
     questions: [
       {
@@ -120,6 +123,9 @@ export const clarificationTask: Task = {
         clarification_id: "CLAR-TEST-001",
         round: 1,
         status: "PENDING",
+        kind: "MISSING_INFORMATION",
+        candidate_version: null,
+        assistant_message: null,
         questions: [
           {
             field: "time_range",

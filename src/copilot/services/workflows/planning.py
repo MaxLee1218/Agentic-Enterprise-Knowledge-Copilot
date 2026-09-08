@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from copilot.contracts import (
+    CandidateInterpretation,
     ClarificationContext,
+    ClarificationKind,
     ClarificationQuestion,
     ClarificationResponse,
     StepResult,
@@ -27,6 +29,9 @@ class TaskUnderstandingOutcome:
     missing_information: tuple[str, ...] = ()
     questions: tuple[ClarificationQuestion, ...] = ()
     clarification_context: ClarificationContext = ClarificationContext()
+    clarification_kind: ClarificationKind = ClarificationKind.MISSING_INFORMATION
+    candidate_interpretation: CandidateInterpretation | None = None
+    assistant_message: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

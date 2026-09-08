@@ -22,6 +22,79 @@ class ClarificationStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class ClarificationKind(StrEnum):
+    """Meaning of a clarification round without adding another Task status."""
+
+    MISSING_INFORMATION = "MISSING_INFORMATION"
+    AMBIGUITY_RESOLUTION = "AMBIGUITY_RESOLUTION"
+    CANDIDATE_CONFIRMATION = "CANDIDATE_CONFIRMATION"
+
+
+class ResolutionStatus(StrEnum):
+    """Deterministic disposition of one business-field interpretation."""
+
+    EXACT = "EXACT"
+    NORMALIZED = "NORMALIZED"
+    CONFIRMATION_REQUIRED = "CONFIRMATION_REQUIRED"
+    AMBIGUOUS = "AMBIGUOUS"
+    MISSING = "MISSING"
+    INVALID = "INVALID"
+    UNAUTHORIZED = "UNAUTHORIZED"
+
+
+class ResolutionSource(StrEnum):
+    """Auditable source of a field candidate without retaining extra raw content."""
+
+    ORIGINAL_REQUEST = "ORIGINAL_REQUEST"
+    CLARIFICATION_RESPONSE = "CLARIFICATION_RESPONSE"
+    PRIOR_VALIDATED_CLARIFICATION = "PRIOR_VALIDATED_CLARIFICATION"
+    DETERMINISTIC_NORMALIZER = "DETERMINISTIC_NORMALIZER"
+    LLM_EXTRACTION = "LLM_EXTRACTION"
+
+
+class FieldResolution(ImmutableContractModel):
+    """Typed result of resolving one untrusted expression to a business field."""
+
+    field_name: str = Field(min_length=1, max_length=100, pattern=r"^[a-z][a-z0-9_.-]*$")
+    status: ResolutionStatus
+    raw_text: str | None = Field(default=None, max_length=4000)
+    candidate_value: JsonValue | None = None
+    canonical_value: JsonValue | None = None
+    reason: str = Field(min_length=1, max_length=1000)
+    source: ResolutionSource
+    requires_confirmation: bool = False
+    alternatives: tuple[JsonValue, ...] = ()
+    validation_errors: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_resolution(self) -> FieldResolution:
+        if self.requires_confirmation != (self.status is ResolutionStatus.CONFIRMATION_REQUIRED):
+            raise ValueError("requires_confirmation must match resolution status")
+        if self.status is ResolutionStatus.AMBIGUOUS and len(self.alternatives) < 2:
+            raise ValueError("ambiguous resolution requires at least two alternatives")
+        if self.status in {ResolutionStatus.EXACT, ResolutionStatus.NORMALIZED} and (
+            self.canonical_value is None
+        ):
+            raise ValueError("accepted resolution requires a canonical value")
+        return self
+
+
+class CandidateInterpretation(ImmutableContractModel):
+    """Exact candidate set displayed to and confirmable by the user."""
+
+    version_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    resolutions: tuple[FieldResolution, ...] = Field(min_length=1)
+    display_text: str = Field(min_length=1, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_candidates(self) -> CandidateInterpretation:
+        if any(
+            item.status is not ResolutionStatus.CONFIRMATION_REQUIRED for item in self.resolutions
+        ):
+            raise ValueError("candidate interpretation requires confirmation resolutions only")
+        return self
+
+
 class ClarificationInputType(StrEnum):
     """Frontend-renderable answer controls supported by the v1 contract."""
 
@@ -66,8 +139,12 @@ class ClarificationAnswer(ImmutableContractModel):
 class ClarificationContext(ImmutableContractModel):
     """Accumulated, validated facts supplied beside—not inside—the original request."""
 
-    schema_version: Literal["clarification-context.v1"] = "clarification-context.v1"
+    schema_version: Literal["clarification-context.v1", "clarification-context.v2"] = (
+        "clarification-context.v2"
+    )
     values: JsonObject = Field(default_factory=lambda: JsonObject({}))
+    resolutions: tuple[FieldResolution, ...] = ()
+    pending_candidate: CandidateInterpretation | None = None
 
 
 class ClarificationResponse(ImmutableContractModel):
@@ -91,14 +168,19 @@ class ClarificationResponse(ImmutableContractModel):
 class TaskClarification(ImmutableContractModel):
     """Versioned durable interaction record for one clarification round."""
 
-    schema_version: Literal["task-clarification.v1"] = "task-clarification.v1"
+    schema_version: Literal[
+        "task-clarification.v1", "task-clarification.v2", "task-clarification.v3"
+    ] = "task-clarification.v3"
     clarification_id: str = Field(min_length=1)
     task_id: str = Field(min_length=1)
     tenant_id: str = Field(min_length=1)
     round: int = Field(ge=1)
     status: ClarificationStatus
+    kind: ClarificationKind = ClarificationKind.MISSING_INFORMATION
     questions: tuple[ClarificationQuestion, ...] = Field(min_length=1)
     context: ClarificationContext = Field(default_factory=ClarificationContext)
+    candidate_interpretation: CandidateInterpretation | None = None
+    assistant_message: str | None = Field(default=None, min_length=1, max_length=4000)
     response: ClarificationResponse | None = None
     response_fingerprint: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     resume_context: JsonObject | None = None
@@ -123,6 +205,11 @@ class TaskClarification(ImmutableContractModel):
         fields = tuple(question.field for question in self.questions)
         if len(set(fields)) != len(fields):
             raise ValueError("clarification question fields must be unique")
+        if self.kind is ClarificationKind.CANDIDATE_CONFIRMATION:
+            if self.candidate_interpretation is None:
+                raise ValueError("candidate confirmation requires a persisted interpretation")
+        elif self.candidate_interpretation is not None:
+            raise ValueError("only candidate confirmation may persist an interpretation")
         submission_values = (
             self.response,
             self.response_fingerprint,
@@ -162,11 +249,16 @@ class TaskClarification(ImmutableContractModel):
 
 
 __all__ = [
+    "CandidateInterpretation",
     "ClarificationAnswer",
     "ClarificationContext",
     "ClarificationInputType",
+    "ClarificationKind",
     "ClarificationQuestion",
     "ClarificationResponse",
     "ClarificationStatus",
+    "FieldResolution",
+    "ResolutionSource",
+    "ResolutionStatus",
     "TaskClarification",
 ]

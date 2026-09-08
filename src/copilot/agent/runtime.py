@@ -7,6 +7,8 @@ import json
 from collections.abc import Callable
 from datetime import datetime
 
+from pydantic import JsonValue
+
 from copilot.agent.state import AgentGraphState
 from copilot.contracts import (
     ClarificationContext,
@@ -43,7 +45,12 @@ from copilot.services.llm import LLMErrorCode, LLMProviderError
 from copilot.services.observability import EventName, NoopObservability, ObservabilityPort
 from copilot.services.workflows.deadlines import tool_attempt_deadline
 from copilot.services.workflows.dependency import DependencyChecker
-from copilot.services.workflows.errors import PlannerError, PlannerErrorCode, StepInputError
+from copilot.services.workflows.errors import (
+    PlannerError,
+    PlannerErrorCode,
+    StepInputError,
+    TaskUnderstandingAuthorizationError,
+)
 from copilot.services.workflows.inputs import StepInputBuilder, summarize_payload
 from copilot.services.workflows.models import (
     StepExecutionRecord,
@@ -66,6 +73,7 @@ from copilot.services.workflows.validation import PlanValidationIssue, PlanValid
 from copilot.tools.exceptions import ToolRuntimeError, ToolValidationError
 from copilot.tools.executor import ToolExecutor
 from copilot.tools.registry import ToolRegistry
+from copilot.understanding.confirmation import ConfirmationIntent, parse_confirmation_intent
 
 _REPAIRABLE_VERIFICATION_CODES = {
     "AP_NUMERIC_CLAIM_MISMATCH",
@@ -233,6 +241,42 @@ class GraphNodeRuntime:
                     domain_state=domain_state,
                     errors=[error],
                 )
+            except TaskUnderstandingAuthorizationError as exc:
+                error = self._error(
+                    state,
+                    exc.code.value,
+                    ErrorType.PERMISSION,
+                    str(exc),
+                    recoverable=False,
+                )
+                domain_state = self._fail_clarification_or_understanding(
+                    state,
+                    domain_state,
+                    error.message,
+                    resolution_code=exc.audit_code,
+                )
+                self._emit(
+                    state,
+                    "TASK_FIELD_AUTHORIZATION_REJECTED",
+                    status=exc.audit_code,
+                    error_code=exc.audit_code,
+                    failure_reason=error.message,
+                    metadata=JsonObject({"field": exc.field_name}),
+                )
+                self._emit(
+                    state,
+                    "TASK_UNDERSTANDING_FAILED",
+                    status=exc.audit_code,
+                )
+                return self._node_result(
+                    state,
+                    "understand_task",
+                    started,
+                    "authorization_denied",
+                    error.message,
+                    domain_state=domain_state,
+                    errors=[error],
+                )
             except LLMProviderError as exc:
                 error = self._llm_error(state, exc, "understand_task")
                 domain_state = self._fail_clarification_or_understanding(
@@ -341,6 +385,9 @@ class GraphNodeRuntime:
                         )
                     ),
                     clarification_context=outcome.clarification_context,
+                    clarification_kind=outcome.clarification_kind,
+                    candidate_interpretation=outcome.candidate_interpretation,
+                    clarification_assistant_message=outcome.assistant_message,
                 )
             contract = outcome.contract
             completed_clarification_context = outcome.clarification_context
@@ -428,6 +475,19 @@ class GraphNodeRuntime:
                 errors=[error],
             )
         if self._planning_service is not None:
+            for resolution in completed_clarification_context.resolutions:
+                if resolution.status.value == "NORMALIZED":
+                    self._emit(
+                        state,
+                        "TASK_FIELD_NORMALIZED",
+                        status=resolution.status.value,
+                        metadata=JsonObject(
+                            {
+                                "field": resolution.field_name,
+                                "source": resolution.source.value,
+                            }
+                        ),
+                    )
             self._resolve_submitted_clarification(
                 state,
                 completed_clarification_context,
@@ -450,6 +510,18 @@ class GraphNodeRuntime:
         previous = state["domain_state"]
         next_round = state["clarification_round"] + 1
         submitted = self._submitted_clarification(state)
+        corrected = (
+            submitted is not None
+            and submitted.kind.value == "CANDIDATE_CONFIRMATION"
+            and submitted.response is not None
+            and parse_confirmation_intent(submitted.response.message) is ConfirmationIntent.CORRECT
+        )
+        rejected = (
+            submitted is not None
+            and submitted.kind.value == "CANDIDATE_CONFIRMATION"
+            and submitted.response is not None
+            and parse_confirmation_intent(submitted.response.message) is ConfirmationIntent.REJECT
+        )
         if next_round > self._max_clarification_rounds:
             error = self._error(
                 state,
@@ -532,8 +604,11 @@ class GraphNodeRuntime:
             tenant_id=state["intake_context"].tenant_id,
             round=next_round,
             status=ClarificationStatus.PENDING,
+            kind=state["clarification_kind"],
             questions=questions,
             context=state["clarification_context"],
+            candidate_interpretation=state["candidate_interpretation"],
+            assistant_message=state.get("clarification_assistant_message"),
             created_at=self._clock(),
         )
         existing = self._clarification_repository.get_pending_for_task(
@@ -544,8 +619,11 @@ class GraphNodeRuntime:
         if existing is not None:
             if (
                 existing.round != next_round
+                or existing.kind is not pending.kind
                 or existing.questions != pending.questions
                 or existing.context != pending.context
+                or existing.candidate_interpretation != pending.candidate_interpretation
+                or existing.assistant_message != pending.assistant_message
             ):
                 raise ValueError("Pending clarification does not match replayed graph state")
             current = self._repository.state_for(
@@ -567,7 +645,15 @@ class GraphNodeRuntime:
                         "status": ClarificationStatus.RESOLVED,
                         "context": state["clarification_context"],
                         "resolved_at": self._clock(),
-                        "resolution_code": "PARTIAL_RESPONSE_ACCEPTED",
+                        "resolution_code": (
+                            "INTERPRETATION_CORRECTED"
+                            if corrected
+                            else (
+                                "INTERPRETATION_REJECTED"
+                                if rejected
+                                else "PARTIAL_RESPONSE_ACCEPTED"
+                            )
+                        ),
                         "version": submitted.version + 1,
                     }
                 )
@@ -595,10 +681,42 @@ class GraphNodeRuntime:
                             "clarification_id": submitted.clarification_id,
                             "round": submitted.round,
                             "question_fields": [question.field for question in submitted.questions],
-                            "resolution_code": "PARTIAL_RESPONSE_ACCEPTED",
+                            "resolution_code": (
+                                "INTERPRETATION_CORRECTED"
+                                if corrected
+                                else (
+                                    "INTERPRETATION_REJECTED"
+                                    if rejected
+                                    else "PARTIAL_RESPONSE_ACCEPTED"
+                                )
+                            ),
                         }
                     ),
                 )
+                if corrected:
+                    self._emit(
+                        state,
+                        "TASK_INTERPRETATION_CORRECTED",
+                        status=ClarificationStatus.RESOLVED.value,
+                        metadata=JsonObject(
+                            {
+                                "clarification_id": submitted.clarification_id,
+                                "round": submitted.round,
+                            }
+                        ),
+                    )
+                elif rejected:
+                    self._emit(
+                        state,
+                        "TASK_INTERPRETATION_REJECTED",
+                        status=ClarificationStatus.RESOLVED.value,
+                        metadata=JsonObject(
+                            {
+                                "clarification_id": submitted.clarification_id,
+                                "round": submitted.round,
+                            }
+                        ),
+                    )
             else:
                 self._clarification_repository.create_pending_and_transition(
                     pending,
@@ -607,6 +725,15 @@ class GraphNodeRuntime:
                     event,
                 )
         if created:
+            resolution_metadata: list[JsonValue] = []
+            for item in pending.context.resolutions:
+                resolution_metadata.append(
+                    {
+                        "field": item.field_name,
+                        "status": item.status.value,
+                        "source": item.source.value,
+                    }
+                )
             self._emit(
                 state,
                 "TASK_CLARIFICATION_REQUIRED",
@@ -616,11 +743,37 @@ class GraphNodeRuntime:
                         "clarification_id": pending.clarification_id,
                         "round": pending.round,
                         "question_fields": [question.field for question in pending.questions],
+                        "clarification_kind": pending.kind.value,
+                        "field_resolutions": resolution_metadata,
                     }
                 ),
             )
             self._observability.increment("clarification_requests_total")
             self._observability.increment("clarification_required_count")
+            self._observability.increment("clarification_resolution_count")
+            for resolution in pending.context.resolutions:
+                if resolution.status.value == "NORMALIZED":
+                    self._observability.increment("normalization_count")
+                elif resolution.status.value == "AMBIGUOUS":
+                    self._observability.increment("ambiguity_count")
+            if pending.kind.value == "CANDIDATE_CONFIRMATION":
+                self._observability.increment("confirmation_required_count")
+                self._emit(
+                    state,
+                    "TASK_INTERPRETATION_CONFIRMATION_REQUIRED",
+                    status=pending.kind.value,
+                    metadata=JsonObject(
+                        {
+                            "clarification_id": pending.clarification_id,
+                            "round": pending.round,
+                            "candidate_version": (
+                                pending.candidate_interpretation.version_hash
+                                if pending.candidate_interpretation is not None
+                                else ""
+                            ),
+                        }
+                    ),
+                )
             self._observability.gauge_add("waiting_clarification_count", 1)
             self._observability.emit(
                 EventName.CLARIFICATION_REQUESTED,
@@ -636,6 +789,9 @@ class GraphNodeRuntime:
             clarification_id=pending.clarification_id,
             clarification_round=pending.round,
             clarification_questions=list(pending.questions),
+            clarification_kind=pending.kind,
+            candidate_interpretation=pending.candidate_interpretation,
+            clarification_assistant_message=pending.assistant_message,
             clarification_response=None,
         )
 
@@ -1678,7 +1834,7 @@ class GraphNodeRuntime:
                 if completed
                 else (
                     f"{domain_label} failed after {successful} successful step(s); "
-                    "committed evidence is retained."
+                    f"{_user_actionable_failure(state)}"
                 )
             ),
             artifacts=(
@@ -2128,6 +2284,19 @@ class GraphNodeRuntime:
         submitted = self._submitted_clarification(state)
         if submitted is None:
             return
+        confirmed = (
+            submitted.kind.value == "CANDIDATE_CONFIRMATION"
+            and submitted.response is not None
+            and parse_confirmation_intent(submitted.response.message) is ConfirmationIntent.AFFIRM
+        )
+        corrected = (
+            submitted.response is not None
+            and parse_confirmation_intent(submitted.response.message) is ConfirmationIntent.CORRECT
+        )
+        if confirmed:
+            resolution_code = "INTERPRETATION_CONFIRMED"
+        elif corrected:
+            resolution_code = "INTERPRETATION_CORRECTED"
         resolved = submitted.model_copy(
             update={
                 "status": ClarificationStatus.RESOLVED,
@@ -2140,6 +2309,8 @@ class GraphNodeRuntime:
         self._clarification_repository.resolve_submitted(submitted, resolved)
         self._observability.increment("clarification_resumes_total")
         self._observability.increment("clarification_resolved_count")
+        if confirmed:
+            self._observability.increment("confirmation_accepted_count")
         self._observability.observe("clarification_rounds", float(submitted.round))
         self._observability.emit(
             EventName.CLARIFICATION_RESUMED,
@@ -2157,6 +2328,35 @@ class GraphNodeRuntime:
                 }
             ),
         )
+        if confirmed:
+            self._emit(
+                state,
+                "TASK_INTERPRETATION_CONFIRMED",
+                status=ClarificationStatus.RESOLVED.value,
+                metadata=JsonObject(
+                    {
+                        "clarification_id": submitted.clarification_id,
+                        "round": submitted.round,
+                        "candidate_version": (
+                            submitted.candidate_interpretation.version_hash
+                            if submitted.candidate_interpretation is not None
+                            else ""
+                        ),
+                    }
+                ),
+            )
+        elif corrected:
+            self._emit(
+                state,
+                "TASK_INTERPRETATION_CORRECTED",
+                status=ClarificationStatus.RESOLVED.value,
+                metadata=JsonObject(
+                    {
+                        "clarification_id": submitted.clarification_id,
+                        "round": submitted.round,
+                    }
+                ),
+            )
 
     def _fail_clarification_or_understanding(
         self,
@@ -2408,6 +2608,22 @@ def _duration_ms(started_at: datetime, completed_at: datetime) -> int:
 
 def _optional_string(value: object) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _user_actionable_failure(state: AgentGraphState) -> str:
+    """Describe a terminal business failure without exposing runtime internals."""
+    verification = state.get("verification_result")
+    if verification is not None and verification.issues:
+        cause = verification.issues[0].message.rstrip(".")
+        return (
+            f"verification could not confirm the result because {cause}. "
+            "Committed evidence is retained. Please revise the requested period or scope and "
+            "submit a new task."
+        )
+    return (
+        "committed evidence is retained. Review the error details, revise the request, and "
+        "submit a new task."
+    )
 
 
 __all__ = ["GraphNodeRuntime"]

@@ -20,6 +20,7 @@ from copilot.api.schemas.tasks import (
 from copilot.contracts import (
     ApprovalResolutionAction,
     ApprovalStatus,
+    ClarificationKind,
     ClarificationQuestion,
     ClarificationStatus,
     EvidenceType,
@@ -56,6 +57,9 @@ def task_response(view: TaskSummaryView) -> TaskResponse:
             PendingClarificationResponse(
                 clarification_id=view.pending_clarification.clarification_id,
                 round=view.pending_clarification.round,
+                kind=ClarificationKind(view.pending_clarification.kind),
+                candidate_version=view.pending_clarification.candidate_version,
+                assistant_message=view.pending_clarification.assistant_message,
                 questions=tuple(
                     PendingClarificationQuestionResponse(
                         field=question.field,
@@ -111,6 +115,9 @@ def task_detail_response(view: TaskDetailView) -> TaskDetailResponse:
                     clarification_id=item.clarification_id,
                     round=item.round,
                     status=ClarificationStatus(item.status),
+                    kind=ClarificationKind(item.kind),
+                    candidate_version=item.candidate_version,
+                    assistant_message=item.assistant_message,
                     questions=tuple(
                         _clarification_question(question) for question in item.questions
                     ),

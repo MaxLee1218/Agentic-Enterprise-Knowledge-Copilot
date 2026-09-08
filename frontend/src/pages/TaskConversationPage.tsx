@@ -92,19 +92,32 @@ function conversationItems(task: Task): ConversationItem[] {
           </div>
           <div className="message__content">
             <p className="message__author">Enterprise Knowledge Copilot</p>
-            <p>I need a little more information before I can continue.</p>
-            <ol className="clarification-questions">
-              {round.questions.map((question) => (
-                <li key={question.field}>
-                  {question.prompt}
-                  {question.allowed_values.length > 0 && (
-                    <span className="clarification-options">
-                      Authorized options: {question.allowed_values.join(", ")}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ol>
+            {round.assistant_message ? (
+              <p>{round.assistant_message}</p>
+            ) : (
+              <>
+                <p>
+                  {round.kind === "CANDIDATE_CONFIRMATION"
+                    ? "Please confirm this interpretation before I continue."
+                    : round.kind === "AMBIGUITY_RESOLUTION"
+                      ? "I need you to resolve one ambiguity before I continue."
+                      : "I need a little more information before I can continue."}
+                </p>
+                <ol className="clarification-questions">
+                  {round.questions.map((question) => (
+                    <li key={question.field}>
+                      {question.prompt}
+                      {question.allowed_values.length > 0 && (
+                        <span className="clarification-options">
+                          Authorized options:{" "}
+                          {question.allowed_values.join(", ")}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
           </div>
         </article>
       ),
@@ -347,8 +360,22 @@ export function TaskConversationPage() {
           error={composerMessage}
         />
         {terminal && (
-          <Link className="composer-new-task-link" to="/">
-            Start a new task
+          <Link
+            className="composer-new-task-link"
+            to="/"
+            state={
+              detail.status === "FAILED"
+                ? {
+                    draft:
+                      detail.interaction_projection.initial_user_message
+                        .display_text,
+                  }
+                : undefined
+            }
+          >
+            {detail.status === "FAILED"
+              ? "Revise request in a new task"
+              : "Start a new task"}
           </Link>
         )}
         <p className="governance-note">

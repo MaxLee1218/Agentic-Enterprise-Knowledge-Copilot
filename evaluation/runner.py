@@ -369,6 +369,41 @@ def _aggregate_metrics(
             MetricDirection.LOWER_IS_BETTER,
         ),
         (
+            "field_resolution_accuracy",
+            "field_resolution_accuracy",
+            MetricDirection.HIGHER_IS_BETTER,
+        ),
+        (
+            "normalization_accuracy",
+            "normalization_accuracy",
+            MetricDirection.HIGHER_IS_BETTER,
+        ),
+        (
+            "ambiguity_detection_accuracy",
+            "ambiguity_detection_accuracy",
+            MetricDirection.HIGHER_IS_BETTER,
+        ),
+        (
+            "unauthorized_resolution_rate",
+            "unauthorized_resolution_rate",
+            MetricDirection.LOWER_IS_BETTER,
+        ),
+        (
+            "clarification_field_carry_forward_accuracy",
+            "clarification_field_carry_forward_accuracy",
+            MetricDirection.HIGHER_IS_BETTER,
+        ),
+        (
+            "resolved_field_regression_rate",
+            "resolved_field_regression_rate",
+            MetricDirection.LOWER_IS_BETTER,
+        ),
+        (
+            "confirmation_resolution_accuracy",
+            "confirmation_resolution_accuracy",
+            MetricDirection.HIGHER_IS_BETTER,
+        ),
+        (
             "duplicate_detection_precision",
             "duplicate_detection_precision",
             MetricDirection.HIGHER_IS_BETTER,

@@ -405,7 +405,9 @@ class EvaluationHarness:
             )
         )
         if disposition not in {"SUCCEEDED", "SUSPENDED", "NO_OP_TERMINAL"}:
-            raise RuntimeError(f"Evaluation Worker disposition was {disposition}")
+            latest = runtime.snapshot(task_id, tenant_id=tenant_id)
+            detail = f" ({latest.last_recovery_error})" if latest.last_recovery_error else ""
+            raise RuntimeError(f"Evaluation Worker disposition was {disposition}{detail}")
 
     def _capture(
         self,

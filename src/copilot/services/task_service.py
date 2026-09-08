@@ -870,6 +870,13 @@ class NaturalLanguageTaskService:
                 TaskClarificationView(
                     clarification_id=pending_clarification.clarification_id,
                     round=pending_clarification.round,
+                    kind=pending_clarification.kind.value,
+                    candidate_version=(
+                        pending_clarification.candidate_interpretation.version_hash
+                        if pending_clarification.candidate_interpretation is not None
+                        else None
+                    ),
+                    assistant_message=pending_clarification.assistant_message,
                     questions=pending_clarification.questions,
                     created_at=pending_clarification.created_at,
                 )
@@ -956,6 +963,13 @@ class NaturalLanguageTaskService:
                     clarification_id=item.clarification_id,
                     round=item.round,
                     status=item.status.value,
+                    kind=item.kind.value,
+                    candidate_version=(
+                        item.candidate_interpretation.version_hash
+                        if item.candidate_interpretation is not None
+                        else None
+                    ),
+                    assistant_message=item.assistant_message,
                     questions=item.questions,
                     response_display_text=_clarification_response_display(
                         item,

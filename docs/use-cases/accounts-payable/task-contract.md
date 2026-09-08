@@ -62,6 +62,13 @@ missing and cause another round. Unauthorized IDs, invalid date ordering, scope 
 gaps, or forbidden requests fail closed and cannot be converted into an authorization question.
 No AP TaskContract or TaskPlan exists until required fields are complete.
 
+In AP v1.2, a complete structured model candidate may bridge syntax not covered by the deterministic
+normalizer only as a confirmation-bound `CandidateInterpretation`. Deterministic code must first
+verify an appropriate anchor in the latest message, date ordering and duration, snapshot coverage,
+and authorized-set membership. The candidate cannot enter this contract until the user confirms
+its exact persisted version. Optional model-composed assistant wording is presentation only;
+`ClarificationQuestion`, `ClarificationContext`, and this TaskContract remain authority.
+
 ## 3. Versioned contract proposal
 
 The existing outer `TaskContract` is retained, with `constraints` generalized to a task-type-

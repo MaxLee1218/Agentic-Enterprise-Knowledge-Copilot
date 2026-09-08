@@ -35,12 +35,17 @@ from copilot.contracts.async_runtime import (
 )
 from copilot.contracts.base import ContractModel, ImmutableContractModel, JsonObject
 from copilot.contracts.clarifications import (
+    CandidateInterpretation,
     ClarificationAnswer,
     ClarificationContext,
     ClarificationInputType,
+    ClarificationKind,
     ClarificationQuestion,
     ClarificationResponse,
     ClarificationStatus,
+    FieldResolution,
+    ResolutionSource,
+    ResolutionStatus,
     TaskClarification,
 )
 from copilot.contracts.enums import (
@@ -211,12 +216,15 @@ __all__ = [
     "Artifact",
     "ArtifactType",
     "CapabilityName",
+    "CandidateInterpretation",
     "ClarificationAnswer",
     "ClarificationContext",
     "ClarificationInputType",
+    "ClarificationKind",
     "ClarificationQuestion",
     "ClarificationResponse",
     "ClarificationStatus",
+    "FieldResolution",
     "CancellationRequest",
     "CancellationState",
     "CheckpointIdentity",
@@ -303,6 +311,8 @@ __all__ = [
     "RecoveryReason",
     "RetryPolicy",
     "RiskLevel",
+    "ResolutionSource",
+    "ResolutionStatus",
     "RuntimeAttempt",
     "RuntimeAttemptStatus",
     "RuntimeContractError",

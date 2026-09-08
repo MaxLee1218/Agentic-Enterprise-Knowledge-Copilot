@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { normalizeThrownError } from "../api/client";
 import { TaskComposer } from "../components/TaskComposer";
@@ -12,8 +12,9 @@ interface SubmissionAttempt {
 
 export function NewTaskWorkspace() {
   const navigate = useNavigate();
+  const location = useLocation();
   const createTask = useCreateTask();
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(() => draftFromNavigation(location.state));
   const [attemptedText, setAttemptedText] = useState<string | null>(null);
   const attempt = useRef<SubmissionAttempt | null>(null);
   const error = createTask.isError
@@ -143,4 +144,16 @@ export function NewTaskWorkspace() {
       </div>
     </section>
   );
+}
+
+function draftFromNavigation(state: unknown): string {
+  if (
+    typeof state === "object" &&
+    state !== null &&
+    "draft" in state &&
+    typeof state.draft === "string"
+  ) {
+    return state.draft;
+  }
+  return "";
 }

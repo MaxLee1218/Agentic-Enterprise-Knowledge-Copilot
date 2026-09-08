@@ -134,6 +134,13 @@ Clarification response persists one submitted interaction and atomically changes
 predecessor generation, current Task state, submitted response, and server-created refreshed
 context before resume. Duplicate delivery cannot create another Contract, Plan, step, or Artifact.
 
+Clarification rounds can represent missing information, ambiguity resolution, or confirmation of
+one persisted candidate interpretation. These are interaction kinds, not Task statuses. A natural
+`yes` can confirm only the current candidate hash and round; stale clarification IDs remain
+conflicts. A correction re-enters `UNDERSTANDING` with the immutable original request, prior
+validated fields, and the latest message. The Planner and tools still have zero invocations while
+any required resolution is missing, ambiguous, invalid, or awaiting confirmation.
+
 Approval resolution persists one immutable decision and, for an approved request, atomically
 creates a new dispatch at `execution_generation + 1`; it returns `202` without executing the Graph.
 Reject, expiry, revoke, and cancellation create no executable resume dispatch. A

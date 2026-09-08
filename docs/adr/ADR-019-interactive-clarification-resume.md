@@ -49,6 +49,11 @@ facts are retained and a later round asks only for remaining required fields. Th
 by `MAX_CLARIFICATION_ROUNDS` (default five), after which the Task fails with
 `CLARIFICATION_LIMIT_EXCEEDED`.
 
+ADR-021 refines this record without adding a Task state: a round also persists its clarification
+kind, typed field resolutions, and an optional versioned candidate interpretation. Natural
+affirmation is meaningful only for that displayed candidate. Corrections update only the fields
+resolved from the latest response, and all other validated facts carry forward.
+
 `WAITING_CLARIFICATION` and `WAITING_APPROVAL` share runtime suspension semantics but have distinct
 records and legal transitions. A suspended Task releases its Worker slot and lease. Cancellation
 finalizes the active clarification, invalidates old responses, and creates no resume dispatch.

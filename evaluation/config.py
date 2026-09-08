@@ -39,6 +39,8 @@ class RegressionConfig(EvaluationModel):
         "missing_audit_event_rate",
         "unsafe_error_exposure_rate",
         "legitimate_task_false_rejection_rate",
+        "unauthorized_resolution_rate",
+        "resolved_field_regression_rate",
     )
 
 

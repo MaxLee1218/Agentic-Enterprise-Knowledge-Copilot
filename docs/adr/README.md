@@ -110,3 +110,5 @@ What becomes easier or harder, including operational and migration effects?
 | [ADR-018](ADR-018-deterministic-plan-compilation.md) | Accepted | 2026-08-30 | Compile lightweight untrusted ProposedPlans into existing canonical TaskPlans using deterministic authorities |
 | [ADR-019](ADR-019-interactive-clarification-resume.md) | Accepted | 2026-09-01 | Suspend incomplete Tasks durably and resume the same checkpoint through Understanding after authorized human input |
 | [ADR-020](ADR-020-chat-first-task-workspace.md) | Accepted | 2026-09-02 | Present one governed Task as one conversation thread with backend domain resolution and a Task-scoped read projection |
+| [ADR-021](ADR-021-natural-language-clarification-resolution.md) | Superseded | 2026-09-05 | Resolve natural clarification fields through typed deterministic normalization, authorized-set matching, and durable candidate confirmation |
+| [ADR-022](ADR-022-governed-semantic-clarification-and-response.md) | Accepted | 2026-09-06 | Use guarded model candidates for confirmation and compose natural clarification replies from validated typed facts |

@@ -3,7 +3,7 @@
 **Status:** FROZEN / ACCEPTED
 **Decision date:** 2026-09-02
 **Implementation status:** IMPLEMENTED — VERIFIED
-**Applies to:** Supplier Quality Analysis v1.2 and Accounts Payable Analysis v1.1
+**Applies to:** Supplier Quality Analysis v1.2 and Accounts Payable Analysis v1.2
 
 This document freezes the target product, interaction, projection, frontend, and minimum API
 contract for the chat-first frontend implementation. The normative contract remains frozen; the
@@ -71,6 +71,16 @@ approval rules, Evidence requirements, verifier rules, tool allowlists, or MCP a
 - Multi-Agent behavior.
 - A generic `Conversation` domain, generic `chat_messages` table, or a second source of truth.
 - Any claim that AP or the whole platform is production-ready.
+
+Clarification messages may be categorized as missing information, ambiguity resolution, or
+candidate confirmation. All three render as ordinary Agent messages and use the same bottom
+composer. The frontend displays backend-authored typed-resolution prompts and never decides
+normalization, authorized candidates, or confirmation policy. In `WAITING_APPROVAL` the composer
+is disabled and the explicit approval card remains the only decision surface.
+
+For AP v1.2, the backend may persist a model-composed `assistant_message` generated exclusively
+from validated typed resolution facts. The frontend treats it as presentation while questions and
+context remain authoritative. Historical records and model-call failures use deterministic copy.
 
 ## 4. Current-State Audit
 
