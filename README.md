@@ -1,167 +1,286 @@
 # Agentic Enterprise Knowledge Copilot
 
-Agentic Enterprise Knowledge Copilot is a governed, evidence-backed task-completion system. It
-turns a natural-language enterprise request into a validated plan, executes only approved tools,
-records Evidence and audit lineage, verifies the result, and produces an immutable report
-Artifact. Stage 17 packages the implemented Stage 0–16 vertical slice as an installable,
-migration-driven, Docker-ready service with SQLite development storage and PostgreSQL deployment
-persistence. Stage 17.1 hardens identity, mandatory execution context, tenant persistence,
-approval enforcement, registry lifecycle, cancellation, correlation, and production configuration
-without adding a business capability. Stage 18 adds an optional governed MCP `2025-11-25`
-client/server interoperability boundary while preserving that frozen business behavior.
-Stage 19 implements the frozen asynchronous runtime with PostgreSQL Queue v1: API acceptance,
-transactional dispatch, an independent bounded Worker, lease heartbeat/fencing, recovery,
-approval redispatch, durable cancellation, and frontend polling. This is at-least-once execution;
-it is not an exactly-once or production-readiness claim.
+> A governed, evidence-backed platform that turns enterprise analysis requests into traceable,
+> reviewable tasks and verified reports.
 
-The **Enterprise RAG Engine is a separate service and repository**. The Copilot consumes its
-approved HTTP contract through the Knowledge Tool; this repository does not copy, embed, or
-reimplement the RAG service.
+Agentic Enterprise Knowledge Copilot is not a general-purpose chatbot. It accepts a natural-language
+business request, resolves its scope, creates and validates an execution plan, applies permissions
+and approval rules, runs allowlisted tools, records evidence and audit lineage, and verifies the
+result before publishing a JSON or PDF artifact.
 
-## Architecture
+The repository currently provides two read-only business workflows:
+
+- **Supplier Quality Analysis** — analyzes quarterly supplier defects, inspection volume, defect
+  rates, and period-over-period trends.
+- **Accounts Payable Investigation** — identifies supported invoice compliance and exception cases
+  within an authorized finance scope.
+
+The project is at version `0.1.0`. Its local and synthetic vertical slices are implemented, but the
+repository does **not** claim whole-system production readiness. In particular, production identity,
+approved data and policy sources, operational ownership, capacity validation, and disaster recovery
+remain deployment responsibilities.
+
+For a Chinese-language introduction, see the
+[project overview](docs/project-overview-zh.md).
+
+## Table of contents
+
+- [Why this project](#why-this-project)
+- [Core capabilities](#core-capabilities)
+- [Supported use cases](#supported-use-cases)
+- [How it works](#how-it-works)
+- [Quick start](#quick-start)
+- [Using the API](#using-the-api)
+- [Frontend](#frontend)
+- [Configuration](#configuration)
+- [Project structure](#project-structure)
+- [Development and testing](#development-and-testing)
+- [Security and current limitations](#security-and-current-limitations)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Why this project
+
+Enterprise AI needs stronger guarantees than a fluent answer. Important findings must be tied to
+authorized data, reproducible calculations, explicit policy decisions, and durable evidence.
+
+This project is designed around five principles:
+
+1. **Policy before action** — permissions, tenant scope, data classification, risk, and approvals
+   are checked before a tool runs.
+2. **Tool-first execution** — business facts and calculations come from approved tools rather than
+   being invented by a model.
+3. **Traceability by default** — reports preserve document citations, query lineage, calculation
+   evidence, audit events, and artifact checksums.
+4. **Deterministic control** — validation, formulas, state transitions, retry limits, and completion
+   gates are implemented in code.
+5. **Safe failure** — missing evidence, invalid scope, failed verification, or unavailable
+   dependencies produce a typed failure or suspended task instead of an unsupported result.
+
+## Core capabilities
+
+| Area | What is implemented |
+|---|---|
+| Task lifecycle | Durable task intake, planning, bounded execution, retry/replan, cancellation, clarification, approval, verification, and terminal results |
+| Agent workflow | LangGraph-based orchestration with typed contracts and deterministic plan validation |
+| Tool governance | Registry and executor for `knowledge_search`, `database_query`, `analysis_engine`, and `report_generator` |
+| Human-in-the-loop | Persisted clarification and approval flows; approval edits may only tighten allowlisted arguments |
+| Evidence and audit | Document, database, and calculation lineage plus append-only audit records |
+| Reporting | Deterministic JSON and PDF artifacts with integrity checks |
+| Asynchronous runtime | PostgreSQL-backed transactional dispatch, independent Worker, leases, heartbeats, fencing, and crash recovery |
+| User interfaces | FastAPI HTTP API, Typer CLI, and React/TypeScript execution console |
+| Persistence | SQLite for controlled tests; PostgreSQL 16 for the asynchronous service runtime |
+| Interoperability | Optional MCP `2025-11-25` client/server boundary, disabled by default |
+| Quality | Unit, integration, contract, smoke, security, frontend, and offline evaluation suites |
+
+The Enterprise RAG Engine is an independent service and repository. This project consumes its
+approved HTTP interface through the Knowledge Tool; it does not embed or reimplement that engine.
+
+## Supported use cases
+
+### Supplier Quality Analysis
+
+The workflow accepts an authorized supplier scope and an explicit year and quarter, retrieves
+approved quality knowledge, queries registered read-only views, calculates deterministic metrics,
+and creates an internal report. If required time or scope information is missing, the task can
+suspend for bounded interactive clarification and resume in the same durable task.
+
+Example:
 
 ```text
-User -> API / CLI -> PostgreSQL Task + dispatch -> 202 Accepted
-                  -> PostgreSQL Queue -> independent Worker
-                  -> Task Understanding -> Planner -> Policy / Approval
-                  -> Tool Registry / Executor -> Knowledge + Database + Analytics + Reporting
-                  -> Evidence -> Verifier -> TaskResult + Artifact
-
-External boundaries:
-  Enterprise RAG Engine       Copilot PostgreSQL       Artifact filesystem/volume
-  Enterprise business DB     (internal state)          (report bytes)
-  Approved MCP servers       Authenticated MCP clients (optional Stage 18 edges)
+Analyze Q2 2026 supplier quality deviations, compare them with the previous period,
+and generate a JSON management report.
 ```
 
-The Copilot persistence database and enterprise business database are deliberately different:
+The supported analysis is intentionally limited to defect counts, inspection counts, defect rates,
+and period trends. It does not make causal claims or execute corrective actions.
 
-- `PERSISTENCE_DATABASE_URL` stores Task, State, plans/results, Evidence, Approval, Audit,
-  Artifact metadata, leases, and PostgreSQL checkpoints.
-- `DATABASE_URL` is visible only to the registered, read-only enterprise Database Tool. It cannot
-  access Copilot internal tables through the application architecture.
+### Accounts Payable Investigation
 
-The API, CLI, and Worker reuse the same application composition and workflow services. The API and
-CLI only accept work; the Worker hosts the existing Graph. Docker does not create a second business
-workflow or bypass Policy, Approval, Registry/Executor, Evidence, Audit, Observability, or
-Verification.
+The workflow analyzes a bounded invoice-date range using controlled policy snapshots, five
+allowlisted read models, and seven deterministic analytics operations. It supports six exception
+types: exact duplicate invoices, PO amount variance, missing required PO, late payment, material
+early payment, and overpayment.
 
-See [Architecture](docs/architecture.md), the [frozen v1.1 baseline](docs/design/design_baseline.md),
-and [ADR-006](docs/adr/ADR-006-deployment-persistence-boundary.md). Stage 18 admission is recorded
-in [ADR-007](docs/adr/ADR-007-stage-18-mcp-readiness-boundary.md); the pinned protocol decision is
-[ADR-008](docs/adr/ADR-008-mcp-protocol-2025-11-25.md).
+Example:
 
-## Supported executable vertical slices
+```text
+Review accounts payable invoice compliance for Q2 2026 and generate a PDF exception report.
+```
 
-The public API and console expose two governed vertical slices through the same `/v1/tasks`
-resources: **Supplier Quality Deviation Investigation / Supplier Quality Analysis v1.1** and
-**Accounts Payable Invoice Compliance & Exception Investigation v1**. Supplier Quality requests
-must include an explicit year and quarter. AP requests use a bounded invoice-date range and the
-trusted finance scope supplied by the signed caller identity. The frozen shared capabilities are
-`knowledge_search`, `database_query`, `analysis_engine`, and `report_generator`. Artifacts are PDF
-or JSON.
+The Accounts Payable vertical slice is implemented and validated with local synthetic data, but its
+formal production readiness decision remains **NOT READY** until the deployment-specific gates in
+the [readiness review](docs/use-cases/accounts-payable/stage-12-production-readiness-review.md) are
+satisfied.
 
-Current boundaries are intentional:
+## How it works
 
-- no CAPA execution, email, procurement, supplier-status change, or business-database write;
-- no arbitrary SQL/Python, open internet source, or unregistered connector;
-- no cross-database atomic transaction or external API exactly-once guarantee;
-- no guaranteed forced interruption of an in-flight external call; durable cancellation fences
-  late output and cooperative process-local tokens reduce stop latency;
-- no bundled enterprise IAM/SSO: production verifies a short-lived signed assertion from an
-  approved upstream gateway, while Demo Identity is restricted to explicit development/test use;
-- no automatic MCP trust or export: only approved server namespaces and explicit export rules are
-  implemented; MCP does not broaden the frozen four-tool business scope.
+```text
+Client
+  |
+  v
+FastAPI / CLI
+  -> authenticate and validate
+  -> persist Task + dispatch atomically
+  -> return 202 Accepted
+  |
+  v
+PostgreSQL Queue
+  |
+  v
+Independent Worker
+  -> task understanding and clarification
+  -> planning and plan validation
+  -> policy check and approval, when required
+  -> governed tool execution
+  -> evidence aggregation
+  -> report generation
+  -> independent verification
+  -> durable result + JSON/PDF artifact
+```
 
-The second vertical slice, **Accounts Payable Invoice Compliance & Exception Investigation v1**,
-has completed its frozen staged implementation and final Stage 12 readiness review: contracts and
-routing, isolated demo data, controlled policy, five governed read models, seven deterministic
-analytics operations, independent AP Evidence/verifier and report profiles, shared-Graph execution,
-permission-scoped API/console integration, synthetic evaluation/security gates, and the isolated
-Local Enterprise E2E. Its status and acceptance records are indexed at
-[`docs/use-cases/accounts-payable/README.md`](docs/use-cases/accounts-payable/README.md). AP is not
-exposed through a separate `/v1/finance/*` route. The final review decision is `NOT READY` until
-the documented deployment-specific retention, recovery, live-data/model performance and formal
-owner/security/architecture approvals are supplied.
+The Copilot persistence database and the enterprise business database are separate security
+boundaries:
 
-## Requirements and installation
+- `PERSISTENCE_DATABASE_URL` stores tasks, runtime state, dispatches, evidence, approvals, audit
+  records, artifact metadata, leases, and checkpoints.
+- `DATABASE_URL` is available only to the registered read-only Database Tool and cannot access
+  Copilot-owned tables through the application architecture.
+
+The API does not execute the graph inline. A submission returns `202 Accepted`, and clients poll the
+task resource while an independent Worker executes or resumes the workflow. The task database—not
+the queue, Worker memory, or a LangGraph checkpoint—is authoritative.
+
+For design details, see [Architecture](docs/architecture.md) and the
+[asynchronous runtime architecture](docs/async-runtime-architecture.md).
+
+## Quick start
+
+### Prerequisites
 
 - Python 3.11 or later
+- PostgreSQL 16 for the full asynchronous runtime
 - Node.js 22 and npm for frontend development
-- Docker Engine with Compose v2 for the container path
-- PostgreSQL 16 for the deployment/integration path
-- a separately built or approved Enterprise RAG Engine image for the full Compose topology
+- Docker Engine with Compose v2 for the containerized environment
+- An approved or locally built Enterprise RAG Engine image for the complete Compose topology
+
+### 1. Install the project
+
+From the repository root:
 
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -e '.[dev]'
 cp .env.example .env
 ```
 
-All configuration enters through `copilot.config.Settings`. Keep real credentials out of `.env`,
-Git, image layers, logs, task text, and Artifacts.
+The default development configuration uses mock LLM, knowledge, and business-database adapters. Do
+not place real credentials in `.env` or commit that file.
 
-## Local development
+### 2. Run the offline smoke workflow
 
-The default `.env.example` uses offline Mock LLM/Knowledge/Database adapters and local SQLite. It
-is suitable for deterministic development:
-
-```bash
-python -m copilot.persistence.migrate
-uvicorn copilot.bootstrap.api:app --host 127.0.0.1 --port 8000
-curl http://127.0.0.1:8000/health
-curl http://127.0.0.1:8000/health/ready
-```
-
-`PERSISTENCE_AUTO_CREATE_SCHEMA=true` is a development/test compatibility helper. To exercise the
-deployment discipline locally, set it to `false`, set an explicit
-`PERSISTENCE_DATABASE_URL=sqlite:///data/database/copilot.db`, and run the migration command before
-starting the API.
-
-To use the real read-only business Database Tool with the synthetic SQLite fixture:
+The fastest way to verify the core governed workflow requires no external service:
 
 ```bash
-python scripts/seed_demo_database.py --reset
-python scripts/seed_demo_database.py --dataset accounts-payable-v1 --reset
-export DATABASE_PROVIDER=sqlalchemy
-export DATABASE_URL=sqlite:///data/database/enterprise_demo.db
+python scripts/smoke_agent.py
 ```
 
-This database is enterprise business data for Tool reads; it is not Copilot persistence.
-The deterministic dataset contains 17 fictional suppliers and exactly 5,000 incoming inspections
-across all 12 months of 2026. It writes a query-derived profile to
-`data/demo/supplier_quality_dataset_profile.json`. See the
-[demo business database guide](docs/demo-business-database.md) and
-[contract audit](docs/database-contract-audit.md).
+This runs an isolated Supplier Quality task with deterministic adapters and verifies task state,
+steps, evidence, tracing, and the generated JSON artifact.
 
-The same allowlisted adapter accepts PostgreSQL, uses a server-side read-only transaction and
-statement timeout, and is included in `/health/ready` dependency checks. Development Compose now
-uses a separate seeded `business-postgres` service and SELECT-only runtime role; it does not reuse
-the Copilot persistence PostgreSQL database.
+### 3. Start the service stack
 
-The controlled Accounts Payable Stage 3 policy fixture can be validated without publishing, or
-published as a tenant-bound immutable local RAG payload snapshot:
+The development Compose topology requires the independent RAG image. Obtain or build that image,
+then expose its tag through `RAG_IMAGE` (the default is `enterprise-rag-engine:local`):
 
 ```bash
-python scripts/publish_ap_policy.py --validate-only --tenant-id TENANT-DEMO
-python scripts/publish_ap_policy.py --tenant-id TENANT-DEMO --index-revision local-1
+export RAG_IMAGE=enterprise-rag-engine:local
+docker compose config
+docker compose build
+docker compose up -d
+docker compose ps
 ```
 
-Publication verifies exact document, chunk, effective-date and rule-manifest checksums before
-atomically advancing the tenant's snapshot pointer. Publication itself does not bypass the shared
-AP workflow, policy, approval, evidence or verification gates.
+Compose starts two separate PostgreSQL databases, database migration and seed jobs, an RAG health
+check, the Copilot API, and an independent Worker. Verify the API:
+
+```bash
+curl --fail http://127.0.0.1:8000/health/live
+curl --fail http://127.0.0.1:8000/health/ready
+```
+
+Stop the stack without deleting its named volumes:
+
+```bash
+docker compose down
+```
+
+For the complete browser-to-artifact environment, including the frontend and controlled RAG
+ingestion, follow [Local Enterprise E2E](docs/local-enterprise-e2e.md). On macOS, that guide also
+documents the included `一键启动或关闭.command` shortcut.
+
+## Using the API
+
+Submit a task:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/tasks \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: supplier-quality-q2-2026' \
+  -d '{
+    "task": "Analyze Q2 2026 supplier quality deviations and generate a JSON report."
+  }'
+```
+
+A successful submission returns `202 Accepted` with a `task_id`, `trace_id`, `status_url`, and
+`artifacts_url`. Poll the returned task resource:
+
+```bash
+curl http://127.0.0.1:8000/v1/tasks/TASK_ID
+curl http://127.0.0.1:8000/v1/tasks/TASK_ID/steps
+curl http://127.0.0.1:8000/v1/tasks/TASK_ID/evidence
+curl http://127.0.0.1:8000/v1/tasks/TASK_ID/artifacts
+curl -OJ http://127.0.0.1:8000/v1/tasks/TASK_ID/artifacts/ARTIFACT_ID
+```
+
+Cancel a non-terminal task:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/tasks/TASK_ID/cancel
+```
+
+Tasks may enter `WAITING_CLARIFICATION` or `WAITING_APPROVAL`. Both states release the Worker lease
+and expose a persisted interaction through the task detail response. Submitting a clarification or
+approval decision creates a new asynchronous dispatch; it does not execute the graph in the API
+request.
+
+See the [HTTP API guide](docs/api.md) for task listing, clarification, approval, cancellation,
+artifact download, health semantics, and stable error responses.
+
+### CLI
+
+The installed console command submits through the same configured asynchronous service:
+
+```bash
+enterprise-copilot --help
+enterprise-copilot \
+  "Analyze Q2 2026 supplier quality deviations and generate a JSON report." \
+  --demo --wait
+```
+
+The CLI requires the same migrated PostgreSQL persistence and a running Worker. `--demo` is allowed
+only in development or test environments; production tasks must enter through the authenticated API.
 
 ## Frontend
 
-The implemented React + TypeScript frontend is a chat-first workspace for governed enterprise
-Tasks. `+ New Task` starts an unpersisted natural-language draft; the backend resolves the enabled
-Supplier Quality or Accounts Payable domain and output contract; and one Task is reconstructed as
-one durable conversation. Grouped task history, multi-round clarification, explicit approval and
-cancellation, lazy Evidence/execution drawers, verified Artifact cards, and system health reuse the
-existing authoritative services. The browser sends only task text plus an Idempotency-Key and
-never selects identity, tenant, role, domain, scope, tool, model, database, or RAG source.
+The React + TypeScript frontend provides a chat-first task workspace with task history, multi-round
+clarification, approval and cancellation controls, execution/evidence details, verified artifact
+cards, and health status.
 
-Install and run it against the local API:
+Run it against a local API:
 
 ```bash
 cd frontend
@@ -169,8 +288,88 @@ npm ci
 npm run dev
 ```
 
-The Vite server listens on `http://127.0.0.1:5173` and proxies `/api` to the API on port 8000.
-Run the frontend quality gates with:
+The Vite server listens on [http://127.0.0.1:5173](http://127.0.0.1:5173) and proxies `/api` to the
+backend on port `8000`. See [Frontend development](docs/frontend-development.md) for setup and test
+details.
+
+## Configuration
+
+All application configuration is loaded through `copilot.config.Settings`. Start with
+[`.env.example`](.env.example) and keep secrets in an approved runtime secret manager.
+
+| Variable | Purpose | Development default |
+|---|---|---|
+| `APP_ENV` | Runtime profile | `development` |
+| `IDENTITY_PROVIDER` | Caller identity adapter | `demo` |
+| `PERSISTENCE_DATABASE_URL` | Copilot-owned state database | Local fallback; PostgreSQL required by the async service |
+| `PERSISTENCE_AUTO_CREATE_SCHEMA` | Development schema helper | `true` |
+| `QUEUE_PROVIDER` | Task queue adapter | `postgresql` |
+| `DATABASE_PROVIDER` | Enterprise business-data adapter | `mock` |
+| `DATABASE_URL` | Read-only enterprise business database | Synthetic SQLite URL |
+| `KNOWLEDGE_PROVIDER` | Knowledge adapter | `mock` |
+| `RAG_BASE_URL` | Independent Enterprise RAG endpoint | `http://127.0.0.1:8000` |
+| `LLM_PROVIDER` | Planning/model adapter | `mock` |
+| `ARTIFACT_DIR` | Generated artifact content root | `data/artifacts` |
+| `WORKER_CONCURRENCY` | Per-process execution slots | `4` |
+| `MCP_ENABLED` | Optional MCP boundary | `false` |
+
+Production configuration fails closed when required identity, secret, PostgreSQL, model, RAG,
+checkpoint, policy-snapshot, or business-database requirements are missing. See the
+[deployment guide](docs/deployment.md) for the complete production contract.
+
+## Project structure
+
+```text
+.
+├── src/copilot/
+│   ├── api/              # FastAPI routes, schemas, and error mapping
+│   ├── agent/            # LangGraph state, routing, and workflow nodes
+│   ├── contracts/        # Stable typed boundaries
+│   ├── evidence/         # Evidence lineage and verification inputs
+│   ├── llm/              # Model adapters and structured output
+│   ├── mcp/              # Optional MCP protocol boundary
+│   ├── persistence/      # Task, runtime, audit, and checkpoint persistence
+│   ├── policies/         # Permissions, risk, and approval decisions
+│   ├── services/         # Application orchestration
+│   ├── tools/            # Governed knowledge, database, analytics, and report tools
+│   └── worker/           # Independent queue Worker runtime
+├── frontend/             # React/TypeScript execution console
+├── tests/                # Unit, integration, contract, smoke, and security tests
+├── evaluation/           # Datasets, evaluators, baselines, and generated reports
+├── migrations/           # Copilot persistence migrations
+├── business_migrations/  # Synthetic business-data migrations
+├── scripts/              # Thin operational and smoke entry points
+├── docs/                 # Architecture, operations, security, and use-case documentation
+├── docker-compose.yml    # Development service topology
+└── pyproject.toml        # Python package and tool configuration
+```
+
+## Development and testing
+
+Run the backend quality gates from the repository root:
+
+```bash
+ruff check .
+ruff format --check .
+mypy
+pytest tests/unit
+pytest tests/integration tests/contract tests/smoke
+pytest tests/security
+python scripts/check_docs.py
+python scripts/check_architecture.py
+python -m build
+```
+
+Run the deterministic evaluation suite:
+
+```bash
+python evaluation/run_eval.py --mode mock --seed 42 \
+  --baseline evaluation/baselines/supplier_quality_v1.json \
+  --fail-on-regression
+python evaluation/run_mcp_eval.py --output /tmp/mcp-evaluation.json
+```
+
+Run frontend checks from `frontend/`:
 
 ```bash
 npm run api:check
@@ -182,265 +381,63 @@ npm run build
 npm run test:e2e
 ```
 
-The Playwright suite starts a hermetic real FastAPI/Task Service/Agent workflow and verifies the
-chat-first submission, multi-round clarification, refresh projection, Evidence-to-Artifact path,
-mobile history drawer, approval, cancellation, and failure UX. See
-[Frontend development](docs/frontend-development.md),
-[Frontend architecture](docs/frontend-architecture.md), and the pre-migration
-[Frontend audit](docs/frontend-audit.md).
+PostgreSQL integration tests require an isolated `TEST_POSTGRES_URL`. Ordinary unit tests and mock
+evaluations do not call public internet services, production databases, or live model providers.
 
-## Docker Compose
+## Security and current limitations
 
-### Local Enterprise E2E
+Implemented controls include deny-by-default permissions, tenant and data-scope enforcement,
+allowlisted read-only database templates, bounded tool inputs and outputs, approval binding,
+prompt-injection isolation, sensitive-data filtering, artifact integrity checks, execution fencing,
+and structured audit/evidence records.
 
-For the browser-to-Artifact single-machine topology covering Supplier Quality and Accounts Payable
-with separate RAG, controlled AP policy snapshots, Business PostgreSQL, and Copilot PostgreSQL
-services, see [Local Enterprise E2E](docs/local-enterprise-e2e.md).
+Important boundaries:
 
-On macOS, after completing the one-time environment and RAG setup, double-click
-`一键启动或关闭.command` in Finder to toggle the complete topology. Startup waits for the
-frontend and opens it in the default browser; shutdown preserves all named volumes.
+- No arbitrary SQL or Python execution.
+- No business-database writes, payment execution, CAPA execution, email, procurement action, or
+  supplier-status change.
+- No open-internet retrieval or automatic trust of third-party connectors.
+- No guarantee of distributed exactly-once execution or forced interruption of an in-flight
+  external call.
+- No bundled enterprise IAM/SSO, secret manager, object store, centralized telemetry backend, or
+  complete HA/DR solution.
+- MCP is opt-in, namespace-restricted, and cannot bypass policy, approval, evidence, audit, or
+  verification controls.
+- Local and synthetic test results are not evidence of production-data, live-model, live-RAG, or
+  production-load quality.
 
-Build the formal image in the owning sibling repository:
+Read [Security Model](docs/security-model.md), [Operations](docs/operations.md), and
+[Troubleshooting](docs/troubleshooting.md) before operating the system outside a local environment.
 
-```bash
-cd ../Enterprise-RAG-Engine
-docker build -t enterprise-rag-engine:local .
-cd ../Agentic-Enterprise-Knowledge-Copilot
-```
+## Documentation
 
-The Local Enterprise Compose consumes that image, explicitly ingests the sibling's five controlled
-Supplier Quality PDFs into its own named RAG volume, publishes the controlled AP policy bundle into
-a separate read-only snapshot, and uses deterministic local model boundaries for the Stage 11
-acceptance run so task and document contexts are not silently sent to an external provider. See the
-guide for the fresh-volume sequence and the separate Planner/RAG data-egress boundaries.
+| Topic | Document |
+|---|---|
+| Project architecture | [docs/architecture.md](docs/architecture.md) |
+| HTTP API | [docs/api.md](docs/api.md) |
+| Task lifecycle | [docs/task-lifecycle.md](docs/task-lifecycle.md) |
+| Deterministic workflow | [docs/deterministic-workflow.md](docs/deterministic-workflow.md) |
+| Evidence and verification | [docs/evidence-and-verification.md](docs/evidence-and-verification.md) |
+| Local enterprise environment | [docs/local-enterprise-e2e.md](docs/local-enterprise-e2e.md) |
+| Deployment | [docs/deployment.md](docs/deployment.md) |
+| Operations | [docs/operations.md](docs/operations.md) |
+| Evaluation | [docs/evaluation.md](docs/evaluation.md) |
+| MCP architecture and security | [docs/mcp-architecture.md](docs/mcp-architecture.md), [docs/mcp-security.md](docs/mcp-security.md) |
+| Supplier Quality frozen baseline | [docs/design/design_baseline.md](docs/design/design_baseline.md) |
+| Accounts Payable use case | [docs/use-cases/accounts-payable/README.md](docs/use-cases/accounts-payable/README.md) |
+| Architecture decisions | [docs/adr/README.md](docs/adr/README.md) |
 
-Then start this repository:
+## Contributing
 
-```bash
-cp .env.example .env
-docker compose config
-docker compose build
-docker compose up
-```
+Before changing behavior, read [`AGENTS.md`](AGENTS.md) and the applicable frozen design documents.
+Use small, contract-first changes; add proportionate tests; preserve policy, evidence, audit, and
+verification boundaries; and run the relevant quality gates before opening a review.
 
-Compose starts persistence `postgres`, the separate synthetic `business-postgres`,
-`enterprise-rag-engine`, one-shot persistence migration, ordered Supplier Quality/AP business
-seed jobs, `rag-health`, `copilot-api`, and `copilot-worker`. The persistence migration service runs Alembic and the
-official LangGraph PostgreSQL saver setup; the separate business history migrates and seeds the
-synthetic Supplier Quality and AP tables;
-`rag-health` uses the Copilot's real HTTP Knowledge client without assuming utilities exist inside
-the independent RAG image. All one-shot dependencies must succeed before the API starts. The API
-reaches RAG as `http://enterprise-rag-engine:8000`, never through container-local `localhost`.
-Local ports default to Copilot `8000`, RAG `8001`, persistence PostgreSQL `5432`, and business
-PostgreSQL `5433`.
+The repository uses Conventional Commit-style subjects such as `feat:`, `fix:`, `docs:`, `test:`,
+and `refactor:`.
 
-The committed PostgreSQL credentials are local demo values only. Never use them in production.
-For an already-running RAG outside Compose, run the API outside Compose with an approved
-`RAG_BASE_URL`, or provide a deployment-specific Compose override and network route. See
-[Deployment](docs/deployment.md).
+## License
 
-## Database and migrations
-
-SQLite remains supported for legacy/unit tests and controlled local service composition.
-PostgreSQL is required for asynchronous submission, Queue v1, Worker execution, and the production
-configuration profile. Copilot-owned schema changes are explicit:
-
-```bash
-alembic upgrade head
-alembic current
-alembic history
-alembic downgrade -1  # isolated/non-production databases only after reviewing data loss
-```
-
-The normal API startup never runs `Base.metadata.create_all`, Alembic, or vendor checkpoint
-migrations in production. The deployment command is:
-
-```bash
-python -m copilot.persistence.migrate
-```
-
-Artifact metadata is stored in the Copilot database. Artifact bytes remain beneath
-`ARTIFACT_DIR`; Compose mounts a persistent `artifact-data` volume. A PostgreSQL backup therefore
-does **not** include report files.
-
-## Enterprise RAG service
-
-Use the real HTTP adapter by setting:
-
-```bash
-KNOWLEDGE_PROVIDER=http
-RAG_BASE_URL=http://approved-rag-host:8000
-python scripts/check_rag_health.py
-```
-
-`RAG_TIMEOUT_SECONDS`, `RAG_MAX_ATTEMPTS`, and `RAG_RETRY_BASE_DELAY_SECONDS` bound dependency
-calls. RAG failure can make task acceptance degraded while `/health/live` and historical task
-reads remain available. CI uses controlled offline adapters; live RAG verification is explicit
-and is not falsely represented by Mock tests.
-
-## Main API
-
-Submit and inspect a task:
-
-```bash
-curl -X POST http://127.0.0.1:8000/v1/tasks \
-  -H 'Content-Type: application/json' \
-  -d '{"task":"Analyze Q2 2026 supplier quality deviations and generate a JSON report."}'
-
-curl http://127.0.0.1:8000/v1/tasks/TASK_ID
-curl http://127.0.0.1:8000/v1/tasks/TASK_ID/steps
-curl http://127.0.0.1:8000/v1/tasks/TASK_ID/evidence
-curl http://127.0.0.1:8000/v1/tasks/TASK_ID/artifacts
-curl -OJ http://127.0.0.1:8000/v1/tasks/TASK_ID/artifacts/ARTIFACT_ID
-curl -X POST http://127.0.0.1:8000/v1/tasks/TASK_ID/cancel
-```
-
-Submission and approval resolution return `202 Accepted`; use the returned `status_url` and poll
-until `runtime_status` is `FINISHED` or `SUSPENDED`. `TaskStatus` remains the business state while
-`runtime_status` is the separate execution-hosting projection.
-
-Approval APIs actually implemented by this repository are:
-
-```bash
-curl http://127.0.0.1:8000/v1/tasks/TASK_ID/approvals/APPROVAL_ID
-curl -X POST http://127.0.0.1:8000/v1/tasks/TASK_ID/approvals/APPROVAL_ID \
-  -H 'Content-Type: application/json' \
-  -d '{"action":"approve","reason":"Reviewed"}'
-```
-
-`EDIT` requires complete replacement arguments and can only lower the frozen `top_k` or
-`row_limit` allowlist value. A waiting approval is durable and can resume after process restart.
-See [HTTP API](docs/api.md) and [Human-in-the-loop](docs/stage-12/human-in-the-loop.md).
-
-Health semantics:
-
-- `GET /health` preserves the original process-health contract: `{"status":"ok"}`.
-- `GET /health/live` reports process liveness only.
-- `GET /health/ready` reports safe database, Artifact storage, and configured RAG status. HTTP 503
-  means new governed tasks should not be accepted; it does not imply that the process is dead.
-
-## CLI
-
-```bash
-enterprise-copilot --help
-python scripts/run_task.py \
-  "Analyze Q2 2026 supplier quality deviations and generate a JSON report." --demo
-python scripts/run_task.py \
-  "Analyze Q2 2026 supplier quality deviations and generate a JSON report." --demo --wait
-enterprise-copilot-inspect-runtime TASK_ID
-python scripts/inspect_task.py TASK_ID
-python scripts/inspect_task.py TASK_ID --performance
-python scripts/smoke_agent.py --show-trace
-python scripts/check_rag_health.py
-```
-
-API and CLI use the same acceptance service and never run the Graph inline. `--wait` polls
-authoritative persistence; it does not become a Worker. CLI exit codes and Worker operations are
-documented in [Operations](docs/operations.md) and the
-[Async runtime operations guide](docs/async-runtime-operations.md).
-
-## Important configuration
-
-| Variable | Development default | Production requirement |
-|---|---|---|
-| `APP_ENV` | `development` | `production` with strict validation |
-| `IDENTITY_PROVIDER` | `demo` | `trusted_headers`; no demo fallback |
-| `IDENTITY_SIGNING_SECRET` | blank | injected secret, at least 32 bytes |
-| `PERSISTENCE_DATABASE_URL` | local SQLite fallback | required PostgreSQL URL |
-| `PERSISTENCE_AUTO_CREATE_SCHEMA` | `true` | `false`; run migrations separately |
-| `QUEUE_PROVIDER` | `postgresql` | `postgresql` (ADR-017 v1) |
-| `WORKER_CONCURRENCY` | `4` | reviewed finite process-local limit |
-| `EXECUTION_HEARTBEAT_INTERVAL_SECONDS` / `EXECUTION_LEASE_TTL_SECONDS` | `15` / `60` | DB-time TTL at least 3 heartbeats |
-| `DATABASE_URL` | demo business SQLite | approved read-only business DB |
-| `DATABASE_PROVIDER` | `mock` | `sqlalchemy` |
-| `KNOWLEDGE_PROVIDER` | `mock` | `http` |
-| `RAG_BASE_URL` | host-local URL | approved non-loopback service URL |
-| `LLM_PROVIDER` / `LLM_API_KEY` | `mock` / blank | real provider / injected credential |
-| `ARTIFACT_DIR` | `data/artifacts` | persistent, writable, backed-up volume |
-| `LOG_LEVEL` / `LOG_FORMAT` | `INFO` / `json` | structured stdout/stderr |
-| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `5` / `10` | size for deployment concurrency |
-| `MAX_TASK_STEPS` | `14` | supports the full AP plan; may be tightened when that profile is disabled |
-| `MCP_ENABLED` | `false` | explicit opt-in; client/server roles separately enabled |
-| `MCP_PROTOCOL_REVISION` | `2025-11-25` | pinned; upgrades require ADR and compatibility gates |
-| `MCP_JWT_ISSUER` / `MCP_JWT_AUDIENCE` | blank | required for HTTP server mode |
-
-The complete safe template is [.env.example](.env.example). The production adapter validates a
-gateway-signed user, tenant, roles, scopes, data scope, purpose, and timestamp; the upstream
-enterprise gateway/IdP remains a required deployment dependency.
-
-## Security
-
-The implemented path uses a deny-by-default permission matrix, read-only query templates and AST
-validation, tenant/supplier scope, bounded output, prompt-injection isolation, sensitive-data
-filtering, Approval binding, append-only Audit, Evidence lineage, Artifact integrity checks, and
-independent Verification. Logs redact secret-shaped values and do not emit database URLs, raw
-SQL, Authorization headers, tool payloads, or ordinary stack traces.
-
-These controls are a production security foundation, not an enterprise IdP, a Secret Manager,
-tamper-proof audit, or a disaster-recovery platform. Repository APIs require tenant scope, and the
-executor independently requires exact authenticated context, policy, and approval even when
-called directly. See [Security Model](docs/security-model.md).
-
-## Observability and operations
-
-Structured events go to stdout/stderr and retain safe correlation fields such as `task_id`,
-`trace_id`, `step_id`, `node_name`, `tool_name`, `status`, `latency_ms`, `error_type`, and
-`retry_count`. Local spans and metrics are bounded and process-local; durable Audit provides the
-restart-safe operational trail.
-
-Use [Operations](docs/operations.md) for service, log, migration, backup, recovery, Artifact, RAG,
-and incident procedures. Use [Troubleshooting](docs/troubleshooting.md) for symptom-driven fixes.
-
-## Testing and quality gates
-
-```bash
-ruff check .
-ruff format --check .
-mypy
-pytest tests/unit --cov=copilot --cov-report=term-missing --cov-report=xml
-pytest tests/integration tests/contract tests/smoke
-pytest tests/security
-python evaluation/run_eval.py --mode mock --seed 42 \
-  --baseline evaluation/baselines/supplier_quality_v1.json --fail-on-regression
-python evaluation/run_mcp_eval.py --output /tmp/mcp-evaluation.json
-python scripts/check_docs.py
-python scripts/check_architecture.py
-python -m build
-docker build .
-RAG_IMAGE=enterprise-rag-engine:local docker compose config
-docker compose -f docker-compose.production.yml config
-```
-
-Real PostgreSQL coverage uses an isolated `TEST_POSTGRES_URL`; GitHub Actions supplies a PostgreSQL
-service container. Unit and ordinary integration tests do not call the public internet, DeepSeek,
-production databases, or live RAG.
-
-## Evaluation
-
-```bash
-python evaluation/run_eval.py
-python evaluation/run_eval.py --tag smoke
-```
-
-Reports are written to `evaluation/reports`. The checked-in Mock baseline validates deterministic
-regression behavior; it is not evidence of live-model, live-RAG, production-data, or production
-latency quality. See [Offline Agent Evaluation](docs/evaluation.md).
-
-## MCP interoperability (implemented, optional)
-
-Stage 18 implements real stdio and Streamable HTTP clients, isolated per-server sessions,
-capability discovery/normalization/import, explicit server export, JWT Bearer authorization,
-resources, prompts, policy-gated sampling/elicitation/roots, progress, persistence,
-reconnect/revocation and hermetic real-SDK tests. Imported and exported tool calls use the existing
-Registry, Executor, Policy, Approval, Evidence, Audit and Observability path.
-
-MCP is off by default. Production OAuth/IdP issuance, public TLS/reverse proxy and approval of each
-remote server remain deployment responsibilities. See [MCP Architecture](docs/mcp-architecture.md),
-[MCP Security](docs/mcp-security.md), and [MCP Operations](docs/mcp-operations.md).
-
-## Roadmap
-
-Stage 18 MCP interoperability is implemented as an optional boundary. Future roadmap work includes
-additional reviewed third-party interoperability profiles, production IdP-specific deployment
-adapters and any later MCP revision after the ADR-008 upgrade process.
+No software license is currently declared: the repository's `LICENSE` file is empty. Until the
+project owner adds license terms, no permission to copy, modify, or distribute the code should be
+assumed.

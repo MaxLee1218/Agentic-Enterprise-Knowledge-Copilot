@@ -84,6 +84,9 @@ instance/
 # Sphinx documentation
 docs/_build/
 
+# Local interview-preparation artifacts
+/interview/
+
 # PyBuilder
 .pybuilder/
 target/
