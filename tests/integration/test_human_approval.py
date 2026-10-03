@@ -85,7 +85,7 @@ def edited_command(
     )
 
 
-def test_edit_resumes_with_final_arguments_without_replaying_knowledge(tmp_path: Path) -> None:
+def test_edit_resumes_with_final_arguments_without_inserting_knowledge(tmp_path: Path) -> None:
     with build_test_container(tmp_path / "artifacts", llm_provider=OfflineMockLLM()) as container:
         task_id, approval_id = submit_for_approval(container)
         pending = container.approval_repository.get(approval_id, tenant_id=TENANT_ID)
@@ -94,7 +94,7 @@ def test_edit_resumes_with_final_arguments_without_replaying_knowledge(tmp_path:
         assert pending.tool_name == "database_query"
         assert pending.editable_fields == ("row_limit",)
         assert pending.proposed_arguments.root["row_limit"] == 10000
-        assert container.knowledge_tool.call_count == 1
+        assert container.knowledge_tool.call_count == 0
         assert container.database_tool.call_count == 0
 
         with pytest.raises(ApprovalArgumentsInvalidError):
@@ -123,7 +123,7 @@ def test_edit_resumes_with_final_arguments_without_replaying_knowledge(tmp_path:
         )
 
         assert result.task_status is TaskStatus.COMPLETED
-        assert container.knowledge_tool.call_count == 1
+        assert container.knowledge_tool.call_count == 0
         assert container.database_tool.call_count == 1
         state = container.engine.get_state(task_id, "TENANT-DEMO")
         database_calls = [
@@ -192,7 +192,7 @@ def test_reject_cancels_without_calling_the_target_or_downstream_tools(tmp_path:
         )
 
         assert result.task_status is TaskStatus.CANCELLED
-        assert container.knowledge_tool.call_count == 1
+        assert container.knowledge_tool.call_count == 0
         assert container.database_tool.call_count == 0
         assert container.analytics_tool.call_count == 0
         assert container.report_tool.call_count == 0
@@ -285,7 +285,7 @@ def test_restart_recovers_persisted_approval_and_checkpoint(tmp_path: Path) -> N
         llm_provider=OfflineMockLLM(),
     ) as first:
         task_id, approval_id = submit_for_approval(first)
-        assert first.knowledge_tool.call_count == 1
+        assert first.knowledge_tool.call_count == 0
 
     with build_test_container(
         artifact_dir,

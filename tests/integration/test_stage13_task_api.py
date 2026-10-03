@@ -68,7 +68,10 @@ def test_failed_task_summary_and_audit_preserve_the_root_cause(tmp_path: Path) -
     )
     try:
         with client:
-            created = client.post("/v1/tasks", json={"task": TASK_TEXT})
+            created = client.post(
+                "/v1/tasks",
+                json={"task": f"{TASK_TEXT} Compare against the Supplier Quality Manual."},
+            )
             execute_accepted_task(container, created.json()["task_id"], tenant_id="TENANT-DEMO")
             task = client.get(f"/v1/tasks/{created.json()['task_id']}")
             steps = client.get(f"/v1/tasks/{created.json()['task_id']}/steps")
@@ -110,7 +113,10 @@ def test_retryable_knowledge_timeout_retries_as_a_separate_tool_attempt(
     )
     try:
         with client:
-            created = client.post("/v1/tasks", json={"task": TASK_TEXT})
+            created = client.post(
+                "/v1/tasks",
+                json={"task": f"{TASK_TEXT} Compare against the Supplier Quality Manual."},
+            )
             execute_accepted_task(container, created.json()["task_id"], tenant_id="TENANT-DEMO")
             task = client.get(f"/v1/tasks/{created.json()['task_id']}")
 
@@ -196,7 +202,7 @@ def test_complete_task_can_be_queried_with_steps_evidence_and_artifact(tmp_path:
         assert task.status_code == 200
         assert task.json()["status"] == "COMPLETED"
         assert task.json()["current_step"] is None
-        assert task.json()["step_count"] == 4
+        assert task.json()["step_count"] == 3
         assert task.json()["artifact_count"] == 1
         projection = task.json()["interaction_projection"]
         assert projection["schema_version"] == "task-interaction-projection.v1"
@@ -207,7 +213,7 @@ def test_complete_task_can_be_queried_with_steps_evidence_and_artifact(tmp_path:
         assert projection["result"]["safe_summary"]
         assert projection["phase_events"][-1]["phase"] == "COMPLETED"
         assert [event["phase"] for event in projection["phase_events"]].count("EXECUTING") == 1
-        assert len(steps.json()["steps"]) == 4
+        assert len(steps.json()["steps"]) == 3
         assert all("input" not in item for item in steps.json()["steps"])
         assert evidence.json()["evidence"]
         assert all("content" not in item for item in evidence.json()["evidence"])
@@ -331,12 +337,7 @@ def test_two_sequential_tasks_use_canonical_task_scoped_steps_without_cross_task
         first_step_ids = {item["step_id"] for item in first_steps}
         second_step_ids = {item["step_id"] for item in second_steps}
         assert first_task.json()["status"] == second_task.json()["status"] == "COMPLETED"
-        expected_suffixes = {
-            "retrieve-quality-policy",
-            "query-supplier-quality-data",
-            "analyze-supplier-quality",
-            "generate-supplier-quality-report",
-        }
+        expected_suffixes = {"database", "analysis", "report"}
         assert first_step_ids.isdisjoint(second_step_ids)
         assert all(item.startswith(f"{first_task_id}:") for item in first_step_ids)
         assert all(item.startswith(f"{second_task_id}:") for item in second_step_ids)
@@ -518,8 +519,8 @@ def test_api_trace_propagates_through_task_graph_steps_and_tools(tmp_path: Path)
         assert all(span.step_id for span in spans if span.kind is SpanKind.TOOL)
         summary = container.observability.trace_summary(trace_id, status="COMPLETED")
         assert summary is not None
-        assert summary.tool_call_count == 4
-        assert summary.step_count == 4
+        assert summary.tool_call_count == 3
+        assert summary.step_count == 3
         snapshot = container.observability.metrics_snapshot()
         assert snapshot.counters["tasks_completed_total"] == 1
         assert snapshot.quantiles["task_latency_ms"]["p95"] is not None

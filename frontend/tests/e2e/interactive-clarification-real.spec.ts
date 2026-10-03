@@ -87,18 +87,14 @@ test("real API persists confirmation, rejection, and correction on one task", as
 
   await composer.fill("Q2 2026 China");
   await composer.press("Enter");
-  await expect(
-    page.getByText("Please confirm this interpretation before I continue."),
-  ).toBeVisible({ timeout: 30_000 });
-  await expect(
-    page.getByText(/I understood that as legal entity LE-CN-01/),
-  ).toBeVisible();
+  const confirmationMessage = page.getByText(
+    "I understood that as legal entity LE-CN-01. Should I continue?",
+  );
+  await expect(confirmationMessage).toBeVisible({ timeout: 30_000 });
 
   await page.reload();
   await expect(page).toHaveURL(taskUrl);
-  await expect(
-    page.getByText("Please confirm this interpretation before I continue."),
-  ).toBeVisible();
+  await expect(confirmationMessage).toBeVisible();
   await composer.fill("no");
   await composer.press("Enter");
   await expect(

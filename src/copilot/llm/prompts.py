@@ -60,7 +60,9 @@ The only allowed task_type is supplier_quality_analysis.v1. Extract explicit num
 calendar-quarter expressions as candidates. If a required year or quarter is not explicit, add a
 concise item to missing_information and leave both null. Prior validated answers are authoritative
 unless the latest message explicitly corrects them. An omitted supplier means the caller's
-already-authorized supplier scope; never invent a supplier ID or authorization.
+    already-authorized supplier scope; never invent a supplier ID or authorization. Set
+    include_policy_comparison only when the request asks to compare, interpret, or apply a quality
+    policy, manual, standard, or procedure.
 """.strip()
     system = f"""
 You extract a candidate interpretation for {task_type}.
@@ -162,10 +164,12 @@ def planner_messages(
 ) -> tuple[LLMMessage, ...]:
     """Build a short semantic-planning prompt with no executable tool contracts."""
     system = """
-Suggest one lightweight ProposedPlan for the supplied business task.
-Use every allowed capability exactly once and no other capability. Use short unique step_id values.
-Represent the semantic flow database_query -> analysis_engine and
-knowledge_search + analysis_engine -> report_generator. Arguments are optional semantic hints;
+    Suggest one lightweight ProposedPlan for the supplied business task.
+    Choose the minimum sufficient subset of allowed capabilities. Include every capability listed in
+    required_capabilities and no capability outside the allowlist. Use short unique step_id values.
+    analysis_engine must depend on database_query. report_generator must depend on analysis_engine;
+    When knowledge_search is selected, report_generator must also depend on it.
+    Arguments are optional semantic hints;
 never include tool/version/profile/schema/risk/approval/permission/tenant/role/retry/timeout facts.
 The proposal is not executable: deterministic code will expand domain operations, bind runtime
 inputs and compile the strict TaskPlan. Output only one ProposedPlan JSON object and no prose.
@@ -197,7 +201,8 @@ def plan_repair_messages(
     """Build targeted feedback for one lightweight suggestion defect."""
     system = """
 Repair only the listed defect in the lightweight ProposedPlan.
-Keep the business task unchanged, use every allowed capability exactly once, preserve scope, and
+    Keep the business task unchanged, include every required capability, use no capability outside
+    the allowlist, preserve scope, and
 do not add execution metadata or authorization claims. Output only the corrected ProposedPlan.
 """.strip()
     return (
@@ -262,6 +267,7 @@ def _planner_contract_view(contract: TaskContract) -> dict[str, object]:
     common: dict[str, object] = {
         "task_type": contract.task_type.value,
         "business_goal": contract.goal,
+        "required_capabilities": [item.value for item in contract.required_capabilities],
         "output": {
             "artifact_type": contract.expected_output.artifact_type.value,
             "language": contract.expected_output.language.value,

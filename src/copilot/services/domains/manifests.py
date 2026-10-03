@@ -113,7 +113,21 @@ class DomainCapabilityManifestRegistry:
                 "DOMAIN_ARTIFACT_PROFILE_MISMATCH",
                 "Task Artifact type does not match the selected domain manifest",
             )
-        if contract.required_capabilities != manifest.capabilities:
+        required = set(contract.required_capabilities)
+        allowed = set(manifest.capabilities)
+        if contract.task_type is TaskType.SUPPLIER_QUALITY_ANALYSIS_V1:
+            mandatory = {
+                CapabilityName.DATABASE_QUERY,
+                CapabilityName.ANALYSIS_ENGINE,
+                CapabilityName.REPORT_GENERATOR,
+            }
+            if not mandatory.issubset(required) or not required.issubset(allowed):
+                raise DomainManifestError(
+                    "DOMAIN_CAPABILITY_SET_MISMATCH",
+                    "Supplier Quality capabilities must contain the governed report chain and "
+                    "remain inside the selected domain manifest",
+                )
+        elif contract.required_capabilities != manifest.capabilities:
             raise DomainManifestError(
                 "DOMAIN_CAPABILITY_SET_MISMATCH",
                 "Task capabilities do not exactly match the selected domain manifest",

@@ -1,4 +1,12 @@
-# 工具契约冻结设计 v1.2
+# 工具契约冻结设计 v1.3
+
+## v1.3 条件化证据要求
+
+四个工具的输入输出 Schema、权限和安全边界保持不变。`database_query`、`analysis_engine` 和
+`report_generator` 仍构成 Supplier Quality 报告的必要主链；`knowledge_search` 仅在 Contract
+要求政策证据时调用。报告始终要求 DATABASE 与 CALCULATION Evidence；只有 Contract 要求政策比较时才
+强制 DOCUMENT Evidence 和政策引用。无政策比较的报告必须明确没有执行政策对比，但不能伪造
+政策结论。
 
 ## v1.2 澄清边界
 

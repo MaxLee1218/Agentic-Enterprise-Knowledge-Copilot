@@ -1,6 +1,19 @@
 # Supplier Quality Analysis 业务范围基线
 
-**Design v1.2 — Frozen（2026-09-01）**
+**Design v1.3 — Frozen（2026-10-03）**
+
+## v1.3 有界动态规划变更
+
+v1.3 保持 Supplier Quality Analysis 的报告型业务范围、只读数据边界和既有四种批准能力，
+但不再要求每个任务都执行 `knowledge_search`。数据分析报告的最小能力集合为
+`database_query`、`analysis_engine`、`report_generator`；当经验证的任务语义要求政策、手册、
+标准或偏差流程比较时，`knowledge_search` 成为必需能力。Planner 可在 Manifest 的允许集合内
+提出与 Contract 精确一致的能力子集和依赖，Compiler 必须保留合法选择并绑定可信执行元数据，
+不能回退到固定四步计划，也不能接受计划自行扩大的非必要能力。
+
+本版本不支持纯政策检索、纯数据库导出、无报告聊天回答或执行期 ReAct。最终产物仍为经过验证的
+PDF/JSON 质量分析报告；租户、供应商、日期、权限、Schema、工具版本、重试、超时和审批仍由
+确定性系统控制。
 
 ## v1.2 交互式澄清变更
 
@@ -19,7 +32,7 @@ v1.2 只扩展缺失必填信息的 Human-in-the-loop 生命周期。缺少年�
 
 > Analyze supplier quality issues in Q1 and generate a quality analysis report.
 
-系统在已授权的企业知识库和质量数据库内，将用户请求转换为受约束任务，检索适用的质量政策与供应商资料，执行只读查询，完成确定性指标计算，生成并验证分析报告，同时保留从请求到报告结论的证据链。
+系统将用户请求转换为受约束任务，执行只读质量数据查询与确定性指标计算；仅在请求要求政策比较时检索已批准的企业知识，随后生成并验证分析报告，同时保留从请求到报告结论的证据链。
 
 本版本是有限业务域内的可靠执行器，不是通用自主 Agent。所有数据范围、工具、状态转换、审批和失败处理均由显式契约约束。
 

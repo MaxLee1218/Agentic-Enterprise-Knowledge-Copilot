@@ -1,4 +1,10 @@
-# Task 状态机冻结设计 v1.2
+# Task 状态机冻结设计 v1.3
+
+## v1.3 规划说明
+
+状态集合和转换表不变。`PLANNING` 现在可以产生合法的三步或四步 Supplier Quality DAG；
+`PLAN_INVALID`、repair、replan、审批、恢复和取消仍使用既有有界路径。执行器只运行已验证计划中的
+步骤，不得在运行时自动补入被 Planner 合法省略的 `knowledge_search`，也不得进行开放式 ReAct。
 
 ## 1. 状态定义
 

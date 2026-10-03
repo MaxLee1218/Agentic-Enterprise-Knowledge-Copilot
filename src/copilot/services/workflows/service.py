@@ -44,7 +44,7 @@ _TIME_RANGE = re.compile(r"^(?P<year>\d{4})-Q(?P<quarter>[1-4])$")
 
 
 class SupplierQualityWorkflowService:
-    """Application entry point for the deterministic offline v1 scenario."""
+    """Legacy structured-command entry point retained for deterministic compatibility tests."""
 
     def __init__(
         self,

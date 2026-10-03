@@ -5,8 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from copilot.contracts import CapabilityName, ProposedPlan, TaskContract, TaskPlan, TaskType
+from copilot.contracts import (
+    CapabilityName,
+    ProposedPlan,
+    RetryPolicy,
+    StepType,
+    TaskContract,
+    TaskPlan,
+    TaskStep,
+    TaskType,
+)
 from copilot.services.domains import (
+    DomainCapabilityManifest,
     DomainCapabilityManifestRegistry,
     DomainManifestError,
     builtin_domain_manifest_registry,
@@ -16,7 +26,6 @@ from copilot.services.workflows.errors import (
     PlannerCompilationError,
     PlannerUnsupportedCapabilityError,
 )
-from copilot.services.workflows.fixed_plan import SupplierQualityAnalysisPlanFactory
 from copilot.tools.exceptions import ToolRuntimeError
 from copilot.tools.registry import ToolRegistry
 
@@ -43,6 +52,35 @@ _CONTRACT_AUTHORITY_ARGUMENTS = frozenset(
         "year",
     }
 )
+
+_SUPPLIER_STEP_TYPES = {
+    CapabilityName.KNOWLEDGE_SEARCH: StepType.KNOWLEDGE_SEARCH,
+    CapabilityName.DATABASE_QUERY: StepType.DATABASE_QUERY,
+    CapabilityName.ANALYSIS_ENGINE: StepType.ANALYSIS,
+    CapabilityName.REPORT_GENERATOR: StepType.REPORT_GENERATION,
+}
+_SUPPLIER_RETRY_POLICIES = {
+    CapabilityName.KNOWLEDGE_SEARCH: RetryPolicy(
+        max_attempts=3,
+        backoff_seconds=(1, 2),
+        retryable_error_codes=("KNOWLEDGE_UNAVAILABLE", "KNOWLEDGE_TIMEOUT"),
+    ),
+    CapabilityName.DATABASE_QUERY: RetryPolicy(
+        max_attempts=3,
+        backoff_seconds=(1, 2),
+        retryable_error_codes=("DATABASE_UNAVAILABLE", "DATABASE_TIMEOUT"),
+    ),
+    CapabilityName.ANALYSIS_ENGINE: RetryPolicy(
+        max_attempts=2,
+        backoff_seconds=(1,),
+        retryable_error_codes=("ANALYSIS_ENGINE_FAILURE", "ANALYSIS_TIMEOUT"),
+    ),
+    CapabilityName.REPORT_GENERATOR: RetryPolicy(
+        max_attempts=2,
+        backoff_seconds=(1,),
+        retryable_error_codes=("REPORT_GENERATION_FAILURE", "REPORT_TIMEOUT"),
+    ),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +112,6 @@ class PlanCompiler:
     ) -> None:
         self._registry = registry
         self._domain_manifests = domain_manifests or builtin_domain_manifest_registry()
-        self._supplier = SupplierQualityAnalysisPlanFactory(registry)
         self._accounts_payable = AccountsPayableAnalysisPlanFactory(registry)
 
     def compile(
@@ -105,13 +142,32 @@ class PlanCompiler:
             )
         if len(suggested) != len(suggested_set):
             raise PlannerCompilationError("Proposed plan must suggest each capability at most once")
-        if suggested_set != allowed_set:
-            missing = ", ".join(sorted(item.value for item in allowed_set - suggested_set))
+        required_set = set(contract.required_capabilities)
+        expected_set = (
+            required_set
+            if contract.task_type is TaskType.SUPPLIER_QUALITY_ANALYSIS_V1
+            else allowed_set
+        )
+        if suggested_set != expected_set:
+            missing = ", ".join(sorted(item.value for item in expected_set - suggested_set))
+            extra = ", ".join(sorted(item.value for item in suggested_set - expected_set))
+            details = "; ".join(
+                item
+                for item in (
+                    f"missing: {missing}" if missing else "",
+                    f"unnecessary: {extra}" if extra else "",
+                )
+                if item
+            )
             raise PlannerCompilationError(
-                f"Proposed plan does not cover the complete governed capability set: {missing}"
+                f"Proposed plan does not match the required capability set ({details})"
             )
 
-        diagnostics = [*self._dependency_diagnostics(proposed_plan)]
+        diagnostics = (
+            []
+            if contract.task_type is TaskType.SUPPLIER_QUALITY_ANALYSIS_V1
+            else [*self._dependency_diagnostics(proposed_plan)]
+        )
         for step in proposed_plan.steps:
             authoritative = sorted(_find_keys(step.arguments.root, _CONTRACT_AUTHORITY_ARGUMENTS))
             if authoritative:
@@ -140,8 +196,10 @@ class PlanCompiler:
                 )
 
         if contract.task_type is TaskType.SUPPLIER_QUALITY_ANALYSIS_V1:
-            plan = self._supplier.compile(
+            plan = self._compile_supplier(
+                proposed_plan,
                 contract,
+                manifest,
                 planning_version=planning_version,
                 created_at=created_at,
             )
@@ -158,6 +216,52 @@ class PlanCompiler:
             raise PlannerCompilationError("Canonical plan exceeds the trusted maximum step count")
         self._verify_registry_bindings(plan)
         return PlanCompilationResult(plan=plan, diagnostics=tuple(diagnostics))
+
+    def _compile_supplier(
+        self,
+        proposed_plan: ProposedPlan,
+        contract: TaskContract,
+        manifest: DomainCapabilityManifest,
+        *,
+        planning_version: int,
+        created_at: datetime,
+    ) -> TaskPlan:
+        """Bind a validated Supplier proposal without replacing its legal topology."""
+        compiled_ids: dict[str, str] = {}
+        for proposed in proposed_plan.steps:
+            suffix = proposed.step_id
+            if proposed.capability is CapabilityName.REPORT_GENERATOR and planning_version > 1:
+                suffix = f"{suffix}-v{planning_version}"
+            compiled_ids[proposed.step_id] = f"{contract.task_id}:{suffix}"
+
+        steps: list[TaskStep] = []
+        for proposed in proposed_plan.steps:
+            profile = manifest.profile_for(proposed.capability)
+            registration = self._registry.profile_registration(
+                proposed.capability.value,
+                profile,
+            )
+            definition = registration.tool.definition
+            steps.append(
+                TaskStep(
+                    step_id=compiled_ids[proposed.step_id],
+                    task_id=contract.task_id,
+                    step_type=_SUPPLIER_STEP_TYPES[proposed.capability],
+                    tool_name=definition.tool_name,
+                    tool_version=definition.tool_version,
+                    contract_profile=profile,
+                    input_schema=definition.input_schema,
+                    output_schema=definition.output_schema,
+                    dependency=tuple(compiled_ids[item] for item in proposed.depends_on),
+                    retry_policy=_SUPPLIER_RETRY_POLICIES[proposed.capability],
+                )
+            )
+        return TaskPlan(
+            task_id=contract.task_id,
+            steps=tuple(steps),
+            planning_version=planning_version,
+            created_at=created_at,
+        )
 
     def _verify_registry_bindings(self, plan: TaskPlan) -> None:
         """Prove every compiled field resolves to the same immutable Registry definition."""

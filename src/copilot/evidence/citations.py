@@ -60,7 +60,9 @@ def candidate_from_json_report(
         if section in report
     )
     claims: list[CitationClaim] = []
-    if "quality_policy_findings" in report:
+    policy_required = "quality_policy_findings" in task_contract.expected_output.required_sections
+    policy_findings = report.get("quality_policy_findings")
+    if policy_required or bool(policy_findings):
         claims.append(
             CitationClaim(
                 claim_id="report:quality-policy",

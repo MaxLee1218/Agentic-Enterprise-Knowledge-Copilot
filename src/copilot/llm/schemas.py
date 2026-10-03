@@ -77,6 +77,7 @@ class TaskUnderstandingOutput(BaseModel):
     time_range: UnderstandingTimeRange
     deliverable: UnderstandingDeliverable
     constraints: UnderstandingConstraints
+    include_policy_comparison: bool = False
     missing_information: tuple[str, ...] = ()
 
     @model_validator(mode="after")

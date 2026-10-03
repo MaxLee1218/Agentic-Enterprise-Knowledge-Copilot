@@ -133,6 +133,29 @@ _AP_ENTITY_ANCHOR = re.compile(
 )
 _GOVERNED_IDENTIFIER = re.compile(r"\b(?:LE|SUP|BU)-[A-Z0-9-]+\b")
 _ISO_DATE = re.compile(r"\b20\d{2}-\d{2}-\d{2}\b")
+_SUPPLIER_POLICY_ANCHOR = re.compile(
+    r"(?:\b(?:policy|policies|manual|standard|standards|procedure|procedures)\b|"
+    r"政策|手册|标准|流程)",
+    re.IGNORECASE,
+)
+
+_SUPPLIER_DATA_SECTIONS = (
+    "scope",
+    "supplier_quality_data",
+    "analysis_results",
+    "key_risks",
+    "recommendations",
+    "evidence_references",
+)
+_SUPPLIER_POLICY_SECTIONS = (
+    "scope",
+    "quality_policy_findings",
+    "supplier_quality_data",
+    "analysis_results",
+    "key_risks",
+    "recommendations",
+    "evidence_references",
+)
 
 _AP_REQUIRED_SECTIONS = (
     "scope",
@@ -410,18 +433,32 @@ class LLMPlanningService:
             metrics=candidate.constraints.metrics,
             deadline_at=trusted_context.deadline_at,
         )
+        policy_comparison = bool(candidate.include_policy_comparison) or bool(
+            _SUPPLIER_POLICY_ANCHOR.search(resolution_text)
+        )
+        required_capabilities = (
+            tuple(CapabilityName)
+            if policy_comparison
+            else (
+                CapabilityName.DATABASE_QUERY,
+                CapabilityName.ANALYSIS_ENGINE,
+                CapabilityName.REPORT_GENERATOR,
+            )
+        )
         contract = TaskContract(
             contract_schema_version=ContractSchemaVersion.TASK_CONTRACT_V1,
             task_id=trusted_context.task_id,
             contract_version=1,
             task_type=TaskType.SUPPLIER_QUALITY_ANALYSIS_V1,
             goal=candidate.goal,
-            required_capabilities=tuple(CapabilityName),
+            required_capabilities=required_capabilities,
             expected_output=ExpectedOutput(
                 artifact_type=(
                     trusted_context.output_format or candidate.deliverable.artifact_type
                 ),
-                required_sections=candidate.deliverable.required_sections,
+                required_sections=(
+                    _SUPPLIER_POLICY_SECTIONS if policy_comparison else _SUPPLIER_DATA_SECTIONS
+                ),
                 language=candidate.deliverable.language,
                 citations_required=True,
             ),

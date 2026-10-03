@@ -73,6 +73,35 @@ def test_natural_text_is_preserved_and_understood_before_planning(tmp_path: Path
         ]
 
 
+def test_data_only_request_omits_optional_knowledge_search(tmp_path: Path) -> None:
+    raw = "Calculate supplier defect rates for Q2 2026 and generate a JSON report."
+    with build_test_container(
+        tmp_path / "artifacts",
+        llm_provider=OfflineMockLLM(),
+    ) as container:
+        execution = container.task_service.submit(
+            NaturalLanguageTaskCommand(
+                task=raw,
+                output_format=TaskOutputFormat.JSON,
+                source=RequestSource.API,
+            ),
+            CALLER,
+        )
+        state = container.engine.get_state(execution.task_result.task_id, "TENANT-DEMO")
+
+    assert execution.task_result.final_status is TaskStatus.COMPLETED
+    assert [step.tool_name for step in state["plan"].steps] == [
+        "database_query",
+        "analysis_engine",
+        "report_generator",
+    ]
+    assert [result.tool_name for result in state["tool_results"]] == [
+        "database_query",
+        "analysis_engine",
+        "report_generator",
+    ]
+
+
 def test_missing_information_waits_for_clarification_without_planning_or_tools(
     tmp_path: Path,
 ) -> None:
@@ -139,7 +168,6 @@ def test_prompt_injection_cannot_expand_limits_or_tools(
         assert state["intake_context"].max_steps == TEST_MAX_TASK_STEPS
         assert state["intake_context"].read_only is True
         assert {step.tool_name for step in state["plan"].steps} == {
-            "knowledge_search",
             "database_query",
             "analysis_engine",
             "report_generator",

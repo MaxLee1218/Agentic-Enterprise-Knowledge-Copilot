@@ -69,6 +69,11 @@ _ABBREVIATED_END_RANGE = re.compile(
     re.IGNORECASE,
 )
 _CURRENCY = re.compile(r"\b[A-Z]{3}\b")
+_SUPPLIER_POLICY = re.compile(
+    r"(?:\b(?:policy|policies|manual|standard|standards|procedure|procedures)\b|"
+    r"政策|手册|标准|流程)",
+    re.IGNORECASE,
+)
 _CHINESE_QUARTERS = {"一": 1, "二": 2, "三": 3, "四": 4, "1": 1, "2": 2, "3": 3, "4": 4}
 
 
@@ -165,7 +170,7 @@ class OfflineMockLLM:
 
     @staticmethod
     def _propose(payload: dict[str, object]) -> ProposedPlan:
-        """Return the shared semantic flow; domain expansion belongs to PlanCompiler."""
+        """Return the minimum governed semantic flow required by the TaskContract."""
         context = cast(dict[str, object], payload.get("task_context", {}))
         task_type = str(context.get("task_type", "supplier_quality_analysis.v1"))
         output = cast(dict[str, object], context.get("output", {}))
@@ -177,13 +182,23 @@ class OfflineMockLLM:
             if task_type == TaskType.ACCOUNTS_PAYABLE_ANALYSIS_V1.value
             else "supplier quality"
         )
-        return ProposedPlan(
-            steps=(
+        raw_required = context.get("required_capabilities")
+        required = (
+            {str(item) for item in raw_required}
+            if isinstance(raw_required, list)
+            else {item.value for item in CapabilityName}
+        )
+        steps: list[ProposedStep] = []
+        if CapabilityName.KNOWLEDGE_SEARCH.value in required:
+            steps.append(
                 ProposedStep(
                     step_id="knowledge",
                     capability=CapabilityName.KNOWLEDGE_SEARCH,
                     purpose=f"Retrieve controlled policy evidence for {domain_label}",
-                ),
+                )
+            )
+        steps.extend(
+            (
                 ProposedStep(
                     step_id="database",
                     capability=CapabilityName.DATABASE_QUERY,
@@ -200,10 +215,18 @@ class OfflineMockLLM:
                     capability=CapabilityName.REPORT_GENERATOR,
                     purpose="Generate the requested internal evidence-backed report",
                     arguments=JsonObject(report_arguments),
-                    depends_on=("knowledge", "analysis"),
+                    depends_on=(
+                        *(
+                            ("knowledge",)
+                            if CapabilityName.KNOWLEDGE_SEARCH.value in required
+                            else ()
+                        ),
+                        "analysis",
+                    ),
                 ),
             )
         )
+        return ProposedPlan(steps=tuple(steps))
 
     @staticmethod
     def _understand(payload: dict[str, object]) -> TaskUnderstandingOutput:
@@ -259,6 +282,7 @@ class OfflineMockLLM:
                 read_only=True,
                 max_steps=system_max_steps,
             ),
+            include_policy_comparison=_SUPPLIER_POLICY.search(raw) is not None,
             missing_information=missing,
         )
 

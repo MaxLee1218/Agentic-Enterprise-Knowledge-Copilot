@@ -39,11 +39,11 @@ class ReportValidator:
         if tuple(evidence_by_id) != request.evidence_refs:
             raise ReportConsistencyError("Resolved Evidence does not match report references")
         types = {item.source_type for item in evidence}
-        required = {EvidenceType.DOCUMENT, EvidenceType.DATABASE, EvidenceType.CALCULATION}
+        required = {EvidenceType.DATABASE, EvidenceType.CALCULATION}
+        if document.quality_policy_findings or document.applicable_policies:
+            required.add(EvidenceType.DOCUMENT)
         if not required.issubset(types):
-            raise ReportConsistencyError(
-                "Report requires document, database, and calculation Evidence"
-            )
+            raise ReportConsistencyError("Report lacks Evidence required by its populated sections")
         database_ids = {
             item.evidence_id for item in evidence if item.source_type is EvidenceType.DATABASE
         }

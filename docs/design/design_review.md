@@ -1,4 +1,14 @@
-# 设计冲突审查与解决记录 v1.2
+# 设计冲突审查与解决记录 v1.3
+
+## v1.3 Resolved Change
+
+旧实现把 `ProposedPlan` 交给固定 Supplier factory，导致所有合法提案收敛为同一四步计划。
+v1.3 将 Manifest 的四能力解释为 allowlist，并把数据库、分析、报告冻结为最小主链；知识检索按
+政策语义条件化。Compiler 从提案逐步构造 TaskStep，Validator 强制必要依赖而不恢复历史拓扑。
+
+报告与 Citation 验证同步改为条件化 DOCUMENT Evidence，避免三步数据报告被旧四步假设拒绝。
+纯政策检索仍超出范围，因此不需要新增 Artifact、完成条件或工具。TaskPlan/TaskStep、状态机、
+持久化、Queue/Worker、审批和恢复 Contract 均不改变。
 
 ## 1. 审查范围与结论
 
@@ -10,7 +20,7 @@
 - [工具契约](tool_contract.md)
 - [场景演练](walkthrough.md)
 
-结论：v1.2 的对象职责、状态转换、工具 Schema、失败语义和 Supplier Quality 演练一致；所有核心冲突均已解决。没有遗留未定设计项。
+结论：v1.3 的对象职责、状态转换、工具 Schema、失败语义和 Supplier Quality 演练一致；所有核心冲突均已解决。没有遗留未定设计项。
 
 v1.2 相对 v1.1 只增加通用的 Interactive Clarification & Resume：非终态
 `WAITING_CLARIFICATION`、版本化澄清对象、独立验证上下文、异步暂停/恢复、API 和有界轮数。

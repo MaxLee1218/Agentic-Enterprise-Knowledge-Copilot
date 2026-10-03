@@ -1,4 +1,4 @@
-"""Frozen deterministic plan factory for Supplier Quality Analysis v1.0."""
+"""Legacy deterministic Supplier plan retained for structured-command compatibility tests."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def step_id(task_id: str, template_id: str) -> str:
 
 
 class SupplierQualityAnalysisPlanFactory:
-    """Create the immutable four-step v1 plan from registered frozen definitions."""
+    """Create the legacy four-step plan outside the natural-language production path."""
 
     def __init__(self, registry: ToolRegistry) -> None:
         self._registry = registry

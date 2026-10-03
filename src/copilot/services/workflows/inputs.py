@@ -13,6 +13,7 @@ from copilot.contracts import (
     APDatabaseTemplate,
     APPolicyRuleManifestV1,
     ArtifactType,
+    CapabilityName,
     EvidenceItem,
     EvidenceType,
     JsonObject,
@@ -429,10 +430,12 @@ class StepInputBuilder:
             raise StepInputError("Report step has no successful analysis result")
         refs = tuple(evidence)
         types = {item.source_type for item in evidence.values()}
-        required_types = {EvidenceType.DOCUMENT, EvidenceType.DATABASE, EvidenceType.CALCULATION}
+        required_types = {EvidenceType.DATABASE, EvidenceType.CALCULATION}
+        if CapabilityName.KNOWLEDGE_SEARCH in contract.required_capabilities:
+            required_types.add(EvidenceType.DOCUMENT)
         if not required_types.issubset(types):
             raise StepInputError(
-                "Report input lacks required document, database, or calculation evidence"
+                "Report input lacks Evidence required by the validated TaskContract"
             )
         artifact_type = contract.expected_output.artifact_type
         report_format = (

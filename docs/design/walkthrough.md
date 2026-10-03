@@ -1,4 +1,21 @@
-# Supplier Quality Analysis 桌面演练 v1.2
+# Supplier Quality Analysis 桌面演练 v1.3
+
+## v1.3 动态轨迹
+
+### 数据分析报告
+
+“Calculate Q2 2026 supplier defect rates and generate a report” 编译为
+`database_query -> analysis_engine -> report_generator`。Compiler 不插入 `knowledge_search`；报告
+包含数据与计算证据，并声明未执行政策比较。
+
+### 政策对比分析报告
+
+“Analyze Q2 2026 defect rates and compare them with the Supplier Quality Manual” 编译为并行根步骤
+`knowledge_search` 与 `database_query`，随后 `analysis_engine`，最后由同时依赖知识和分析的
+`report_generator` 生成报告。缺失知识步骤的提案因 Contract 的政策要求而被拒绝或有界修复。
+
+两条轨迹均通过相同 Policy、Approval、ToolExecutor、Evidence、Verifier、Checkpoint 和 Audit
+边界；执行过程中不允许新增计划外工具。
 
 ## 0. v1.2 缺失期间演练
 

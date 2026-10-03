@@ -43,6 +43,7 @@ def _understanding() -> TaskUnderstandingOutput:
             language=ReportLanguage.EN_US,
         ),
         constraints=UnderstandingConstraints(max_steps=10),
+        include_policy_comparison=True,
     )
 
 
@@ -84,8 +85,7 @@ def test_llm_plan_repair_is_checkpointed_and_invalid_plan_never_executes(
     ) as seed:
         with pytest.raises(WorkflowInterrupted):
             seed.service.execute(COMMAND)
-        seeded = seed.engine.get_state("T-0001", "TENANT-DEMO")
-    valid = seeded["plan"]
+        assert seed.engine.get_state("T-0001", "TENANT-DEMO")["plan"] is not None
     invalid_report = (
         _proposal().steps[-1].model_copy(update={"capability": CapabilityName.ANALYSIS_ENGINE})
     )
@@ -110,8 +110,12 @@ def test_llm_plan_repair_is_checkpointed_and_invalid_plan_never_executes(
     assert state["plan_repair_count"] == 1
     assert len(provider.calls) == 3
     assert "PLAN_REPAIRED" in events
-    valid_step_ids = {step.step_id for step in valid.steps}
-    assert all(result.step_id in valid_step_ids for result in execution.step_results)
+    assert [result.step_id for result in execution.step_results] == [
+        "T-0001:knowledge",
+        "T-0001:database",
+        "T-0001:analysis",
+        "T-0001:report",
+    ]
 
 
 def test_explicit_period_is_not_erased_by_model_missing_candidate(tmp_path: Path) -> None:

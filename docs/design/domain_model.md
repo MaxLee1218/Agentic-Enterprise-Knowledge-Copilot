@@ -1,4 +1,15 @@
-# 领域模型冻结设计 v1.2
+# 领域模型冻结设计 v1.3
+
+## v1.3 有界动态计划
+
+Supplier Quality 的 `TaskContract.required_capabilities` 现在表示满足当前请求的可信最小能力集合，
+必须至少包含 `database_query`、`analysis_engine` 和 `report_generator`；政策比较请求还必须包含
+`knowledge_search`。Domain Manifest 的四种能力是 allowlist，而非每次执行的 mandatory set。
+`ProposedPlan` 的能力集合必须与该 Contract 精确一致，不能省略必需能力或添加非必要能力。
+
+Supplier `TaskPlan` 由已验证的 `ProposedPlan` 编译，保留合法的 capability 子集、语义 step ID 和
+依赖关系。Compiler 只从 Registry、Manifest、Contract 和服务器配置绑定工具版本、profile、
+Schema 与 RetryPolicy。Planner 参数不进入工具调用，也不能控制租户、范围、权限、审批或时限。
 
 ## v1.2 澄清对象
 
@@ -65,7 +76,10 @@ Agent 为满足一个 TaskContract 生成的有向无环执行计划。
 | `planning_version` | integer | 是 | 从 1 单调递增；每次重规划创建新版本 |
 | `created_at` | datetime | 是 | 计划生成 UTC 时间 |
 
-每个计划必须包含检索、查询、分析、报告和验证所需步骤，并通过依赖、能力、输入输出、风险及终止性校验。旧版本不可覆盖，保留用于审计。
+每个 Supplier Quality 计划必须包含查询、分析和报告步骤；仅当 Contract 要求政策比较或 Planner
+在允许范围内合法选择政策证据时包含检索步骤。分析必须依赖数据库，报告必须依赖分析；若包含
+知识检索，报告还必须依赖知识步骤。计划须通过依赖、能力、输入输出、风险及终止性校验。旧版本
+不可覆盖，保留用于审计。
 
 ### 2.4 TaskStep
 

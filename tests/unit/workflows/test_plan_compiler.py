@@ -53,6 +53,30 @@ def _proposal(*, report_arguments: dict[str, JsonValue] | None = None) -> Propos
     )
 
 
+def _data_only_proposal() -> ProposedPlan:
+    return ProposedPlan(
+        steps=(
+            ProposedStep(
+                step_id="database",
+                capability=CapabilityName.DATABASE_QUERY,
+                purpose="Retrieve governed business data",
+            ),
+            ProposedStep(
+                step_id="analysis",
+                capability=CapabilityName.ANALYSIS_ENGINE,
+                purpose="Calculate deterministic findings",
+                depends_on=("database",),
+            ),
+            ProposedStep(
+                step_id="report",
+                capability=CapabilityName.REPORT_GENERATOR,
+                purpose="Generate the internal report",
+                depends_on=("analysis",),
+            ),
+        )
+    )
+
+
 @pytest.mark.parametrize(
     ("contract_factory", "expected_steps"),
     [(make_contract, 4), (make_ap_contract, 14)],
@@ -160,7 +184,7 @@ def test_scope_and_deliverable_suggestions_never_change_canonical_execution(
     assert any(item.code == "TASK_CONTRACT_ARGUMENT_OVERRIDDEN" for item in attacked.diagnostics)
 
 
-def test_domain_dependencies_are_normalized_to_frozen_invariants(tmp_path: Path) -> None:
+def test_supplier_dependencies_are_preserved_for_validator_rejection(tmp_path: Path) -> None:
     proposal = _proposal()
     report = proposal.steps[-1].model_copy(update={"depends_on": ()})
     proposal = proposal.model_copy(update={"steps": (*proposal.steps[:-1], report)})
@@ -173,11 +197,70 @@ def test_domain_dependencies_are_normalized_to_frozen_invariants(tmp_path: Path)
             created_at=COMPILED_AT,
         )
 
-    assert any(item.code == "DOMAIN_DEPENDENCY_NORMALIZED" for item in result.diagnostics)
-    assert set(result.plan.steps[-1].dependency) == {
-        result.plan.steps[0].step_id,
-        result.plan.steps[2].step_id,
-    }
+        validation = PlanValidator(
+            registry=container.registry,
+            max_task_steps=14,
+        ).evaluate(result.plan, make_contract())
+
+    assert result.plan.steps[-1].dependency == ()
+    assert not validation.is_valid
+    assert {item.error_code for item in validation.errors} == {"REPORT_DEPENDENCY_MISMATCH"}
+
+
+def test_supplier_proposal_capability_subset_is_causal(tmp_path: Path) -> None:
+    data_contract = make_contract().model_copy(
+        update={
+            "required_capabilities": (
+                CapabilityName.DATABASE_QUERY,
+                CapabilityName.ANALYSIS_ENGINE,
+                CapabilityName.REPORT_GENERATOR,
+            )
+        }
+    )
+    policy_contract = make_contract()
+    with build_test_container(tmp_path / "artifacts") as container:
+        compiler = PlanCompiler(container.registry)
+        data_plan = compiler.compile(
+            _data_only_proposal(),
+            data_contract,
+            planning_version=1,
+            max_steps=14,
+            created_at=COMPILED_AT,
+        ).plan
+        policy_plan = compiler.compile(
+            _proposal(),
+            policy_contract,
+            planning_version=1,
+            max_steps=14,
+            created_at=COMPILED_AT,
+        ).plan
+
+    assert [step.tool_name for step in data_plan.steps] == [
+        "database_query",
+        "analysis_engine",
+        "report_generator",
+    ]
+    assert [step.tool_name for step in policy_plan.steps] == [
+        "knowledge_search",
+        "database_query",
+        "analysis_engine",
+        "report_generator",
+    ]
+    assert data_plan != policy_plan
+
+
+def test_supplier_policy_contract_rejects_plan_without_knowledge(tmp_path: Path) -> None:
+    with (
+        build_test_container(tmp_path / "artifacts") as container,
+        pytest.raises(PlannerCompilationError, match="missing: knowledge_search"),
+    ):
+        PlanCompiler(container.registry).compile(
+            _data_only_proposal(),
+            make_contract(),
+            planning_version=1,
+            max_steps=14,
+            created_at=COMPILED_AT,
+        )
 
 
 def test_compilation_is_deterministic_for_the_same_explicit_inputs(tmp_path: Path) -> None:
@@ -229,7 +312,7 @@ def test_missing_or_duplicate_capability_fails_closed(tmp_path: Path) -> None:
 def test_capability_outside_selected_domain_manifest_is_typed(tmp_path: Path) -> None:
     restricted_manifest = replace(
         SUPPLIER_QUALITY_MANIFEST,
-        capability_profiles=SUPPLIER_QUALITY_MANIFEST.capability_profiles[:-1],
+        capability_profiles=SUPPLIER_QUALITY_MANIFEST.capability_profiles[1:],
     )
     contract = make_contract().model_copy(
         update={"required_capabilities": restricted_manifest.capabilities}

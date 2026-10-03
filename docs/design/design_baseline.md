@@ -2,9 +2,22 @@
 
 ## Version
 
-**v1.2 — Frozen**
+**v1.3 — Frozen**
 
-冻结日期：2026-09-01
+冻结日期：2026-10-03
+
+## v1.3 Change Scope
+
+v1.3 批准 Supplier Quality 的 bounded dynamic planning。四种既有能力继续构成唯一 allowlist；
+`database_query`、`analysis_engine`、`report_generator` 是报告型任务的必要主链，
+`knowledge_search` 仅在可信 Contract 要求政策比较时进入能力集合。Planner 必须精确满足该
+Contract，不能在非政策任务中自行扩大工具集合。合法 `ProposedPlan` 的 capability 子集与依赖必须因果地进入正式
+`TaskPlan`，Compiler 不得用固定四步 factory 覆盖它。
+
+本版本不新增工具、任务类型、Artifact、状态、数据源或外部副作用；不改变 Queue、Worker、lease、
+fencing、checkpoint、审批或恢复架构。它不支持纯检索、纯数据导出、无报告响应、执行期动态工具
+发现或 ReAct。报告始终需要 DATABASE 与 CALCULATION Evidence；仅政策比较报告强制 DOCUMENT
+Evidence。设计决定记录于 ADR-023。
 
 ## v1.2 Change Scope
 
@@ -40,7 +53,7 @@ v1.1 相对 2026-07-19 冻结的 v1.0 只增加一个领域语义：ApprovalRequ
 5. [桌面演练](walkthrough.md)
 6. [设计冲突审查](design_review.md)
 
-这些文件共同构成 v1.2 冻结设计。摘要与详细文档冲突时，以详细文档中的显式契约为准；详细文档之间的冲突必须先通过设计变更流程解决，不能由实现自行选择。
+这些文件共同构成 v1.3 冻结设计。摘要与详细文档冲突时，以详细文档中的显式契约为准；详细文档之间的冲突必须先通过设计变更流程解决，不能由实现自行选择。
 
 ## Domain Model Summary
 

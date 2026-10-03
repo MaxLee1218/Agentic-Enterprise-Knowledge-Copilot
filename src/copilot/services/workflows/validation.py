@@ -132,12 +132,14 @@ class PlanValidator:
             )
         required = {item.value for item in contract.required_capabilities}
         planned = {step.tool_name for step in plan.steps}
-        if required != planned:
+        allowed = {item.value for item in domain_manifest.capabilities}
+        capability_mismatch = required != planned or not planned.issubset(allowed)
+        if capability_mismatch:
             errors.append(
                 PlanValidationIssue(
                     "PLAN_CAPABILITY_MISMATCH",
-                    "Plan capabilities do not exactly satisfy the contract",
-                    "Use each required registered capability and no additional capability",
+                    "Plan capabilities do not satisfy the contract and domain allowlist",
+                    "Include every required capability and no capability outside the manifest",
                     field="steps",
                 )
             )
@@ -312,37 +314,62 @@ class PlanValidator:
         if contract.task_type.value != "supplier_quality_analysis.v1":
             return []
         issues: list[PlanValidationIssue] = []
+        tool_names = [step.tool_name for step in plan.steps]
+        if len(tool_names) != len(set(tool_names)):
+            issues.append(
+                PlanValidationIssue(
+                    "SUPPLIER_CAPABILITY_DUPLICATED",
+                    "Supplier Quality permits at most one step for each capability",
+                    "Use one semantic step per selected capability",
+                    field="steps",
+                )
+            )
+            return issues
         by_tool = {step.tool_name: step for step in plan.steps}
         database = by_tool.get(CapabilityName.DATABASE_QUERY.value)
         analytics = by_tool.get(CapabilityName.ANALYSIS_ENGINE.value)
         knowledge = by_tool.get(CapabilityName.KNOWLEDGE_SEARCH.value)
         report = by_tool.get(CapabilityName.REPORT_GENERATOR.value)
-        if database and analytics and database.step_id not in analytics.dependency:
+        if database is None or analytics is None or report is None:
+            issues.append(
+                PlanValidationIssue(
+                    "SUPPLIER_REPORT_CHAIN_INCOMPLETE",
+                    "Supplier Quality requires database, analysis, and report capabilities",
+                    "Include the complete governed report chain",
+                    field="steps",
+                )
+            )
+            return issues
+        for root in (database, knowledge):
+            if root is not None and root.dependency:
+                issues.append(
+                    PlanValidationIssue(
+                        "SUPPLIER_ROOT_DEPENDENCY_INVALID",
+                        f"Supplier root step {root.step_id} must not have dependencies",
+                        "Keep knowledge and database retrieval as root steps",
+                        step_id=root.step_id,
+                        field="dependency",
+                    )
+                )
+        if set(analytics.dependency) != {database.step_id}:
             issues.append(
                 PlanValidationIssue(
                     "ANALYTICS_DATABASE_DEPENDENCY_MISSING",
-                    "Analytics must depend on the database evidence step",
-                    "Add the database step_id to the analytics dependency list",
+                    "Analytics must depend only on the database evidence step",
+                    "Use the database step_id as the analytics dependency",
                     step_id=analytics.step_id,
                     field="dependency",
                 )
             )
-        if report and analytics and analytics.step_id not in report.dependency:
+        expected_report_dependencies = {analytics.step_id}
+        if knowledge is not None:
+            expected_report_dependencies.add(knowledge.step_id)
+        if set(report.dependency) != expected_report_dependencies:
             issues.append(
                 PlanValidationIssue(
-                    "REPORT_ANALYTICS_DEPENDENCY_MISSING",
-                    "Report generation must depend on the analytics step",
-                    "Add the analytics step_id to the report dependency list",
-                    step_id=report.step_id,
-                    field="dependency",
-                )
-            )
-        if report and knowledge and knowledge.step_id not in report.dependency:
-            issues.append(
-                PlanValidationIssue(
-                    "REPORT_KNOWLEDGE_DEPENDENCY_MISSING",
-                    "Report generation must depend on the knowledge step",
-                    "Add the knowledge step_id to the report dependency list",
+                    "REPORT_DEPENDENCY_MISMATCH",
+                    "Report dependencies do not match the selected evidence-producing steps",
+                    "Depend on analysis and, when selected, knowledge search",
                     step_id=report.step_id,
                     field="dependency",
                 )

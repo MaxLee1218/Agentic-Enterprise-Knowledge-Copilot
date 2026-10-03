@@ -52,5 +52,5 @@ def test_offline_human_approval_edit_smoke(tmp_path: Path) -> None:
         )
 
         assert result.task_status is TaskStatus.COMPLETED
-        assert container.knowledge_tool.call_count == 1
+        assert container.knowledge_tool.call_count == 0
         assert container.database_tool.call_count == 1
