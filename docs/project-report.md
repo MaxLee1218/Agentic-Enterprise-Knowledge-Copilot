@@ -1,5 +1,10 @@
 # Agentic Enterprise Knowledge Copilot
 
+> **Historical engineering report.** This document describes commit `95015c4` from 2026-08-10 and
+> predates the current asynchronous runtime, interactive clarification flow and later planning
+> work. It remains available as an audit snapshot. Use the root [README](../README.md) and current
+> [architecture overview](architecture.md) for present behavior.
+
 ## Current Implementation, Capabilities, Limitations and Roadmap
 
 > As-Is Engineering & Capability Report  

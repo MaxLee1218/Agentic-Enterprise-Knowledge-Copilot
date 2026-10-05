@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Governed, evidence-backed enterprise task completion foundation."
 requires-python = ">=3.11"
 authors = [
-    { name = "Agentic Enterprise Knowledge Copilot Contributors" },
+    { name = "MaxLee1218" },
 ]
 dependencies = [
     "alembic>=1.14,<2.0",

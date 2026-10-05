@@ -169,9 +169,11 @@ def test_existing_stage17_rows_are_backfilled_and_unknown_ownership_is_quarantin
                     text("SELECT task_id, tenant_id FROM workflow_tasks ORDER BY task_id")
                 )
             }
-            child_tenant = connection.execute(
-                text("SELECT tenant_id FROM workflow_state_events WHERE event_id = 'EVT-KNOWN'")
-            ).scalar_one()
+            child_tenant: str = str(
+                connection.execute(
+                    text("SELECT tenant_id FROM workflow_state_events WHERE event_id = 'EVT-KNOWN'")
+                ).scalar_one()
+            )
             revision = MigrationContext.configure(connection).get_current_revision()
         assert task_tenants == {
             "T-KNOWN": "TENANT-A",
@@ -308,9 +310,11 @@ def test_async_runtime_migration_backfills_and_restores_legacy_lease(
                     "FROM workflow_task_runtime WHERE task_id = 'T-LEASE'"
                 )
             ).one()
-            dispatch_count = connection.execute(
-                text("SELECT count(*) FROM task_dispatches WHERE task_id = 'T-LEASE'")
-            ).scalar_one()
+            dispatch_count: int = int(
+                connection.execute(
+                    text("SELECT count(*) FROM task_dispatches WHERE task_id = 'T-LEASE'")
+                ).scalar_one()
+            )
         assert tuple(lease) == ("W-LEGACY", 4, 1, 1)
         assert tuple(runtime)[0] == "LEASED"
         assert tuple(runtime)[1] is not None

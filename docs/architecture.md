@@ -8,15 +8,20 @@ documents under [`design/`](design/) remain the sole authority for that scenario
 Machine-checked governance covers the dependency matrix and calling direction. It also covers each
 layer boundary, composition root, and transaction boundary where static analysis can enforce it.
 
-Most packages remain scaffolds. Today, the stable domain contracts, governed tool runtime, one
-deterministic offline Supplier Quality LangGraph workflow, and an optional structured LLM
-understanding/planning path are implemented. Stage 17 adds SQLAlchemy-backed SQLite/PostgreSQL
-business persistence, Alembic migrations, PostgreSQL checkpointing, and container deployment.
-Stage 17.1 adds a trusted identity-provider boundary, mandatory execution context, tenant-scoped
-persistence, an unavoidable executor security gate, protocol-neutral registry lifecycle metadata,
-truthful cancellation, and cross-boundary correlation. General enterprise adapters and MCP
-interoperability are not. A path
-in this document identifies an approved boundary, not proof that every capability is implemented.
+The repository now implements two governed, read-only business vertical slices: Supplier Quality
+Analysis and Accounts Payable Investigation. Both reuse typed domain contracts, LangGraph
+orchestration, deterministic plan compilation, policy and approval gates, the governed tool
+runtime, Evidence/Audit/Verification, deterministic JSON/PDF reporting, and the React task
+workspace. The service runtime uses transactional PostgreSQL dispatch, an independent Worker,
+leases, heartbeats, fencing, durable checkpoints, bounded recovery, and acceptance-only task
+submission. MCP `2025-11-25` remains a frozen future Phase 5 extension. Its packages and internal
+contracts are approved scaffold boundaries, not evidence of a current user-facing capability.
+
+Implementation does not imply whole-system production readiness. Production-owned identity,
+approved policy and data sources, shared artifact storage, capacity validation, centralized
+telemetry, and formal HA/DR remain deployment responsibilities. A path in this document identifies
+an architectural boundary; current behavior is proven by code, tests and evaluation evidence—not
+by directory presence alone.
 
 ## 1. System Architecture
 
@@ -61,7 +66,7 @@ renderer implementation directly.
 | Infrastructure | `copilot.persistence`, `copilot.llm`, `copilot.evidence`, `copilot.observability` | DeepSeek/Mock structured LLM adapters, Evidence Ledger, deterministic verification, SQLAlchemy SQLite/PostgreSQL workflow/approval/audit storage, SQLite/PostgreSQL checkpoints, execution leases, local atomic Artifact storage, and bounded local observability support this stage |
 | Cross-cutting security | `copilot.security`, `copilot.policies` | Identity providers, source/trust findings, sensitive-data registry, recursive redaction, output guard, centralized permission matrix, exact approval, and table/field access policy |
 | Interfaces | `copilot.api`, `copilot.cli` | Natural-language submission, task/step/Evidence/Artifact query, controlled Artifact download, cooperative cancellation, health, and approval detail/resolution API/CLI are implemented |
-| Protocol boundary | `copilot.mcp` | Future Phase 5 boundary; scaffold only |
+| Protocol boundary | `copilot.mcp` | Future Phase 5 scaffold pinned to MCP `2025-11-25`; directory presence does not demonstrate implemented interoperability |
 | Bootstrap | `copilot.bootstrap` | Sole composition root; development/test may use explicit offline adapters, while production validation requires trusted identity and real critical-path providers |
 | Configuration | `copilot.config` | Typed environment configuration consumed at startup and infrastructure edges |
 
@@ -115,8 +120,8 @@ Additional mandatory boundaries:
   policy before persistence or publication.
 - SDK-specific MCP types stop at `copilot.mcp.protocol`; internal code uses
   `copilot.contracts.mcp`.
-- Implemented imported MCP capabilities use stable server namespaces and the existing governed
-  executor. Exported capabilities are deny-by-default and explicitly allowlisted.
+- Any future imported MCP capabilities must use stable server namespaces and the existing governed
+  executor. Future exported capabilities must be deny-by-default and explicitly allowlisted.
 - Framework-, vendor-, and database-specific types do not cross into domain contracts.
 
 ### Stage 17.1 security and execution boundaries

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
-from sqlalchemy import Column, Integer, MetaData, Table, func, literal_column, select
+from sqlalchemy import Column, Integer, MetaData, Select, Table, func, literal_column, select
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.orm import aliased
 
@@ -72,9 +74,12 @@ def test_unregistered_table_column_wildcard_and_function_are_rejected() -> None:
         validator.validate(select(secret.c.id).limit(1))
     with pytest.raises(DatabaseQueryValidationError, match="Unbound column"):
         validator.validate(
-            select(Supplier.supplier_code, literal_column("password"))
-            .select_from(Supplier)
-            .limit(1)
+            cast(
+                Select[Any],
+                select(Supplier.supplier_code, literal_column("password"))
+                .select_from(Supplier)
+                .limit(1),
+            )
         )
     with pytest.raises(DatabaseQueryValidationError, match="Wildcard"):
         validator.validate(select(literal_column("*")).select_from(Supplier).limit(1))

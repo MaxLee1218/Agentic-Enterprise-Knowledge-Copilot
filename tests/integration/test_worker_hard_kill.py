@@ -76,7 +76,8 @@ def test_hard_killed_worker_recovers_checkpoint_without_duplicate_success(
                 json={
                     "task": (
                         "Analyze SUP-005 supplier quality for Q3 2026 and generate a JSON "
-                        "management report."
+                        "management report comparing the findings against the Supplier Quality "
+                        "Manual."
                     ),
                     "output_format": "json",
                 },

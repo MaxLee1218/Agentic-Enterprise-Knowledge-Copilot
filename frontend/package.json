@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "readme:screenshots": "node scripts/capture-readme-screenshots.mjs",
     "api:export": "python ../scripts/export_frontend_openapi.py --output openapi/openapi.json",
     "api:types": "openapi-typescript openapi/openapi.json -o src/api/generated/schema.d.ts",
     "api:generate": "npm run api:export && npm run api:types",

@@ -1,5 +1,9 @@
 # Agentic Enterprise Knowledge Copilot 当前项目功能审阅报告
 
+> **Historical audit.** This report captures the repository at commit `f95eb9b` on 2026-08-25.
+> It is retained for traceability and is not the current feature authority. Start with the root
+> [README](../README.md) and [architecture overview](architecture.md) for the current system.
+
 > 审阅日期：2026-08-25（Asia/Shanghai）  
 > 审阅基线：`f95eb9b40e4d9298f9079865d50bb31e49288175`（`main`）  
 > 项目版本：`0.1.0`  

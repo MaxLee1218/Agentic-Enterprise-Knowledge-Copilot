@@ -226,12 +226,8 @@ def test_post_returns_before_graph_and_worker_eventually_completes(
     steps = harness.client.get(f"/v1/tasks/{accepted['task_id']}/steps").json()["steps"]
     evidence = harness.client.get(f"/v1/tasks/{accepted['task_id']}/evidence").json()["evidence"]
     artifacts = harness.client.get(f"/v1/tasks/{accepted['task_id']}/artifacts").json()["artifacts"]
-    assert len(steps) == 4
-    assert {item["type"] for item in evidence} == {
-        "DOCUMENT",
-        "DATABASE",
-        "CALCULATION",
-    }
+    assert len(steps) == 3
+    assert {item["type"] for item in evidence} == {"DATABASE", "CALCULATION"}
     assert len(artifacts) == 1
     download = harness.client.get(
         f"/v1/tasks/{accepted['task_id']}/artifacts/{artifacts[0]['artifact_id']}"

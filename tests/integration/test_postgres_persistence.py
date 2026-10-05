@@ -167,7 +167,9 @@ def test_postgres_migration_round_trip_and_restart_recovery(
                 first.approval_repository.get(approval_id, tenant_id=caller.tenant_id).status
                 is ApprovalStatus.PENDING
             )
-            assert first.evidence.list(task_id, tenant_id=caller.tenant_id)
+            # v1.3 may omit knowledge_search. In that valid three-step plan the
+            # first database action is approval-gated, so no evidence exists yet.
+            assert first.evidence.list(task_id, tenant_id=caller.tenant_id) == ()
             assert first.workflow_audit.list(tenant_id=caller.tenant_id)
 
         with build_application(settings) as restarted:
@@ -226,6 +228,7 @@ def test_postgres_migration_round_trip_and_restart_recovery(
                 is ApprovalStatus.APPROVED
             )
             assert recovered.artifacts.list_by_task(task_id, tenant_id=caller.tenant_id)
+            assert recovered.evidence.list(task_id, tenant_id=caller.tenant_id)
             assert recovered.engine.get_state(task_id, caller.tenant_id)["task_id"] == task_id
 
             intruder = TrustedCallerContext(

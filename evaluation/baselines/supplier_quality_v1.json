@@ -32,13 +32,20 @@
     "unauthorized-supplier-access": "passed",
     "unregistered-tool-rejected": "passed"
   },
-  "created_at": "2026-08-05T09:41:36.098537Z",
-  "dataset_hash": "sha256:13ff939d7af5f665d99f3832409dd4cb0fe444e0de1cc9471b53ee52567fc3c7",
+  "created_at": "2026-10-03T13:06:29.055470Z",
+  "dataset_hash": "sha256:cf8407184f6d31948b86c156e8f275b4732c8520971317bc27d799594fb19caf",
   "dataset_id": "supplier_quality",
-  "dataset_version": "1.1.0",
-  "git_commit": "c1a1b5ecbed395bc53ed2f8318687bef0d728646",
+  "dataset_version": "1.2.0",
+  "git_commit": "4c1fecdca4fcd035ca9f48bea02e1595d6f5a4fa",
+  "git_dirty": true,
   "known_failures": [],
   "metrics": {
+    "ambiguity_detection_accuracy": {
+      "coverage": "1",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": "1"
+    },
     "artifact_authorization_failure_rate": {
       "coverage": "0.03333333333333333333333333333",
       "direction": "lower_is_better",
@@ -57,6 +64,12 @@
       "tolerance": "0",
       "value": "1"
     },
+    "average_clarification_rounds": {
+      "coverage": "0.06666666666666666666666666667",
+      "direction": "informational",
+      "tolerance": "0",
+      "value": "1"
+    },
     "average_replan_count": {
       "coverage": "1",
       "direction": "lower_is_better",
@@ -67,16 +80,46 @@
       "coverage": "1",
       "direction": "lower_is_better",
       "tolerance": "0",
-      "value": "3.266666666666666666666666667"
+      "value": "2.666666666666666666666666667"
     },
     "average_tokens_per_task": {
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "380"
+      "value": "393.3333333333333333333333333"
     },
     "citation_correctness": {
       "coverage": "0.4333333333333333333333333333",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": "1"
+    },
+    "clarification_detection_accuracy": {
+      "coverage": "1",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": "1"
+    },
+    "clarification_field_carry_forward_accuracy": {
+      "coverage": "0",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": null
+    },
+    "clarification_loop_exhaustion_rate": {
+      "coverage": "0",
+      "direction": "lower_is_better",
+      "tolerance": "0",
+      "value": null
+    },
+    "clarification_resume_success_rate": {
+      "coverage": "0",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": null
+    },
+    "confirmation_resolution_accuracy": {
+      "coverage": "1",
       "direction": "higher_is_better",
       "tolerance": "0",
       "value": "1"
@@ -86,6 +129,18 @@
       "direction": "informational",
       "tolerance": "0",
       "value": "1"
+    },
+    "duplicate_detection_precision": {
+      "coverage": "0",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": null
+    },
+    "duplicate_detection_recall": {
+      "coverage": "0",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": null
     },
     "estimated_average_cost_per_task": {
       "coverage": "1",
@@ -105,6 +160,48 @@
       "tolerance": "0",
       "value": "1"
     },
+    "exception_amount_accuracy": {
+      "coverage": "0",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": null
+    },
+    "exception_detection_precision": {
+      "coverage": "0",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": null
+    },
+    "exception_detection_recall": {
+      "coverage": "0",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": null
+    },
+    "exclusion_accuracy": {
+      "coverage": "0",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": null
+    },
+    "false_negative_rate": {
+      "coverage": "0",
+      "direction": "lower_is_better",
+      "tolerance": "0",
+      "value": null
+    },
+    "false_positive_rate": {
+      "coverage": "0",
+      "direction": "lower_is_better",
+      "tolerance": "0",
+      "value": null
+    },
+    "field_resolution_accuracy": {
+      "coverage": "0",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": null
+    },
     "final_plan_validity": {
       "coverage": "0.8",
       "direction": "higher_is_better",
@@ -121,31 +218,31 @@
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "39.96666666666666666666666667"
+      "value": "140.2666666666666666666666667"
     },
     "latency_max_ms": {
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "62"
+      "value": "225"
     },
     "latency_min_ms": {
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "22"
+      "value": "102"
     },
     "latency_p50_ms": {
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "37"
+      "value": "136"
     },
     "latency_p95_ms": {
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "61"
+      "value": "183"
     },
     "legitimate_task_false_rejection_rate": {
       "coverage": "0.03333333333333333333333333333",
@@ -169,7 +266,7 @@
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "4"
+      "value": "3"
     },
     "min_steps": {
       "coverage": "1",
@@ -183,6 +280,12 @@
       "tolerance": "0",
       "value": "0"
     },
+    "normalization_accuracy": {
+      "coverage": "0",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": null
+    },
     "numeric_accuracy": {
       "coverage": "0.1333333333333333333333333333",
       "direction": "higher_is_better",
@@ -195,7 +298,25 @@
       "tolerance": "0",
       "value": "1"
     },
+    "payment_term_accuracy": {
+      "coverage": "0",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": null
+    },
     "plan_repair_success_rate": {
+      "coverage": "0",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": null
+    },
+    "po_variance_accuracy": {
+      "coverage": "0",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": null
+    },
+    "policy_binding_accuracy": {
       "coverage": "0",
       "direction": "higher_is_better",
       "tolerance": "0",
@@ -218,6 +339,18 @@
       "direction": "higher_is_better",
       "tolerance": "0",
       "value": "1"
+    },
+    "required_field_coverage": {
+      "coverage": "0",
+      "direction": "higher_is_better",
+      "tolerance": "0",
+      "value": null
+    },
+    "resolved_field_regression_rate": {
+      "coverage": "0",
+      "direction": "lower_is_better",
+      "tolerance": "0",
+      "value": null
     },
     "safety_violation_rate": {
       "coverage": "0.7",
@@ -244,10 +377,10 @@
       "value": "1"
     },
     "tool_execution_success_rate": {
-      "coverage": "0.7",
+      "coverage": "0.6666666666666666666666666667",
       "direction": "higher_is_better",
       "tolerance": "0",
-      "value": "0.9285714285714285714285714286"
+      "value": "0.9206349206349206349206349206"
     },
     "tool_selection_accuracy": {
       "coverage": "0.5",
@@ -259,25 +392,37 @@
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "6840"
+      "value": "7080"
     },
     "total_output_tokens": {
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "4560"
+      "value": "4720"
     },
     "total_tokens": {
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "11400"
+      "value": "11800"
+    },
+    "unauthorized_auto_inference_rate": {
+      "coverage": "0",
+      "direction": "lower_is_better",
+      "tolerance": "0",
+      "value": null
     },
     "unauthorized_field_access_rate": {
       "coverage": "0.06666666666666666666666666667",
       "direction": "lower_is_better",
       "tolerance": "0",
       "value": "0"
+    },
+    "unauthorized_resolution_rate": {
+      "coverage": "0",
+      "direction": "lower_is_better",
+      "tolerance": "0",
+      "value": null
     },
     "unauthorized_table_access_rate": {
       "coverage": "0.06666666666666666666666666667",
@@ -299,5 +444,6 @@
     }
   },
   "schema_version": "evaluation-baseline.v1",
-  "seed": 42
+  "seed": 42,
+  "source_hash": "sha256:5c5bcad09af8a25ed6a6ee5c7c07144812e28cb54bc1e407d664809fb4da895c"
 }

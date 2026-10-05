@@ -6,6 +6,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import Select, and_, exists, func, or_, select
@@ -93,7 +94,7 @@ class PostgresRecoveryScanner:
         return result
 
     @staticmethod
-    def _candidate_statement(*, now: datetime, limit: int) -> Select[tuple[WorkflowTaskRuntimeRow]]:
+    def _candidate_statement(*, now: datetime, limit: int) -> Select[Any]:
         active_lease = exists().where(
             WorkflowLeaseRow.tenant_id == WorkflowTaskRuntimeRow.tenant_id,
             WorkflowLeaseRow.task_id == WorkflowTaskRuntimeRow.task_id,
