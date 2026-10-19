@@ -1,4 +1,4 @@
-"""Thin, offline-only CLI for the P01 evaluation slice."""
+"""Thin CLI for guarded live and offline Supplier Quality pilot evaluation."""
 
 import argparse
 import json
@@ -17,8 +17,8 @@ from evaluation.supplier_quality_pilot.suite import run_suite
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Exit 0 for qualified P01, 1 for failed acceptance, 2 for input, 3 for harness error."""
-    parser = argparse.ArgumentParser(description="Evaluate offline Supplier Quality P01")
+    """Exit 0 for acceptance, 1 for failures, 2 for input, 3 for case error, 4 for stop."""
+    parser = argparse.ArgumentParser(description="Evaluate the controlled Supplier Quality pilot")
     parser.add_argument("--suite", action="store_true")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--calibration-dir", type=Path)

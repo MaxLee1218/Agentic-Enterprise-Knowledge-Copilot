@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from statistics import median
+from time import perf_counter
 from typing import Literal
 from uuid import uuid4
 
@@ -341,6 +342,8 @@ def run_suite(
                 destination.mkdir(exist_ok=True)
                 (destination / "report.json").write_text(run.model_dump_json(indent=2))
             else:
+                attempted_at = datetime.now(UTC)
+                attempt_clock = perf_counter()
                 try:
                     if ledger and configured:
                         with live_model(
@@ -365,7 +368,31 @@ def run_suite(
                             persistence_url=persistence_url if case.scripted_answer else None,
                         )
                 except Exception as exc:
-                    run = _missing(case, snapshot, frozen, "SETUP_" + type(exc).__name__, mode)
+                    run = _missing(case, snapshot, frozen, "HARNESS_" + type(exc).__name__, mode)
+                    run.run_id = run_id
+                    run.started_at = attempted_at
+                    run.latency_ms = max(1, round((perf_counter() - attempt_clock) * 1000))
+                    execution_path = destination / "execution.json"
+                    if execution_path.is_file():
+                        try:
+                            captured = TypeAdapter(WorkflowExecution).validate_json(
+                                execution_path.read_bytes()
+                            )
+                            run.task_id = captured.task_result.task_id
+                            run.task_status = captured.task_result.final_status
+                        except (ValueError, OSError):
+                            pass  # The explicit harness failure retains unavailable fields.
+                    if ledger:
+                        spending = ledger.snapshot()
+                        paid = [a for a in spending.attempts if a.run_id == run_id]
+                        if paid:
+                            run.case_status = "executed"
+                            run.spending = spending
+                            if all(a.status == "reconciled" for a in paid):
+                                run.model_cost = sum(
+                                    (a.usd_cost for a in paid if a.usd_cost is not None), Decimal(0)
+                                )
+                                run.model_cost_currency = "USD"
             run.repeat_index = repeat
             run.policy_hash = frozen.policy_hash if case.policy else None
             destination.mkdir(exist_ok=True)
@@ -401,7 +428,10 @@ def _calibration(
         or run.source_hash != canonical_hash(snapshot.model_dump(mode="json"))
     ):
         raise BudgetStopped("CALIBRATION_NOT_QUALIFIED_OR_SOURCE_MISMATCH")
-    attempts = [a for a in ledger.snapshot().attempts if a.run_id == run.run_id]
+    history = ledger.snapshot().attempts
+    if {a.run_id for a in history if a.stage == "calibration"} != {run.run_id}:
+        raise BudgetStopped("CALIBRATION_HISTORY_REQUIRES_RECONCILIATION")
+    attempts = [a for a in history if a.run_id == run.run_id]
     if not attempts or any(a.status != "reconciled" or a.stage != "calibration" for a in attempts):
         raise BudgetStopped("CALIBRATION_NOT_IN_EXPERIMENT_LEDGER")
     if run.model_cost != sum((a.usd_cost for a in attempts if a.usd_cost is not None), Decimal(0)):
@@ -481,7 +511,19 @@ def _summary(
         and spending.unresolved_eur == 0
         and all(r.model_cost is not None for r in reports if r.case_status == "executed")
     )
-    cost = sum((r.model_cost for r in reports if r.model_cost is not None), Decimal(0))
+    report_run_ids = {r.run_id for r in reports if r.run_id}
+    cost = (
+        sum(
+            (
+                a.usd_cost
+                for a in spending.attempts
+                if a.run_id in report_run_ids and a.usd_cost is not None
+            ),
+            Decimal(0),
+        )
+        if spending
+        else Decimal(0)
+    )
     latency = [r.latency_ms for r in qualified]
     return SuiteReport(
         started_at=progress.started_at,
@@ -543,6 +585,11 @@ def _publish(root: Path, report: SuiteReport) -> None:
         f"P10 safety: {int(report.safety_passed)}/1.",
         f"First-run USD cost per qualified report: {report.cost_per_qualified_usd}; "
         f"safety cost: {report.safety_cost_usd}.",
+        f"USD ceiling totals: first reports {report.first_delivery_cost_usd}; "
+        f"repeats {report.repeat_cost_usd}; experiment {report.total_experiment_cost_usd}.",
+        f"Unrun: {report.unrun_ids}; pending: {report.pending_ids}.",
+        f"Code: {report.code_revision}; dataset: {report.dataset_hash}; "
+        f"configuration: {report.config_hash} (manifest.json).",
         f"Qualified first-report latency median/range (ms): "
         f"{report.qualified_latency_median_ms} / {report.qualified_latency_range_ms}.",
         "",
@@ -565,6 +612,11 @@ def _publish(root: Path, report: SuiteReport) -> None:
                 f"- {r.case_id} repeat {r.repeat_index}: {r.error_code}; "
                 f"failed checks: {', '.join(failed)}."
             )
+    lines += ["", "## Qualified sample artifacts (at most two)", ""]
+    lines += [
+        f"- [Sample {i + 1}]({os.path.relpath(path, root)})"
+        for i, path in enumerate(report.samples)
+    ]
     lines += [
         "",
         "## Human effort assumptions",

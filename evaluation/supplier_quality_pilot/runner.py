@@ -302,7 +302,7 @@ def run_case(
         run_id=live.run_id if live else None,
         spending=spending,
         limitations=(
-            "One synthetic P01 calibration; not a held-out or ten-case benchmark.",
+            "Controlled synthetic case; not a held-out benchmark or production success rate.",
             "USD cost calculated from real provider usage at pinned ceiling rates; not an invoice.",
             "EUR budget uses explicit FX and tax contingencies; human time is unmeasured.",
             "Independent support covers the enumerated structured numeric facts only.",

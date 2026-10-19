@@ -2,7 +2,10 @@
 
 from pathlib import Path
 
+import pytest
+
 from evaluation.supplier_quality_pilot.cases import load_cases
+from evaluation.supplier_quality_pilot.contracts import PilotAssertion
 from evaluation.supplier_quality_pilot.runner import run_case
 
 
@@ -92,8 +95,10 @@ def test_offline_suite_keeps_fixed_denominators_and_pending_case(tmp_path: Path)
     assert (tmp_path / "suite.json").is_file()
 
 
+@pytest.mark.parametrize("capture_failure", [False, True])
 def test_suite_budget_stop_preserves_denominators_and_resume_never_calls_provider(
     tmp_path: Path,
+    capture_failure: bool,
 ) -> None:
     import json
     from decimal import Decimal
@@ -114,7 +119,7 @@ def test_suite_budget_stop_preserves_denominators_and_resume_never_calls_provide
     pricing = card().model_copy(
         update={"input_miss_per_million": Decimal("0.1"), "input_hit_per_million": Decimal("0.01")}
     )
-    policy = BudgetPolicy(authorized_eur=Decimal("2.1023"))
+    policy = BudgetPolicy(authorized_eur=Decimal("2.1029" if capture_failure else "2.1023"))
     settings = Settings(
         app_env="test",
         database_url="sqlite:///:memory:",
@@ -128,6 +133,9 @@ def test_suite_budget_stop_preserves_denominators_and_resume_never_calls_provide
 
     def respond(request: httpx.Request) -> httpx.Response:
         calls.append(request)
+        if capture_failure and len(calls) == 4:
+            # Paid Task execution succeeds; capture then fails on a filesystem boundary.
+            (tmp_path / "suite/P02-r0/model-inputs.json").mkdir()
         payload = json.loads(request.content)
         messages = [LLMMessage.model_validate(m) for m in payload["messages"]]
         schema: type[BaseModel] = (
@@ -195,9 +203,20 @@ def test_suite_budget_stop_preserves_denominators_and_resume_never_calls_provide
         assert report.stop_reason == "TOTAL_BUDGET"
         assert report.partial
         assert len(report.runs) == 10
-        assert len(calls) == 2
+        assert len(calls) == (4 if capture_failure else 2)
         assert report.spending is not None
-        assert report.spending.incurred_eur_upper == Decimal("0.000564")
+        expected_cost = Decimal("0.001128" if capture_failure else "0.000564")
+        assert report.spending.incurred_eur_upper == expected_cost
+        assert report.first_delivery_cost_usd == expected_cost
+        assert report.cost_per_qualified_usd == expected_cost
+        if capture_failure:
+            failed = next(r for r in report.runs if r.case_id == "P02")
+            assert failed.case_status == "executed"
+            assert failed.error_code == "HARNESS_IsADirectoryError"
+            assert failed.model_cost == Decimal("0.000564")
+            assert failed.latency_ms > 0
+            assert failed.task_id is not None
+            assert failed.task_status == "COMPLETED"
 
 
 def test_pdf_visible_values_must_match_its_embedded_model(tmp_path: Path) -> None:
@@ -244,3 +263,60 @@ def test_pdf_visible_values_must_match_its_embedded_model(tmp_path: Path) -> Non
     )
     assert all(a.passed for a in checks if a.category == "numeric")
     assert any(not a.passed for a in checks if a.assertion_id.startswith("pdf_visible/"))
+
+
+def test_empty_summary_cannot_claim_zero_defects_or_good_quality(tmp_path: Path) -> None:
+    checks = _mutated_report_checks(tmp_path, 5, "empty")
+    assert not next(a for a in checks if a.assertion_id == "empty_conclusions_are_bounded").passed
+
+
+def test_policy_citations_must_identify_the_frozen_document_evidence(tmp_path: Path) -> None:
+    checks = _mutated_report_checks(tmp_path, 7, "policy")
+    assert not next(a for a in checks if a.assertion_id == "support/policy_method_and_limit").passed
+
+
+def _mutated_report_checks(
+    tmp_path: Path, case_index: int, mutation: str
+) -> tuple["PilotAssertion", ...]:
+    import hashlib
+    import json
+    from dataclasses import replace
+
+    from pydantic import TypeAdapter
+
+    from copilot.services.workflows.models import WorkflowExecution
+    from evaluation.supplier_quality_pilot.checker import evaluate_case
+    from evaluation.supplier_quality_pilot.contracts import PilotSnapshot
+    from evaluation.supplier_quality_pilot.source import DEFAULT_SOURCE
+
+    case = load_cases()[case_index]
+    run = run_case(tmp_path, case=case)
+    path = Path(run.artifact_paths[0])
+    document = json.loads(path.read_bytes())
+    if mutation == "empty":
+        document["executive_summary"] = "All suppliers have a 0% defect rate. Quality is excellent."
+    else:
+        for field in ("applicable_policies", "quality_policy_findings"):
+            for ref in document[field]:
+                ref.update(
+                    evidence_id="E-NONEXISTENT",
+                    document_id="wrong-document",
+                    document_version="wrong-version",
+                    location="wrong-chunk",
+                )
+    path.write_text(json.dumps(document))
+    execution = TypeAdapter(WorkflowExecution).validate_json(
+        (tmp_path / "execution.json").read_bytes()
+    )
+    artifact = execution.artifacts[0].model_copy(
+        update={
+            "size_bytes": path.stat().st_size,
+            "checksum": "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+    )
+    return evaluate_case(
+        PilotSnapshot.model_validate_json(DEFAULT_SOURCE.read_bytes()),
+        replace(execution, artifacts=(artifact,)),
+        {artifact.artifact_id: path},
+        case,
+    )

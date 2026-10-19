@@ -84,6 +84,8 @@ def evaluate_case(
                     "assertion_id": name,
                     "category": category,
                     "passed": passed,
+                    "expected": "True",
+                    "actual": str(passed),
                 }
             )
         )
@@ -302,6 +304,43 @@ def evaluate_case(
             if execution
             else False,
         )
+    if not expected:
+        # This frozen pilot uses a deterministic report template. Fail closed on changed
+        # conclusions rather than pretending to semantically score arbitrary prose.
+        check(
+            "empty_conclusions_are_bounded",
+            "scope",
+            document is not None
+            and document.executive_summary
+            == (
+                "No supplier quality records were returned for the authorized scope; "
+                "quality metrics could not be calculated."
+            )
+            and len(document.major_findings) == 1
+            and document.major_findings[0].statement
+            == (
+                "The approved database query returned no records; no zero-defect "
+                "conclusion is made."
+            )
+            and all(
+                r.action
+                == (
+                    "Review recorded deviations and confirm the stated data and "
+                    "calculation limitations."
+                )
+                for r in document.recommendations
+            )
+            and all(
+                r.statement
+                == (
+                    "The current analytics contract does not classify business risk or "
+                    "apply policy "
+                    "thresholds. Analytics notes are consolidated in Methodology and Limitations "
+                    "and must not be interpreted as business-risk findings."
+                )
+                for r in document.key_risks
+            ),
+        )
     if case.policy:
         from evaluation.supplier_quality_pilot.policy import POLICY_PATH, PolicySnapshot
 
@@ -326,7 +365,15 @@ def evaluate_case(
             exact
             and document is not None
             and len(document.applicable_policies) == 1
-            and document.applicable_policies[0].excerpt == p.excerpt,
+            and document.quality_policy_findings == document.applicable_policies
+            and all(
+                ref.evidence_id == docs[0].evidence_id
+                and ref.document_id == p.document_id
+                and ref.document_version == p.document_version
+                and ref.location == p.chunk_id
+                and ref.excerpt == p.excerpt
+                for ref in document.applicable_policies
+            ),
         )
         check(
             "policy_no_unsupported_actions",
