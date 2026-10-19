@@ -51,6 +51,7 @@ jobs:
         run: |
           npm run typecheck
           npm run lint
+          npm run test:lint-config
           npm run format:check
 
       - name: Run frontend unit and component tests
