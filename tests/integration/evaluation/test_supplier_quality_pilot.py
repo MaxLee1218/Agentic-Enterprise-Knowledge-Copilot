@@ -1,5 +1,6 @@
 """P01 runs a governed task and scores the delivered artifact independently."""
 
+import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -30,6 +31,19 @@ def test_offline_p01_delivers_a_report_and_independent_score(tmp_path: Path) -> 
     assert (tmp_path / "evidence.json").is_file()
     assert run.provider == "mock"
     assert run.model_cost is None
+
+
+def test_data_only_report_does_not_claim_a_policy_basis_without_document_evidence(
+    tmp_path: Path,
+) -> None:
+    run = run_p01(tmp_path)
+    report = json.loads(Path(run.artifact_paths[0]).read_text())
+
+    assert not report["applicable_policies"]
+    assert all(r["basis"] == "GENERAL_CONTROL" for r in report["recommendations"])
+    assert all(
+        "cited controlled quality policy" not in r["action"] for r in report["recommendations"]
+    )
 
 
 def test_disagreeing_report_evidence_indexes_fail_independent_acceptance(tmp_path: Path) -> None:
@@ -179,3 +193,69 @@ def test_offline_run_ignores_network_selectors_and_keeps_oracle_out_of_model_inp
         payload = json.loads(call[-1]["content"])
         assert not {"oracle", "expected_value", "source_rows", "expected_numbers"} & payload.keys()
         assert "0.0175" not in call[-1]["content"]
+
+
+@pytest.mark.parametrize(
+    "mutation,check_id",
+    [
+        ("extra_metric_copy", "exact_metric_set"),
+        ("broken_fact_references", "report_references_ledger"),
+        ("null_reasons", "null_reasons"),
+    ],
+)
+def test_independent_checks_reject_semantic_corruption_even_with_valid_file_integrity(
+    tmp_path: Path,
+    mutation: str,
+    check_id: str,
+) -> None:
+    run = run_p01(tmp_path)
+    path = Path(run.artifact_paths[0])
+    document = json.loads(path.read_text())
+    execution = TypeAdapter(WorkflowExecution).validate_json(
+        (tmp_path / "execution.json").read_bytes()
+    )
+    if mutation == "extra_metric_copy":
+        extra = dict(document["analysis_results"]["metrics"][0])
+        extra["dimensions"] = {"supplier_id": "S-999", "period": "2026-04"}
+        document["analysis_results"]["metrics"].append(extra)
+    elif mutation == "broken_fact_references":
+        for finding in document["major_findings"]:
+            finding["evidence_ids"] = ["E-NONEXISTENT"]
+    else:
+        document["analysis_results"]["warnings"] = ["S-200 2026-06 zero"]
+        document["limitations"] = [{"code": "UNRELATED", "statement": "unrelated"}]
+    data = json.dumps(document).encode()
+    path.write_bytes(data)
+    artifact = execution.artifacts[0].model_copy(
+        update={
+            "size_bytes": len(data),
+            "checksum": hashlib.sha256(data).hexdigest(),
+        }
+    )
+    source = PilotSnapshot.model_validate_json((tmp_path / "source.json").read_bytes())
+
+    assertions = evaluate_p01(
+        source,
+        replace(execution, artifacts=(artifact,)),
+        {artifact.artifact_id: path},
+    )
+
+    assert next(a for a in assertions if a.assertion_id == "artifact_integrity").passed
+    assert not next(a for a in assertions if a.assertion_id == check_id).passed
+
+
+def test_compatible_source_changes_derive_applicable_null_reasons(tmp_path: Path) -> None:
+    raw = json.loads(DEFAULT_SOURCE.read_text())
+    for row in raw["rows"]:
+        if (row["tenant_id"], row["supplier_id"], row["period"]) == (
+            raw["tenant_id"],
+            "S-200",
+            "2026-06",
+        ):
+            row["inspected_count"] = 100
+    path = tmp_path / "source.json"
+    path.write_text(json.dumps(raw))
+
+    run = run_p01(tmp_path / "run", source_path=path)
+
+    assert run.qualified_delivery, [a for a in run.assertions if not a.passed]

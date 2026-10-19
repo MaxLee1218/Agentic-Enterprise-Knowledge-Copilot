@@ -8,10 +8,16 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from copilot.contracts import ArtifactType, EvidenceType, TaskStatus, VerificationStatus
+from copilot.contracts import (
+    ArtifactType,
+    EvidenceItem,
+    EvidenceType,
+    TaskStatus,
+    VerificationStatus,
+)
 from copilot.services.workflows.models import WorkflowExecution
 from copilot.tools.analytics.schemas import AnalyticsMetricResult
-from copilot.tools.reporting.schemas import ReportDocument
+from copilot.tools.reporting.schemas import ReportDocument, ReportFinding, ReportRisk
 from evaluation.supplier_quality_pilot.contracts import (
     OracleMetric,
     PilotAssertion,
@@ -137,7 +143,8 @@ def evaluate_p01(
                 PilotAssertion(
                     assertion_id=f"{supplier}/quarter_from_report_counts/{name}",
                     category="numeric",
-                    passed=quarter_actual is not None and quarter_actual == value,
+                    passed=all(count is not None for count in actual_counts)
+                    and quarter_actual == value,
                     expected=str(value),
                     actual=str(quarter_actual),
                 )
@@ -145,7 +152,8 @@ def evaluate_p01(
     check(
         "exact_metric_set",
         "scope",
-        len(metrics) == len(expected)
+        metrics == copies
+        and len(metrics) == len(expected)
         and {_key(m) for m in metrics} == {(m.metric, m.supplier_id, m.period) for m in expected},
     )
     check(
@@ -173,13 +181,9 @@ def evaluate_p01(
         and not document.quality_policy_findings,
     )
     check(
-        "zero_denominator_warning",
+        "null_reasons",
         "scope",
-        document is not None
-        and any(
-            "zero" in w.lower() and "S-200" in w and "2026-06" in w
-            for w in document.analysis_results.warnings
-        ),
+        document is not None and _null_reasons_present(snapshot, document),
     )
     checks.extend(_evidence_checks(snapshot, execution, document, expected))
     return tuple(checks)
@@ -202,7 +206,15 @@ def _find(
 
 
 def _matches(metric: AnalyticsMetricResult | None, target: OracleMetric) -> bool:
-    if metric is None or metric.unit != target.unit:
+    if (
+        metric is None
+        or metric.unit != target.unit
+        or metric.dimensions
+        != {
+            "supplier_id": target.supplier_id,
+            "period": target.period,
+        }
+    ):
         return False
     for value, expected in (
         (metric.value, target.value),
@@ -230,6 +242,73 @@ def _hash(value: object) -> str:
 
 def _digest_matches(actual: object, expected: str) -> bool:
     return isinstance(actual, str) and actual.removeprefix("sha256:") == expected
+
+
+def _null_reasons_present(snapshot: PilotSnapshot, document: ReportDocument) -> bool:
+    """Check v1's explicit reasons for each applicable null, derived from the source."""
+    reasons: set[str] = set()
+    previous: dict[str, int] = {}
+    for supplier, period, _defects, inspected in source_counts(snapshot):
+        dimensions = f"(period={period}, supplier_id={supplier})"
+        if inspected == 0:
+            reasons.add(f"Defect rate is undefined because inspected_count is zero {dimensions}")
+        if supplier not in previous:
+            reasons.add(f"Trend is undefined for the first period {dimensions}")
+        elif inspected == 0 or previous[supplier] == 0:
+            reasons.add(
+                "Trend is undefined because a compared period has zero inspected_count "
+                f"{dimensions}"
+            )
+        previous[supplier] = inspected
+    limitation_codes = {item.code for item in document.limitations}
+    required_codes = {"FIRST_PERIOD_TREND_BASELINE"}
+    if any(row[3] == 0 for row in source_counts(snapshot)):
+        required_codes.add("ZERO_DENOMINATOR_ANALYTICS_NOTE")
+    return reasons <= set(document.analysis_results.warnings) and required_codes <= limitation_codes
+
+
+def _fact_references_resolve(document: ReportDocument, ledger: Mapping[str, EvidenceItem]) -> bool:
+    """Validate structured fact/reference locations, without judging arbitrary prose."""
+    # Evidence IDs alone in an index do not establish that the actual facts cite that index.
+    if (
+        not document.major_findings
+        or document.supplier_ranking
+        or document.key_risks != document.risk_analysis
+        or document.recommended_actions != document.recommendations
+        or document.data_overview != document.supplier_quality_data
+    ):
+        return False
+    database_ids = {
+        e.evidence_id for e in ledger.values() if e.source_type is EvidenceType.DATABASE
+    }
+    if (
+        len(document.data_overview) != len(database_ids)
+        or {item.evidence_id for item in document.data_overview} != database_ids
+    ):
+        return False
+    facts: tuple[ReportFinding | ReportRisk, ...] = (*document.major_findings, *document.key_risks)
+    for fact in facts:
+        if not fact.evidence_ids or not set(fact.evidence_ids) <= ledger.keys():
+            return False
+        if not any(ledger[e].source_type is EvidenceType.CALCULATION for e in fact.evidence_ids):
+            return False
+    for recommendation in document.recommended_actions:
+        if not set(recommendation.evidence_ids) <= ledger.keys():
+            return False
+        if recommendation.basis == "POLICY_EVIDENCE":
+            # This non-policy P01 has no authorized policy conclusion.
+            return False
+    for item in document.data_overview:
+        evidence = ledger.get(item.evidence_id)
+        if evidence is None or evidence.source_type is not EvidenceType.DATABASE:
+            return False
+        if (
+            item.row_count != evidence.content.data.root.get("row_count")
+            or item.checksum != evidence.content.checksum
+            or item.query_id != evidence.source_reference.reference.root.get("query_fingerprint")
+        ):
+            return False
+    return True
 
 
 def _evidence_checks(
@@ -279,6 +358,7 @@ def _evidence_checks(
         (
             bool(refs)
             and document is not None
+            and _fact_references_resolve(document, ledger)
             and document.evidence == document.evidence_references
             and reference_ids == set(ledger)
             and all(
@@ -288,6 +368,8 @@ def _evidence_checks(
                 == ledger[r.evidence_id].source_reference.input_evidence_ids
                 and r.source == ledger[r.evidence_id].source_reference.reference
                 and r.source_type is ledger[r.evidence_id].source_type
+                and r.source_step_id == ledger[r.evidence_id].step_id
+                and r.source_tool_call_id == ledger[r.evidence_id].tool_call_id
                 and ledger[r.evidence_id].task_id == execution.task_result.task_id
                 for r in refs
             )

@@ -209,6 +209,10 @@ cross-tenant sentinel rows. Independent SQL and Decimal calculations select the 
 Q2 rows. The checker validates 24 monthly metric/operand assertions and six quarterly checks
 reconstructed from reported monthly counts. It does not require a new quarterly product output.
 Absent reports and required metrics retain the full 30-assertion numeric denominator.
+Both report metric copies must agree; structured findings, risks, recommendations and data-source
+references must resolve to appropriate current-task Evidence. Null reasons are derived from the
+source population and checked against the v1 warning/limitation vocabulary. Data-only reports use
+a general-control recommendation rather than claiming a policy basis without document Evidence.
 
 Each run creates a fresh directory under `evaluation/reports/supplier-quality-pilot/` containing
 `report.json`, `report.md`, the actual JSON artifact, source/config snapshots, execution/evidence

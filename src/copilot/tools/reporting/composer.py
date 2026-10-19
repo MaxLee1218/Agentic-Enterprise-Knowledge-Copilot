@@ -311,6 +311,17 @@ class ReportComposer:
         policies: tuple[ReportPolicyReference, ...],
     ) -> tuple[ReportRecommendation, ...]:
         policy_ids = tuple(item.evidence_id for item in policies)
+        if not policy_ids:
+            return (
+                ReportRecommendation(
+                    action_id="action-review-deviations",
+                    action=(
+                        "Review recorded deviations and confirm the stated data and "
+                        "calculation limitations."
+                    ),
+                    basis="GENERAL_CONTROL",
+                ),
+            )
         return (
             ReportRecommendation(
                 action_id="action-review-deviations",
