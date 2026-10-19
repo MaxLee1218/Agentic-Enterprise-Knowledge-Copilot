@@ -419,5 +419,8 @@ Failures and repeats are retained; this synthetic pilot does not establish produ
 
 The [post-fix regression protocol](docs/supplier-quality-post-fix-regression.md) tracks the four
 observed delivery defects in GitHub Issues #5–#8 and their retained before/after run in #9.
+The [completed regression](docs/supplier-quality-post-fix-result.md) records 9/9 qualified reports,
+181/181 numeric checks, 146/146 enumerated fact-support checks and 1/1 safety rejection on those
+same development scenarios. Original failures remain available; this is not held-out validation.
 Use the [explicit regression command](docs/evaluation.md#explicit-post-fix-regression) only for the
 authorized follow-up population; it preserves the first results and shares the existing spending ledger.

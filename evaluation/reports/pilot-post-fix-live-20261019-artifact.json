@@ -1,0 +1,869 @@
+{
+  "analysis_results": {
+    "calculation_version": "quality_metrics.v1",
+    "dataset_checksum": "e3596910928efc7c1f9543aefb6ef7fe0d1631e18553215ae06eff1561b2da46",
+    "empty_result": false,
+    "input_row_count": 6,
+    "metrics": [
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "2026-04",
+          "supplier_id": "S-100"
+        },
+        "metric": "defect_count",
+        "numerator": 10,
+        "unit": "count",
+        "value": 10
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "2026-05",
+          "supplier_id": "S-100"
+        },
+        "metric": "defect_count",
+        "numerator": 20,
+        "unit": "count",
+        "value": 20
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "2026-06",
+          "supplier_id": "S-100"
+        },
+        "metric": "defect_count",
+        "numerator": 30,
+        "unit": "count",
+        "value": 30
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "2026-04",
+          "supplier_id": "S-200"
+        },
+        "metric": "defect_count",
+        "numerator": 1,
+        "unit": "count",
+        "value": 1
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "2026-05",
+          "supplier_id": "S-200"
+        },
+        "metric": "defect_count",
+        "numerator": 9,
+        "unit": "count",
+        "value": 9
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "2026-06",
+          "supplier_id": "S-200"
+        },
+        "metric": "defect_count",
+        "numerator": 0,
+        "unit": "count",
+        "value": 0
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "2026-04",
+          "supplier_id": "S-100"
+        },
+        "metric": "inspected_count",
+        "numerator": 1000,
+        "unit": "count",
+        "value": 1000
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "2026-05",
+          "supplier_id": "S-100"
+        },
+        "metric": "inspected_count",
+        "numerator": 1000,
+        "unit": "count",
+        "value": 1000
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "2026-06",
+          "supplier_id": "S-100"
+        },
+        "metric": "inspected_count",
+        "numerator": 1000,
+        "unit": "count",
+        "value": 1000
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "2026-04",
+          "supplier_id": "S-200"
+        },
+        "metric": "inspected_count",
+        "numerator": 100,
+        "unit": "count",
+        "value": 100
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "2026-05",
+          "supplier_id": "S-200"
+        },
+        "metric": "inspected_count",
+        "numerator": 900,
+        "unit": "count",
+        "value": 900
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "2026-06",
+          "supplier_id": "S-200"
+        },
+        "metric": "inspected_count",
+        "numerator": 0,
+        "unit": "count",
+        "value": 0
+      },
+      {
+        "denominator": 1000,
+        "dimensions": {
+          "period": "2026-04",
+          "supplier_id": "S-100"
+        },
+        "metric": "defect_rate",
+        "numerator": 10,
+        "unit": "ratio",
+        "value": 0.01
+      },
+      {
+        "denominator": 1000,
+        "dimensions": {
+          "period": "2026-05",
+          "supplier_id": "S-100"
+        },
+        "metric": "defect_rate",
+        "numerator": 20,
+        "unit": "ratio",
+        "value": 0.02
+      },
+      {
+        "denominator": 1000,
+        "dimensions": {
+          "period": "2026-06",
+          "supplier_id": "S-100"
+        },
+        "metric": "defect_rate",
+        "numerator": 30,
+        "unit": "ratio",
+        "value": 0.03
+      },
+      {
+        "denominator": 100,
+        "dimensions": {
+          "period": "2026-04",
+          "supplier_id": "S-200"
+        },
+        "metric": "defect_rate",
+        "numerator": 1,
+        "unit": "ratio",
+        "value": 0.01
+      },
+      {
+        "denominator": 900,
+        "dimensions": {
+          "period": "2026-05",
+          "supplier_id": "S-200"
+        },
+        "metric": "defect_rate",
+        "numerator": 9,
+        "unit": "ratio",
+        "value": 0.01
+      },
+      {
+        "denominator": 0,
+        "dimensions": {
+          "period": "2026-06",
+          "supplier_id": "S-200"
+        },
+        "metric": "defect_rate",
+        "numerator": 0,
+        "unit": "ratio",
+        "value": null
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "2026-04",
+          "supplier_id": "S-100"
+        },
+        "metric": "period_over_period_trend",
+        "numerator": 0.01,
+        "unit": "ratio_delta",
+        "value": null
+      },
+      {
+        "denominator": 0.01,
+        "dimensions": {
+          "period": "2026-05",
+          "supplier_id": "S-100"
+        },
+        "metric": "period_over_period_trend",
+        "numerator": 0.02,
+        "unit": "ratio_delta",
+        "value": 0.01
+      },
+      {
+        "denominator": 0.02,
+        "dimensions": {
+          "period": "2026-06",
+          "supplier_id": "S-100"
+        },
+        "metric": "period_over_period_trend",
+        "numerator": 0.03,
+        "unit": "ratio_delta",
+        "value": 0.01
+      },
+      {
+        "denominator": null,
+        "dimensions": {
+          "period": "2026-04",
+          "supplier_id": "S-200"
+        },
+        "metric": "period_over_period_trend",
+        "numerator": 0.01,
+        "unit": "ratio_delta",
+        "value": null
+      },
+      {
+        "denominator": 0.01,
+        "dimensions": {
+          "period": "2026-05",
+          "supplier_id": "S-200"
+        },
+        "metric": "period_over_period_trend",
+        "numerator": 0.01,
+        "unit": "ratio_delta",
+        "value": 0.0
+      },
+      {
+        "denominator": 0.01,
+        "dimensions": {
+          "period": "2026-06",
+          "supplier_id": "S-200"
+        },
+        "metric": "period_over_period_trend",
+        "numerator": null,
+        "unit": "ratio_delta",
+        "value": null
+      }
+    ],
+    "warnings": [
+      "Defect rate is undefined because inspected_count is zero (period=2026-06, supplier_id=S-200)",
+      "Trend is undefined for the first period (period=2026-04, supplier_id=S-100)",
+      "Trend is undefined for the first period (period=2026-04, supplier_id=S-200)",
+      "Trend is undefined because a compared period has zero inspected_count (period=2026-06, supplier_id=S-200)"
+    ]
+  },
+  "applicable_policies": [],
+  "data_overview": [
+    {
+      "checksum": "e3596910928efc7c1f9543aefb6ef7fe0d1631e18553215ae06eff1561b2da46",
+      "evidence_id": "E-0001",
+      "query_id": "be88b18933042624cce768021994a7728bc44739476d44fb90da530ac4b84772",
+      "row_count": 6,
+      "snapshot_at": "2026-10-19T10:00:18.754081+00:00"
+    }
+  ],
+  "evidence": [
+    {
+      "checksum": "e3596910928efc7c1f9543aefb6ef7fe0d1631e18553215ae06eff1561b2da46",
+      "evidence_id": "E-0001",
+      "formulas": {},
+      "input_evidence_ids": [],
+      "query_id": "be88b18933042624cce768021994a7728bc44739476d44fb90da530ac4b84772",
+      "source": {
+        "column_names": [
+          "incoming_inspections.inspection_date",
+          "incoming_inspections.rejected_quantity",
+          "incoming_inspections.supplier_id",
+          "incoming_inspections.total_quantity",
+          "suppliers.id",
+          "suppliers.supplier_code",
+          "suppliers.tenant_id"
+        ],
+        "content_hash": "e3596910928efc7c1f9543aefb6ef7fe0d1631e18553215ae06eff1561b2da46",
+        "content_source_type": "DATABASE_RESULT",
+        "database_name": "source.db",
+        "injection_findings": [],
+        "parameter_summary": {
+          "end_date": "2026-06-30",
+          "start_date": "2026-04-01",
+          "supplier_count": 2,
+          "supplier_scope_hash": "943cbaadbae1a23b09ad043e87ff2a1d2a1c24b7054ff70cf527acc2d571e58a",
+          "tenant_scope_hash": "78fe6bb89c837eb0c6d9be3f7466ea4ef89fb86b41654b0b062ff0a944ae3d30"
+        },
+        "produced_by": "database_query",
+        "quarantined": false,
+        "query_fingerprint": "be88b18933042624cce768021994a7728bc44739476d44fb90da530ac4b84772",
+        "query_template_id": "supplier_quality_summary_v1",
+        "read_only": true,
+        "redacted": false,
+        "row_count": 6,
+        "schema_version": "quality.v1",
+        "snapshot_at": "2026-10-19T10:00:18.754081+00:00",
+        "statement_type": "SELECT",
+        "table_names": [
+          "incoming_inspections",
+          "suppliers"
+        ],
+        "trust_level": "UNTRUSTED"
+      },
+      "source_step_id": "T-0001:db_query",
+      "source_tool_call_id": "TC-0001",
+      "source_type": "DATABASE"
+    },
+    {
+      "checksum": "cbf694423f048e202cfb9c2835d9aac2290790f40bda3393b3dad36369b43f64",
+      "evidence_id": "E-0002",
+      "formulas": {
+        "defect_count": "sum(defect_count)",
+        "defect_rate": "sum(defect_count) / sum(inspected_count)",
+        "inspected_count": "sum(inspected_count)",
+        "period_over_period_trend": "current_period_defect_rate - previous_period_defect_rate"
+      },
+      "input_evidence_ids": [
+        "E-0001"
+      ],
+      "query_id": null,
+      "source": {
+        "content_hash": "cbf694423f048e202cfb9c2835d9aac2290790f40bda3393b3dad36369b43f64",
+        "content_source_type": "TOOL_OUTPUT",
+        "dataset_checksum": "e3596910928efc7c1f9543aefb6ef7fe0d1631e18553215ae06eff1561b2da46",
+        "engine_version": "quality_metrics.v1",
+        "formulas": {
+          "defect_count": "sum(defect_count)",
+          "defect_rate": "sum(defect_count) / sum(inspected_count)",
+          "inspected_count": "sum(inspected_count)",
+          "period_over_period_trend": "current_period_defect_rate - previous_period_defect_rate"
+        },
+        "group_by": [
+          "supplier_id",
+          "period"
+        ],
+        "injection_findings": [],
+        "operation": "deterministic_quality_metrics",
+        "produced_by": "analysis_engine",
+        "quarantined": false,
+        "redacted": false,
+        "trust_level": "UNTRUSTED"
+      },
+      "source_step_id": "T-0001:metrics_analysis",
+      "source_tool_call_id": "TC-0002",
+      "source_type": "CALCULATION"
+    }
+  ],
+  "evidence_references": [
+    {
+      "checksum": "e3596910928efc7c1f9543aefb6ef7fe0d1631e18553215ae06eff1561b2da46",
+      "evidence_id": "E-0001",
+      "formulas": {},
+      "input_evidence_ids": [],
+      "query_id": "be88b18933042624cce768021994a7728bc44739476d44fb90da530ac4b84772",
+      "source": {
+        "column_names": [
+          "incoming_inspections.inspection_date",
+          "incoming_inspections.rejected_quantity",
+          "incoming_inspections.supplier_id",
+          "incoming_inspections.total_quantity",
+          "suppliers.id",
+          "suppliers.supplier_code",
+          "suppliers.tenant_id"
+        ],
+        "content_hash": "e3596910928efc7c1f9543aefb6ef7fe0d1631e18553215ae06eff1561b2da46",
+        "content_source_type": "DATABASE_RESULT",
+        "database_name": "source.db",
+        "injection_findings": [],
+        "parameter_summary": {
+          "end_date": "2026-06-30",
+          "start_date": "2026-04-01",
+          "supplier_count": 2,
+          "supplier_scope_hash": "943cbaadbae1a23b09ad043e87ff2a1d2a1c24b7054ff70cf527acc2d571e58a",
+          "tenant_scope_hash": "78fe6bb89c837eb0c6d9be3f7466ea4ef89fb86b41654b0b062ff0a944ae3d30"
+        },
+        "produced_by": "database_query",
+        "quarantined": false,
+        "query_fingerprint": "be88b18933042624cce768021994a7728bc44739476d44fb90da530ac4b84772",
+        "query_template_id": "supplier_quality_summary_v1",
+        "read_only": true,
+        "redacted": false,
+        "row_count": 6,
+        "schema_version": "quality.v1",
+        "snapshot_at": "2026-10-19T10:00:18.754081+00:00",
+        "statement_type": "SELECT",
+        "table_names": [
+          "incoming_inspections",
+          "suppliers"
+        ],
+        "trust_level": "UNTRUSTED"
+      },
+      "source_step_id": "T-0001:db_query",
+      "source_tool_call_id": "TC-0001",
+      "source_type": "DATABASE"
+    },
+    {
+      "checksum": "cbf694423f048e202cfb9c2835d9aac2290790f40bda3393b3dad36369b43f64",
+      "evidence_id": "E-0002",
+      "formulas": {
+        "defect_count": "sum(defect_count)",
+        "defect_rate": "sum(defect_count) / sum(inspected_count)",
+        "inspected_count": "sum(inspected_count)",
+        "period_over_period_trend": "current_period_defect_rate - previous_period_defect_rate"
+      },
+      "input_evidence_ids": [
+        "E-0001"
+      ],
+      "query_id": null,
+      "source": {
+        "content_hash": "cbf694423f048e202cfb9c2835d9aac2290790f40bda3393b3dad36369b43f64",
+        "content_source_type": "TOOL_OUTPUT",
+        "dataset_checksum": "e3596910928efc7c1f9543aefb6ef7fe0d1631e18553215ae06eff1561b2da46",
+        "engine_version": "quality_metrics.v1",
+        "formulas": {
+          "defect_count": "sum(defect_count)",
+          "defect_rate": "sum(defect_count) / sum(inspected_count)",
+          "inspected_count": "sum(inspected_count)",
+          "period_over_period_trend": "current_period_defect_rate - previous_period_defect_rate"
+        },
+        "group_by": [
+          "supplier_id",
+          "period"
+        ],
+        "injection_findings": [],
+        "operation": "deterministic_quality_metrics",
+        "produced_by": "analysis_engine",
+        "quarantined": false,
+        "redacted": false,
+        "trust_level": "UNTRUSTED"
+      },
+      "source_step_id": "T-0001:metrics_analysis",
+      "source_tool_call_id": "TC-0002",
+      "source_type": "CALCULATION"
+    }
+  ],
+  "execution_metadata": {
+    "generated_at": "2026-10-19T10:00:24.320279Z",
+    "generator_version": "report_generator.v1",
+    "language": "en-US",
+    "schema_version": "supplier_quality_report_model.v1",
+    "template_version": "supplier_quality_report.v1",
+    "verification_status": "PENDING"
+  },
+  "execution_trace": [
+    {
+      "evidence_id": "E-0001",
+      "source_type": "DATABASE",
+      "step_id": "T-0001:db_query",
+      "tool_call_id": "TC-0001"
+    },
+    {
+      "evidence_id": "E-0002",
+      "source_type": "CALCULATION",
+      "step_id": "T-0001:metrics_analysis",
+      "tool_call_id": "TC-0002"
+    }
+  ],
+  "executive_summary": "The controlled Q2 2026 analysis covers 2 supplier(s) represented in Calculation Evidence across 3 observed monthly period(s). It reports monthly defect rates and within-quarter period-over-period changes. Quarter-over-quarter comparison, supplier ranking, and root-cause conclusions are not available under the current analytics contract.",
+  "key_metrics": [
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "2026-04",
+        "supplier_id": "S-100"
+      },
+      "metric": "defect_count",
+      "numerator": 10,
+      "unit": "count",
+      "value": 10
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "2026-05",
+        "supplier_id": "S-100"
+      },
+      "metric": "defect_count",
+      "numerator": 20,
+      "unit": "count",
+      "value": 20
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "2026-06",
+        "supplier_id": "S-100"
+      },
+      "metric": "defect_count",
+      "numerator": 30,
+      "unit": "count",
+      "value": 30
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "2026-04",
+        "supplier_id": "S-200"
+      },
+      "metric": "defect_count",
+      "numerator": 1,
+      "unit": "count",
+      "value": 1
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "2026-05",
+        "supplier_id": "S-200"
+      },
+      "metric": "defect_count",
+      "numerator": 9,
+      "unit": "count",
+      "value": 9
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "2026-06",
+        "supplier_id": "S-200"
+      },
+      "metric": "defect_count",
+      "numerator": 0,
+      "unit": "count",
+      "value": 0
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "2026-04",
+        "supplier_id": "S-100"
+      },
+      "metric": "inspected_count",
+      "numerator": 1000,
+      "unit": "count",
+      "value": 1000
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "2026-05",
+        "supplier_id": "S-100"
+      },
+      "metric": "inspected_count",
+      "numerator": 1000,
+      "unit": "count",
+      "value": 1000
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "2026-06",
+        "supplier_id": "S-100"
+      },
+      "metric": "inspected_count",
+      "numerator": 1000,
+      "unit": "count",
+      "value": 1000
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "2026-04",
+        "supplier_id": "S-200"
+      },
+      "metric": "inspected_count",
+      "numerator": 100,
+      "unit": "count",
+      "value": 100
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "2026-05",
+        "supplier_id": "S-200"
+      },
+      "metric": "inspected_count",
+      "numerator": 900,
+      "unit": "count",
+      "value": 900
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "2026-06",
+        "supplier_id": "S-200"
+      },
+      "metric": "inspected_count",
+      "numerator": 0,
+      "unit": "count",
+      "value": 0
+    },
+    {
+      "denominator": 1000,
+      "dimensions": {
+        "period": "2026-04",
+        "supplier_id": "S-100"
+      },
+      "metric": "defect_rate",
+      "numerator": 10,
+      "unit": "ratio",
+      "value": 0.01
+    },
+    {
+      "denominator": 1000,
+      "dimensions": {
+        "period": "2026-05",
+        "supplier_id": "S-100"
+      },
+      "metric": "defect_rate",
+      "numerator": 20,
+      "unit": "ratio",
+      "value": 0.02
+    },
+    {
+      "denominator": 1000,
+      "dimensions": {
+        "period": "2026-06",
+        "supplier_id": "S-100"
+      },
+      "metric": "defect_rate",
+      "numerator": 30,
+      "unit": "ratio",
+      "value": 0.03
+    },
+    {
+      "denominator": 100,
+      "dimensions": {
+        "period": "2026-04",
+        "supplier_id": "S-200"
+      },
+      "metric": "defect_rate",
+      "numerator": 1,
+      "unit": "ratio",
+      "value": 0.01
+    },
+    {
+      "denominator": 900,
+      "dimensions": {
+        "period": "2026-05",
+        "supplier_id": "S-200"
+      },
+      "metric": "defect_rate",
+      "numerator": 9,
+      "unit": "ratio",
+      "value": 0.01
+    },
+    {
+      "denominator": 0,
+      "dimensions": {
+        "period": "2026-06",
+        "supplier_id": "S-200"
+      },
+      "metric": "defect_rate",
+      "numerator": 0,
+      "unit": "ratio",
+      "value": null
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "2026-04",
+        "supplier_id": "S-100"
+      },
+      "metric": "period_over_period_trend",
+      "numerator": 0.01,
+      "unit": "ratio_delta",
+      "value": null
+    },
+    {
+      "denominator": 0.01,
+      "dimensions": {
+        "period": "2026-05",
+        "supplier_id": "S-100"
+      },
+      "metric": "period_over_period_trend",
+      "numerator": 0.02,
+      "unit": "ratio_delta",
+      "value": 0.01
+    },
+    {
+      "denominator": 0.02,
+      "dimensions": {
+        "period": "2026-06",
+        "supplier_id": "S-100"
+      },
+      "metric": "period_over_period_trend",
+      "numerator": 0.03,
+      "unit": "ratio_delta",
+      "value": 0.01
+    },
+    {
+      "denominator": null,
+      "dimensions": {
+        "period": "2026-04",
+        "supplier_id": "S-200"
+      },
+      "metric": "period_over_period_trend",
+      "numerator": 0.01,
+      "unit": "ratio_delta",
+      "value": null
+    },
+    {
+      "denominator": 0.01,
+      "dimensions": {
+        "period": "2026-05",
+        "supplier_id": "S-200"
+      },
+      "metric": "period_over_period_trend",
+      "numerator": 0.01,
+      "unit": "ratio_delta",
+      "value": 0.0
+    },
+    {
+      "denominator": 0.01,
+      "dimensions": {
+        "period": "2026-06",
+        "supplier_id": "S-200"
+      },
+      "metric": "period_over_period_trend",
+      "numerator": null,
+      "unit": "ratio_delta",
+      "value": null
+    }
+  ],
+  "key_risks": [
+    {
+      "evidence_ids": [
+        "E-0002"
+      ],
+      "level": "INFORMATIONAL",
+      "risk_id": "risk-classification-not-available",
+      "statement": "The current analytics contract does not classify business risk or apply policy thresholds. Analytics notes are consolidated in Methodology and Limitations and must not be interpreted as business-risk findings."
+    }
+  ],
+  "limitations": [
+    {
+      "code": "RANKING_NOT_AVAILABLE",
+      "statement": "Supplier ranking is not produced because quality_metrics.v1 does not define a ranking operation."
+    },
+    {
+      "code": "DETERMINISTIC_SCOPE",
+      "statement": "The report reproduces approved Evidence and Analytics outputs and does not infer root causes."
+    },
+    {
+      "code": "QUARTER_COMPARISON_NOT_AVAILABLE",
+      "statement": "Quarter-over-quarter comparison is not available because the authorized database request and quality_metrics.v1 calculation cover Q2 2026 only."
+    },
+    {
+      "code": "FIRST_PERIOD_TREND_BASELINE",
+      "statement": "The first observed month has no previous-month comparison, so its period-over-period trend is not defined. This is an analytics note, not a business risk."
+    },
+    {
+      "code": "POLICY_CLASSIFICATION_NOT_AVAILABLE",
+      "statement": "No deterministic rule in the current contract applies policy thresholds or assigns supplier risk levels."
+    },
+    {
+      "code": "ZERO_DENOMINATOR_ANALYTICS_NOTE",
+      "statement": "One or more defect-rate or trend values are undefined because an observed period has zero inspected_count; affected raw metrics remain visible in Appendix A."
+    },
+    {
+      "code": "POLICY_EVIDENCE_MISSING",
+      "statement": "No controlled policy Evidence was available."
+    }
+  ],
+  "major_findings": [
+    {
+      "evidence_ids": [
+        "E-0001",
+        "E-0002"
+      ],
+      "finding_id": "finding-analysis-coverage",
+      "severity": "INFO",
+      "statement": "Calculation Evidence contains controlled quality metrics for 2 supplier(s) across 2026-04, 2026-05, 2026-06.",
+      "title": "Supplier quality coverage"
+    },
+    {
+      "evidence_ids": [
+        "E-0002"
+      ],
+      "finding_id": "finding-monthly-trend-basis",
+      "severity": "INFO",
+      "statement": "The available trend metric compares each observed month with the prior observed month; the first month has no comparison baseline.",
+      "title": "Within-quarter trend view"
+    }
+  ],
+  "quality_policy_findings": [],
+  "recommendations": [
+    {
+      "action": "Review recorded deviations and confirm the stated data and calculation limitations.",
+      "action_id": "action-review-deviations",
+      "basis": "GENERAL_CONTROL",
+      "evidence_ids": []
+    }
+  ],
+  "recommended_actions": [
+    {
+      "action": "Review recorded deviations and confirm the stated data and calculation limitations.",
+      "action_id": "action-review-deviations",
+      "basis": "GENERAL_CONTROL",
+      "evidence_ids": []
+    }
+  ],
+  "risk_analysis": [
+    {
+      "evidence_ids": [
+        "E-0002"
+      ],
+      "level": "INFORMATIONAL",
+      "risk_id": "risk-classification-not-available",
+      "statement": "The current analytics contract does not classify business risk or apply policy thresholds. Analytics notes are consolidated in Methodology and Limitations and must not be interpreted as business-risk findings."
+    }
+  ],
+  "scope": {
+    "end_date": "2026-06-30",
+    "quarter": 2,
+    "start_date": "2026-04-01",
+    "supplier_ids": [
+      "S-100",
+      "S-200"
+    ],
+    "year": 2026
+  },
+  "supplier_quality_data": [
+    {
+      "checksum": "e3596910928efc7c1f9543aefb6ef7fe0d1631e18553215ae06eff1561b2da46",
+      "evidence_id": "E-0001",
+      "query_id": "be88b18933042624cce768021994a7728bc44739476d44fb90da530ac4b84772",
+      "row_count": 6,
+      "snapshot_at": "2026-10-19T10:00:18.754081+00:00"
+    }
+  ],
+  "supplier_ranking": [],
+  "task_summary": {
+    "task_id": "T-0001",
+    "task_status": "EXECUTING",
+    "trace_id": "T-0001"
+  },
+  "title": "Supplier Quality Analysis Report"
+}
