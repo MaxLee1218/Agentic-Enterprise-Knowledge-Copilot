@@ -306,3 +306,6 @@ zero paid attempts in that invocation; post-dispatch stops produce the regular f
 report and retained ledger reservations. Other existing exit codes remain unchanged. An invalid
 file or output path exits `2`. CI exercises fake HTTP providers and never enables paid mode.
 One calibration is not the completed ten-scenario experiment or measured human-time savings.
+
+The [first live P01 result](supplier-quality-pilot-p01-result.md) records the observed calibration
+and publishes its sanitized machine-readable result and synthetic JSON artifact.
