@@ -181,7 +181,7 @@ def _settings(tmp_path: Path) -> Settings:
         execution_lease_ttl_seconds=5,
         task_queue_visibility_timeout_seconds=60,
         log_level="WARNING",
-        log_format="text",
+        log_format="json",
     )
 
 
@@ -208,7 +208,7 @@ def _worker_environment(settings: Settings) -> dict[str, str]:
             "EXECUTION_LEASE_TTL_SECONDS": "5",
             "TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS": "60",
             "LOG_LEVEL": "WARNING",
-            "LOG_FORMAT": "text",
+            "LOG_FORMAT": "json",
         }
     )
     existing_python_path = environment.get("PYTHONPATH")
@@ -288,4 +288,7 @@ def _wait_for_terminal(
         ):
             return payload
         sleep(0.05)
-    raise AssertionError("Replacement Worker did not recover the hard-killed Task")
+    raise AssertionError(
+        "Replacement Worker did not recover the hard-killed Task; "
+        f"last Task state={payload['status']}, runtime={payload['runtime_status']}"
+    )
