@@ -152,6 +152,12 @@ Assertions prove that the already successful step is not rerun, one logical resu
 and the killed Worker's token cannot commit. This is the required crash-takeover P0 evidence; it is
 separate from graceful shutdown coverage.
 
+The kill barrier verifies the latest checkpoint contains the successful step, points at the
+locked database step, and has the same domain state as the authoritative Task row. A StepResult
+write alone is insufficient: it precedes the state transition and checkpoint commit. This gate
+proves takeover from a recoverable checkpoint, not automatic recovery from every persistence
+window. Checkpoint mismatch continues to fail closed under ADR-015.
+
 ## I. Approval Async Resume Evidence
 
 When execution enters `WAITING_APPROVAL`, the runtime commits suspension, releases the execution
