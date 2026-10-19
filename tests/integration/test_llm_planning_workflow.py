@@ -11,6 +11,7 @@ from copilot.contracts import (
     ProposedPlan,
     ProposedStep,
     ReportLanguage,
+    TaskConstraints,
     TaskStatus,
     TaskType,
 )
@@ -23,6 +24,8 @@ from copilot.llm.schemas import (
     UnderstandingTimeRange,
 )
 from copilot.services.workflows.models import SupplierQualityCommand
+from copilot.services.workflows.planning import TaskUnderstandingOutcome
+from copilot.tools.analytics.schemas import AnalyticsResult
 from tests.workflow_helpers import build_test_container
 
 COMMAND = SupplierQualityCommand(
@@ -159,3 +162,113 @@ def test_prompt_injection_is_data_and_cannot_expand_scope(tmp_path: Path) -> Non
         assert execution.final_state.state is TaskStatus.FAILED
         assert container.tool_audit.list(tenant_id="TENANT-DEMO") == ()
         assert provider.calls[0].context.prompt_version == "task-understanding-v4"
+
+
+def test_partial_model_metrics_cannot_remove_required_report_trends(tmp_path: Path) -> None:
+    candidate = _understanding().model_copy(
+        update={
+            "constraints": UnderstandingConstraints(
+                max_steps=10, metrics=("defect_count", "inspected_count", "defect_rate")
+            )
+        }
+    )
+    provider = MockLLM(
+        responses_by_node={"understand_task": [candidate], "create_plan": [_proposal()]}
+    )
+    with build_test_container(tmp_path / "metrics", llm_provider=provider) as container:
+        execution = container.service.execute(COMMAND)
+        state = container.engine.get_state(execution.task_result.task_id, "TENANT-DEMO")
+        assert execution.task_result.final_status is TaskStatus.COMPLETED
+        constraints = state["contract"].constraints
+        assert isinstance(constraints, TaskConstraints)
+        assert constraints.metrics == (
+            "defect_count",
+            "inspected_count",
+            "defect_rate",
+            "period_over_period_trend",
+        )
+        analysis = next(r for r in execution.step_results if r.step_id.endswith(":analysis"))
+        assert analysis.output is not None
+        result = AnalyticsResult.model_validate(analysis.output.root)
+        assert any(m.metric.value == "period_over_period_trend" for m in result.metrics)
+
+
+@pytest.mark.parametrize("answer", ["Q2 2026", "Q2 2026 for SUP-002"])
+def test_time_clarification_keeps_original_supplier_boundary(tmp_path: Path, answer: str) -> None:
+    from copilot.contracts import ClarificationResponse
+    from copilot.llm.schemas import ClarificationAssistantOutput
+    from copilot.services.task_intake import (
+        NaturalLanguageTaskCommand,
+        RequestSource,
+        TaskOutputFormat,
+        TrustedCallerContext,
+    )
+    from copilot.services.workflows.errors import TaskUnderstandingAuthorizationError
+
+    candidate = _understanding().model_copy(
+        update={
+            "entities": UnderstandingEntities(supplier_ids=("SUP-001", "SUP-002")),
+            "time_range": UnderstandingTimeRange(),
+        }
+    )
+    provider = MockLLM(
+        responses_by_node={
+            "understand_task": [candidate, candidate],
+            "compose_clarification": [
+                ClarificationAssistantOutput(
+                    message="Which year and quarter?", covered_fields=("time_range",)
+                )
+            ],
+        }
+    )
+    with build_test_container(tmp_path / "scope-resume", llm_provider=provider) as container:
+        request, context = container.task_service.prepare(
+            NaturalLanguageTaskCommand(
+                task="Analyze SUP-001 supplier quality and generate JSON.",
+                source=RequestSource.INTERNAL,
+                output_format=TaskOutputFormat.JSON,
+            ),
+            TrustedCallerContext(
+                user_id="U-QUALITY",
+                tenant_id="TENANT-DEMO",
+                supplier_ids=("SUP-001", "SUP-002"),
+                data_scope=("quality.v1",),
+            ),
+        )
+        assert container.planning_service is not None
+        first = container.planning_service.understand(
+            request=request, trusted_context=context, trace_id=context.trace_id, max_steps=14
+        )
+        assert first.contract is None
+        assert first.clarification_context.values.root["supplier_ids"] == ["SUP-001"]
+        planning = container.planning_service
+
+        def resume() -> TaskUnderstandingOutcome:
+            return planning.understand(
+                request=request,
+                trusted_context=context,
+                trace_id=context.trace_id,
+                max_steps=14,
+                clarification_context=first.clarification_context,
+                clarification_response=ClarificationResponse(message=answer),
+            )
+
+        if "SUP-002" in answer:
+            with pytest.raises(TaskUnderstandingAuthorizationError):
+                resume()
+        else:
+            final = resume()
+            assert final.contract is not None
+            assert final.contract.constraints.supplier_ids == ("SUP-001",)
+            assert request.raw_input == "Analyze SUP-001 supplier quality and generate JSON."
+
+
+def test_unknown_model_metric_is_rejected_before_tool_execution(tmp_path: Path) -> None:
+    candidate = _understanding().model_copy(
+        update={"constraints": UnderstandingConstraints(max_steps=10, metrics=("profit",))}
+    )
+    provider = MockLLM(responses_by_node={"understand_task": [candidate]})
+    with build_test_container(tmp_path / "unsupported-metric", llm_provider=provider) as container:
+        execution = container.service.execute(COMMAND)
+        assert execution.task_result.final_status is TaskStatus.FAILED
+        assert not execution.step_executions

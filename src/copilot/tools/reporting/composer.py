@@ -89,7 +89,7 @@ class ReportComposer:
         )
         findings = self._findings(request, calculation_ids, database_ids, document_ids)
         risks = self._risks(request, calculation_ids)
-        recommendations = self._recommendations(policies)
+        recommendations = self._recommendations()
         limitations = self._limitations(request, policies)
         references = tuple(self._evidence_reference(item) for item in evidence)
         execution_trace = tuple(
@@ -280,7 +280,7 @@ class ReportComposer:
                     title="Controlled policy context",
                     statement=(
                         f"{len(document_ids)} controlled document Evidence item(s) provide "
-                        "the policy and deviation-process context for management review."
+                        "quoted policy context; statements are limited to the supplied excerpts."
                     ),
                     severity="INFO",
                     evidence_ids=document_ids,
@@ -307,30 +307,17 @@ class ReportComposer:
         )
 
     @staticmethod
-    def _recommendations(
-        policies: tuple[ReportPolicyReference, ...],
-    ) -> tuple[ReportRecommendation, ...]:
-        policy_ids = tuple(item.evidence_id for item in policies)
-        if not policy_ids:
-            return (
-                ReportRecommendation(
-                    action_id="action-review-deviations",
-                    action=(
-                        "Review recorded deviations and confirm the stated data and "
-                        "calculation limitations."
-                    ),
-                    basis="GENERAL_CONTROL",
-                ),
-            )
+    def _recommendations() -> tuple[ReportRecommendation, ...]:
+        # A document's presence establishes a citation, not an instruction to take
+        # a particular business action. General review advice carries no policy basis.
         return (
             ReportRecommendation(
                 action_id="action-review-deviations",
                 action=(
-                    "Review recorded deviations and document containment in accordance with "
-                    "the cited controlled quality policy."
+                    "Review recorded deviations and confirm the stated data and "
+                    "calculation limitations."
                 ),
-                basis="POLICY_EVIDENCE",
-                evidence_ids=policy_ids,
+                basis="GENERAL_CONTROL",
             ),
         )
 
@@ -357,8 +344,9 @@ class ReportComposer:
             ReportLimitation(
                 code="QUARTER_COMPARISON_NOT_AVAILABLE",
                 statement=(
-                    "Q1 versus Q2 comparison is not available because the authorized database "
-                    "request and quality_metrics.v1 calculation cover Q2 only."
+                    "Quarter-over-quarter comparison is not available because the authorized "
+                    f"database request and quality_metrics.v1 calculation cover "
+                    f"Q{request.scope.quarter} {request.scope.year} only."
                 ),
             ),
             ReportLimitation(

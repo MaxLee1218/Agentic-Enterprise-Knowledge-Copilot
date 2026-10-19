@@ -139,6 +139,13 @@ _SUPPLIER_POLICY_ANCHOR = re.compile(
     re.IGNORECASE,
 )
 
+_SUPPLIER_REPORT_METRICS = (
+    "defect_count",
+    "inspected_count",
+    "defect_rate",
+    "period_over_period_trend",
+)
+
 _SUPPLIER_DATA_SECTIONS = (
     "scope",
     "supplier_quality_data",
@@ -334,6 +341,21 @@ class LLMPlanningService:
             quarter = resolved_quarter
         elif prior_year is not None and prior_quarter is not None:
             year, quarter = prior_year, prior_quarter
+        # A time answer fills a missing field; it cannot redefine the request scope.
+        # Resolve the immutable request independently of the model and auth defaults.
+        original_supplier = resolve_suppliers(
+            request.raw_input, trusted_context.authorized_supplier_ids
+        )
+        if _RESOLUTION_POLICY.is_denial(original_supplier):
+            raise TaskUnderstandingAuthorizationError(
+                "Original supplier exceeds the current authorized scope", field_name="supplier_ids"
+            )
+        original_value = original_supplier.canonical_value
+        original_ids = (
+            tuple(str(item) for item in original_value)
+            if isinstance(original_value, list)
+            else trusted_context.authorized_supplier_ids
+        )
         supplier_resolution = resolve_suppliers(
             resolution_text,
             trusted_context.authorized_supplier_ids,
@@ -359,6 +381,14 @@ class LLMPlanningService:
                 "LLM supplier entities exceed the trusted authorized request scope",
                 field_name="supplier_ids",
             )
+        if clarification_response is not None:
+            latest_value = supplier_resolution.canonical_value
+            if isinstance(latest_value, list) and set(latest_value) != set(original_ids):
+                raise TaskUnderstandingAuthorizationError(
+                    "Clarification cannot change the original supplier scope",
+                    field_name="supplier_ids",
+                )
+            supplier_resolution = original_supplier
         supplier_ids: tuple[str, ...] = ()
         if _RESOLUTION_POLICY.accepts(supplier_resolution):
             supplier_value = supplier_resolution.canonical_value
@@ -369,6 +399,7 @@ class LLMPlanningService:
             missing.append("An explicit year and quarter are required")
         if missing:
             context_values = dict(previous_values)
+            context_values["supplier_ids"] = list(original_ids)
             if year is not None and quarter is not None:
                 context_values.update(
                     year=year,
@@ -420,6 +451,8 @@ class LLMPlanningService:
             raise LLMSchemaValidationError(
                 "LLM deliverable conflicts with the validated interface request"
             )
+        if not set(candidate.constraints.metrics).issubset(_SUPPLIER_REPORT_METRICS):
+            raise LLMSchemaValidationError("Unsupported Supplier Quality report metric")
         start_date, end_date = _quarter_dates(year, quarter)
         supplier_ids = supplier_ids or trusted_context.authorized_supplier_ids
         updated_constraints = TaskConstraints(
@@ -430,11 +463,12 @@ class LLMPlanningService:
             supplier_ids=supplier_ids,
             tenant_id=trusted_context.tenant_id,
             data_scope=trusted_context.data_scope,
-            metrics=candidate.constraints.metrics,
+            metrics=_SUPPLIER_REPORT_METRICS,
             deadline_at=trusted_context.deadline_at,
         )
         policy_comparison = bool(candidate.include_policy_comparison) or bool(
-            _SUPPLIER_POLICY_ANCHOR.search(resolution_text)
+            _SUPPLIER_POLICY_ANCHOR.search(request.raw_input)
+            or _SUPPLIER_POLICY_ANCHOR.search(resolution_text)
         )
         required_capabilities = (
             tuple(CapabilityName)
@@ -478,7 +512,9 @@ class LLMPlanningService:
         return TaskUnderstandingOutcome(
             contract=contract,
             clarification_context=ClarificationContext(
-                values=JsonObject({"year": year, "quarter": quarter}),
+                values=JsonObject(
+                    {"year": year, "quarter": quarter, "supplier_ids": list(supplier_ids)}
+                ),
                 resolutions=(period_resolution, supplier_resolution),
             ),
         )
