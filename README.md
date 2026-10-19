@@ -410,3 +410,9 @@ system outside a controlled local environment.
 
 Copyright © 2026 MaxLee1218. All rights reserved. No open-source license is granted; see
 [LICENSE](LICENSE) for the repository terms.
+
+### Supplier Quality controlled pilot results
+
+The real-model ten-scenario pilot is recorded in [the result report](docs/supplier-quality-pilot-result.md):
+4/9 qualified first reports, 175/181 numeric checks and 1/1 unauthorized-scope rejection.
+Failures and repeats are retained; this synthetic pilot does not establish production success or measured human-time savings.

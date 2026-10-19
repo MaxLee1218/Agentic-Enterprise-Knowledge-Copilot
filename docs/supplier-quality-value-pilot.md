@@ -5,7 +5,8 @@
 费用上限为 €10。人工工作量采用显式假设估算，系统表现采用实际运行记录。
 
 方案版本为 `supplier-quality-value-pilot.v1`。离线 P01 已实现并通过独立验收；
-真实模型 P01 已完成，实测见 [P01 记录](supplier-quality-pilot-p01-result.md)；其余场景按本文口径继续实施。下文数值答案来自设计用合成数据，时间来自工作分解假设，
+真实模型 P01 及十场景试跑已完成，实测见 [P01 记录](supplier-quality-pilot-p01-result.md)和
+[完整结果](supplier-quality-pilot-result.md)；首轮合格报告 4/9，失败项与复测均保留。下文数值答案来自设计用合成数据，时间来自工作分解假设，
 均不是实际企业效果或真人操作计时结果。
 
 ## GitHub 实施跟踪
