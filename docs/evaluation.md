@@ -188,7 +188,8 @@ Do not use an LLM judge for deterministic numeric, citation, lineage, or safety 
 The [Supplier Quality value pilot plan](supplier-quality-value-pilot.md) defines ten proposed
 scenarios, independent numeric oracles, delivery acceptance, a €10 live-model API budget, and
 explicitly assumed manual effort ranges. It is an experiment plan, not an executed benchmark.
-The existing CLI remains mock-only; live evaluation and budget enforcement require implementation.
+The existing `run_eval.py` CLI remains mock-only. The separate pilot entry supports explicit
+budgeted live P01 calibration as described below.
 Manual effort estimates do not establish measured time savings.
 
 ### Offline P01 with an independent oracle
@@ -235,4 +236,71 @@ Exit codes: `0` qualified P01; `1` failed acceptance or workflow interruption; `
 `3` captured harness failure. The evidence-support checks cover enumerated structured numeric
 facts and their lineage, not open-ended semantic report correctness. This is an offline P01 pilot,
 not a ten-case benchmark, live-model measurement, provider cost measurement, or human-time study.
-Model cost remains unavailable. Live usage/budget enforcement is tracked separately in Issue #3.
+Offline model cost remains unavailable. Live calibration is described below.
+
+### Budgeted live P01 calibration
+
+Issue #3 adds an explicit live mode to the same Task Service → captured execution → independent
+oracle path. `run_eval.py` remains mock-only. Configure the existing supported DeepSeek adapter
+with `LLM_PROVIDER`, `LLM_MODEL`, `LLM_BASE_URL`, and `LLM_API_KEY` in the approved environment or
+local ignored `.env`. Secrets are never CLI arguments or report fields. For the date-limited
+pricing card checked on 2026-10-19:
+
+```bash
+LLM_PROVIDER=deepseek LLM_MODEL=deepseek-flash LLM_MAX_OUTPUT_TOKENS=8192 \
+  python -m evaluation.supplier_quality_pilot --mode live \
+  --pricing evaluation/configs/supplier-quality-pilot/pricing-2026-10-19.json \
+  --budget evaluation/configs/supplier-quality-pilot/budget-v1.json
+```
+
+Explicit pricing and budget files are mandatory. The endpoint/model must match settings, all
+prices must be positive, pricing dates must be effective, and output must fit the pinned bound.
+The checked-in card expires at 2026-10-20 00:00 UTC; it is historical evidence after expiry.
+Do not extend its date without rechecking official pricing, token semantics, conversion and fees.
+The configured legacy `deepseek-chat` default is not priced by this card and is refused.
+
+The pricing source is [DeepSeek Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/).
+The card uses published peak rates as ceilings for both peak and off-peak calls. The
+[Chat Completions contract](https://api-docs.deepseek.com/api/create-chat-completion/)
+defines the context bound, generated-token limit, cache counts and completion/reasoning usage.
+Reservation charges the entire published 1M context window (conservatively 1,048,576 input
+tokens) at cache-miss rates, plus the configured output maximum, including reasoning. This avoids
+relying on an estimated local tokenizer. Request bytes are also bounded; extra parallel choices,
+streaming and provider tools are refused. EUR amounts use a declared conservative conversion
+ceiling and a 25% tax/fee contingency. The recorded
+[ECB reference for 2026-10-16](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.eu.html)
+is 1 EUR = 1.1253 USD; the operational ceiling of 1.25 EUR/USD deliberately adds headroom.
+The ceiling and contingency are budgeting assumptions, not invoice tax or
+currency-market measurements. USD fees calculated from actual usage at ceiling rates can exceed
+an off-peak invoice; reports label them as ceilings, not an observed invoice charge.
+
+`evaluation/reports/supplier-quality-pilot/budget.sqlite3` is the one experiment ledger for this
+checkout, independent of output directories. The CLI has no ledger-reset/path option. Back up and
+retain it across restarts and case changes; deleting it or using another checkout loses spending
+history and is not a new authorization. The runner locks the whole ledger for one process at a
+time. Each HTTP attempt is committed before dispatch; lower transport retries and redirects are
+disabled. Provider retries, structured-output repair and replanning reuse this guard. Reconciled
+fees plus unresolved reservations plus the next maximum must fit €8 of the €10 authorization;
+all calibration runs combined must also fit €1. €2 stays untouched. This does not change Task,
+Queue, Worker, checkpoint, lease or retry ownership, or grant business approval.
+
+Raw provider usage is reconciled before structured-output parsing, so malformed model JSON still
+costs money. Cache hit/miss totals must agree; completion includes reasoning without double
+charging. Missing usage, inconsistent totals/model/bounds, unreadable responses and transport
+interruptions retain the entire reservation and permanently stop new paid calls. A reservation
+left by a killed process also blocks restart. Unknown cost is `null`, never zero. Do not clear
+these records automatically; reconcile against provider billing with a separately reviewed ledger
+migration. Changes to ledger pricing/policy are refused rather than resetting prior spending.
+
+Live output adds `spending.json` and an embedded versioned ledger snapshot to `report.json`.
+`run_id` identifies this invocation's attempts; the snapshot also includes prior runs.
+`model_cost` is this run's usage-based USD ceiling only when all its attempts reconcile;
+`incurred_eur_upper` and `unresolved_eur` describe the whole experiment. Task/Artifact IDs,
+30 independent numeric assertions, hashes, observed latency, failures and waiting states remain
+visible. No waiting business approval is automatically resolved.
+
+Exit `4` means live preflight/budget/billing stop. Preflight refusals produce `blocked.json` with
+zero paid attempts in that invocation; post-dispatch stops produce the regular failed/partial
+report and retained ledger reservations. Other existing exit codes remain unchanged. An invalid
+file or output path exits `2`. CI exercises fake HTTP providers and never enables paid mode.
+One calibration is not the completed ten-scenario experiment or measured human-time savings.

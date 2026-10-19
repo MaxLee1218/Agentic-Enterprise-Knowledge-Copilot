@@ -8,6 +8,7 @@ from pydantic import Field, computed_field, model_validator
 
 from copilot.contracts import TaskStatus
 from evaluation.contracts import EvaluationModel
+from evaluation.supplier_quality_pilot.budget import SpendingSnapshot
 
 
 class SourceRow(EvaluationModel):
@@ -70,15 +71,26 @@ class PilotAssertion(EvaluationModel):
     actual: str | None = None
 
 
+OFFLINE_LIMITATIONS = (
+    "Offline model with a real read-only SQLite query, analytics and JSON renderer.",
+    "P01 pilot only; this is not the completed ten-scenario or a held-out benchmark.",
+    "No live-model quality, provider cost or observed human-time savings measured.",
+    "Evidence support covers the enumerated structured numeric facts only.",
+)
+
+
 class PilotRun(EvaluationModel):
     """Auditable P01 result; offline model cost is unknown rather than mock zero."""
 
     schema_version: Literal["supplier-quality-pilot-run.v1"] = "supplier-quality-pilot-run.v1"
     case_id: Literal["P01"] = "P01"
-    mode: Literal["offline"] = "offline"
-    provider: Literal["mock"] = "mock"
+    mode: Literal["offline", "live"] = "offline"
+    provider: Literal["mock", "deepseek"] = "mock"
     model: str
-    model_cost: None = None
+    model_cost: Decimal | None = None
+    model_cost_currency: Literal["USD"] | None = None
+    run_id: str | None = None
+    spending: SpendingSnapshot | None = None
     started_at: datetime
     latency_ms: int = Field(ge=0)
     task_id: str | None
@@ -94,12 +106,7 @@ class PilotRun(EvaluationModel):
     artifact_paths: tuple[str, ...]
     assertions: tuple[PilotAssertion, ...]
     error_code: str | None = None
-    limitations: tuple[str, ...] = (
-        "Offline model with a real read-only SQLite query, analytics and JSON renderer.",
-        "P01 pilot only; this is not the completed ten-scenario or a held-out benchmark.",
-        "No live-model quality, provider cost or observed human-time savings measured.",
-        "Evidence support covers the enumerated structured numeric facts only.",
-    )
+    limitations: tuple[str, ...] = OFFLINE_LIMITATIONS
 
     @computed_field  # type: ignore[prop-decorator]
     @property

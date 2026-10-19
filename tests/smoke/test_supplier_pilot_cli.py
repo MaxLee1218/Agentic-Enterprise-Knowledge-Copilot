@@ -49,3 +49,24 @@ def test_cli_rejects_overwrite_and_invalid_source_without_creating_a_report(tmp_
     assert preserved.read_text() == "original"
     assert not (tmp_path / "report.json").exists()
     assert not (tmp_path / "output").exists()
+
+
+def test_live_cli_requires_explicit_pricing_and_budget(tmp_path: Path) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "evaluation.supplier_quality_pilot",
+            "--mode",
+            "live",
+            "--output-dir",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 4
+    blocked = json.loads((tmp_path / "blocked.json").read_text())
+    assert blocked["reason"] == "PRICING_AND_BUDGET_REQUIRED"
+    assert blocked["paid_attempts"] == 0

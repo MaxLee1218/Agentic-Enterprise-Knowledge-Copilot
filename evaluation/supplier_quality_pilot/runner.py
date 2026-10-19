@@ -7,9 +7,10 @@ import subprocess
 import tempfile
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from time import perf_counter
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 from pydantic import BaseModel, TypeAdapter
 from pydantic_settings import PydanticBaseSettingsSource
@@ -27,6 +28,7 @@ from copilot.services.llm import (
     LLMCallContext,
     LLMGenerationOptions,
     LLMMessage,
+    LLMProvider,
     StructuredLLMResult,
 )
 from copilot.services.task_intake import (
@@ -38,13 +40,16 @@ from copilot.services.task_intake import (
 from copilot.services.workflows.models import WorkflowExecution
 from evaluation.dataset_loader import canonical_hash
 from evaluation.supplier_quality_pilot.checker import evaluate_p01
-from evaluation.supplier_quality_pilot.contracts import PilotRun, PilotSnapshot
+from evaluation.supplier_quality_pilot.contracts import OFFLINE_LIMITATIONS, PilotRun, PilotSnapshot
 from evaluation.supplier_quality_pilot.source import (
     DEFAULT_SOURCE,
     P01_REQUEST,
     P01_SUPPLIERS,
     seed_source,
 )
+
+if TYPE_CHECKING:
+    from evaluation.supplier_quality_pilot.live import LiveModelSession
 
 LOGGER = logging.getLogger(__name__)
 TModel = TypeVar("TModel", bound=BaseModel)
@@ -65,11 +70,11 @@ class _OfflineSettings(Settings):
         return (init_settings,)
 
 
-class _RecordingOfflineModel:
+class _RecordingModel:
     """Capture synthetic inputs to make oracle isolation independently inspectable."""
 
-    def __init__(self) -> None:
-        self._delegate = OfflineMockLLM()
+    def __init__(self, delegate: LLMProvider) -> None:
+        self._delegate = delegate
         self.messages: list[tuple[LLMMessage, ...]] = []
 
     def generate_structured(
@@ -89,15 +94,20 @@ class _RecordingOfflineModel:
         )
 
 
-def run_p01(output_directory: Path, *, source_path: Path = DEFAULT_SOURCE) -> PilotRun:
-    """Run one offline task into an empty output directory; never overwrite an earlier run."""
+def run_p01(
+    output_directory: Path,
+    *,
+    source_path: Path = DEFAULT_SOURCE,
+    live: "LiveModelSession | None" = None,
+) -> PilotRun:
+    """Run a governed task into an empty directory; live execution requires a session."""
     output_directory = output_directory.resolve()
     if output_directory.exists() and any(output_directory.iterdir()):
         raise ValueError("Pilot output directory must be empty")
     snapshot = PilotSnapshot.model_validate_json(source_path.read_bytes())
     output_directory.mkdir(parents=True, exist_ok=True)
     started_at, timer = datetime.now(UTC), perf_counter()
-    model = _RecordingOfflineModel()
+    model = _RecordingModel(live.provider if live else OfflineMockLLM())
     execution: WorkflowExecution | None = None
     task_id = None
     task_status = None
@@ -111,7 +121,9 @@ def run_p01(output_directory: Path, *, source_path: Path = DEFAULT_SOURCE) -> Pi
             app_env="test",
             database_url=database_url,
             database_provider="sqlalchemy",
-            llm_provider="mock",
+            llm_provider="mock",  # The explicit injected provider owns live transport credentials.
+            llm_max_output_tokens=live.settings.llm_max_output_tokens if live else 4096,
+            llm_temperature=live.settings.llm_temperature if live else 0,
             knowledge_provider="mock",
             artifact_dir=output_directory / "artifacts",
             checkpoint_database_path=root / "checkpoints.db",
@@ -162,14 +174,41 @@ def run_p01(output_directory: Path, *, source_path: Path = DEFAULT_SOURCE) -> Pi
                 # Safe harness failure, recorded separately from a failed business Task.
                 error_code = type(exc).__name__
     checks = evaluate_p01(snapshot, execution, artifact_paths)
+    spending = live.ledger.snapshot() if live else None
+    attempts = (
+        tuple(a for a in spending.attempts if a.run_id == live.run_id)
+        if (live and spending)
+        else ()
+    )
+    if spending and spending.stopped_reason:
+        error_code = spending.stopped_reason
+    model_cost = (
+        sum((a.usd_cost for a in attempts if a.usd_cost is not None), Decimal(0))
+        if (attempts and all(a.status == "reconciled" for a in attempts))
+        else None
+    )
+    model_name = live.settings.llm_model if live else "offline-governed-domains-v2"
     config = {
         "case_id": "P01",
-        "mode": "offline",
+        "mode": "live" if live else "offline",
         "database": "sqlite-read-only",
         "request": P01_REQUEST,
         "supplier_ids": P01_SUPPLIERS,
         "tenant_id": snapshot.tenant_id,
-        "model": "offline-governed-domains-v2",
+        "model": model_name,
+        **(
+            {
+                "pricing": live.ledger.pricing.model_dump(mode="json"),
+                "budget": live.ledger.policy.model_dump(mode="json"),
+                "max_output_tokens": live.settings.llm_max_output_tokens,
+                "temperature": live.settings.llm_temperature,
+                "provider_retries": live.settings.llm_max_retries,
+                "transport_retries": 0,
+                "ledger_path": str(live.ledger.path.resolve()),
+            }
+            if live
+            else {}
+        ),
     }
     run = PilotRun(
         started_at=started_at,
@@ -177,7 +216,21 @@ def run_p01(output_directory: Path, *, source_path: Path = DEFAULT_SOURCE) -> Pi
         task_id=task_id,
         task_status=task_status,
         error_code=error_code,
-        model="offline-governed-domains-v2",
+        model=model_name,
+        mode="live" if live else "offline",
+        provider="deepseek" if live else "mock",
+        model_cost=model_cost,
+        model_cost_currency="USD" if model_cost is not None else None,
+        run_id=live.run_id if live else None,
+        spending=spending,
+        limitations=(
+            "One synthetic P01 calibration; not a held-out or ten-case benchmark.",
+            "USD cost calculated from real provider usage at pinned ceiling rates; not an invoice.",
+            "EUR budget uses explicit FX and tax contingencies; human time is unmeasured.",
+            "Independent support covers the enumerated structured numeric facts only.",
+        )
+        if live
+        else OFFLINE_LIMITATIONS,
         code_revision=_git("rev-parse", "HEAD"),
         code_hash=_code_hash(),
         git_dirty=bool(_git("status", "--porcelain")),
@@ -197,6 +250,8 @@ def run_p01(output_directory: Path, *, source_path: Path = DEFAULT_SOURCE) -> Pi
             indent=2,
         )
     )
+    if spending:
+        (output_directory / "spending.json").write_text(spending.model_dump_json(indent=2))
     (output_directory / "report.json").write_text(run.model_dump_json(indent=2))
     (output_directory / "report.md").write_text(_markdown(run))
     LOGGER.info(
@@ -234,13 +289,15 @@ def _code_hash() -> str:
 
 def _markdown(run: PilotRun) -> str:
     lines = [
-        "# Offline Supplier Quality P01 evaluation",
+        f"# {run.mode.title()} Supplier Quality P01 evaluation",
         "",
         f"Qualified delivery: **{run.qualified_delivery}**",
         f"Numeric assertions: **{run.numeric_passed}/{run.numeric_total}**",
         "",
         f"Task: `{run.task_id}`; status: `{run.task_status}`; error: `{run.error_code}`.",
-        f"Provider/model: `{run.provider}` / `{run.model}`; model cost: unavailable.",
+        f"Provider/model: `{run.provider}` / `{run.model}`; "
+        "usage-based USD cost ceiling: "
+        f"{run.model_cost if run.model_cost is not None else 'unavailable'}.",
         f"Started UTC: {run.started_at.isoformat()}; observed latency: {run.latency_ms} ms.",
         f"Code: `{run.code_revision}`; dirty: `{run.git_dirty}`.",
         f"Code hash: `{run.code_hash}`; source: `{run.source_hash}`.",

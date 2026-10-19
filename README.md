@@ -253,6 +253,8 @@ python -m evaluation.supplier_quality_pilot
 This offline P01 pilot uses a real read-only SQLite query, analytics and JSON report generation.
 It writes the report, evidence and 30 numeric checks to a fresh local run directory. See
 [P01 evaluation](docs/evaluation.md#offline-p01-with-an-independent-oracle) for reproduction and limits.
+An [explicit budgeted live P01 mode](docs/evaluation.md#budgeted-live-p01-calibration) adds
+per-attempt usage accounting and a persistent €10 experiment budget with a €1 calibration cap.
 
 ### Run the frontend
 
