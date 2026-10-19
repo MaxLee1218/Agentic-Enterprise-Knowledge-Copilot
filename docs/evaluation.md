@@ -278,7 +278,9 @@ an off-peak invoice; reports label them as ceilings, not an observed invoice cha
 checkout, independent of output directories. The CLI has no ledger-reset/path option. Back up and
 retain it across restarts and case changes; deleting it or using another checkout loses spending
 history and is not a new authorization. The runner locks the whole ledger for one process at a
-time. Each HTTP attempt is committed before dispatch; lower transport retries and redirects are
+time. An evaluation-only SQL migration initializes schema version 1; unversioned populated or
+unknown schemas are refused without deleting history. This schema is separate from business
+and Task migrations. Each HTTP attempt is committed before dispatch; lower transport retries and redirects are
 disabled. Provider retries, structured-output repair and replanning reuse this guard. Reconciled
 fees plus unresolved reservations plus the next maximum must fit €8 of the €10 authorization;
 all calibration runs combined must also fit €1. €2 stays untouched. This does not change Task,

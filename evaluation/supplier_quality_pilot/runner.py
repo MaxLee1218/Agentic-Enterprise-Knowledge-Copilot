@@ -281,7 +281,8 @@ def _git(*arguments: str) -> str | None:
 def _code_hash() -> str:
     digest = hashlib.sha256()
     for directory in ("src", "evaluation"):
-        for path in sorted((PROJECT_ROOT / directory).rglob("*.py")):
+        paths = (p for p in (PROJECT_ROOT / directory).rglob("*") if p.suffix in {".py", ".sql"})
+        for path in sorted(paths):
             digest.update(path.relative_to(PROJECT_ROOT).as_posix().encode())
             digest.update(path.read_bytes())
     return f"sha256:{digest.hexdigest()}"

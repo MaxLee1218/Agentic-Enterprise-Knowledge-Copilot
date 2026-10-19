@@ -390,3 +390,18 @@ def test_invalid_bounds_and_total_budget_block_before_dispatch(tmp_path: Path, r
                 },
             )
         assert calls == []
+
+
+def test_unknown_ledger_schema_is_refused_without_resetting_records(tmp_path: Path) -> None:
+    import sqlite3
+
+    pricing = card()
+    path = tmp_path / "ledger.db"
+    with BudgetLedger(path, pricing, BudgetPolicy()):
+        pass
+    with sqlite3.connect(path) as database:
+        database.execute("PRAGMA user_version=99")
+    with pytest.raises(BudgetStopped, match="LEDGER_SCHEMA_UNSUPPORTED"):
+        BudgetLedger(path, pricing, BudgetPolicy())
+    with sqlite3.connect(path) as database:
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 99

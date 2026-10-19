@@ -139,6 +139,7 @@ class SpendingSnapshot(EvaluationModel):
 
     schema_version: Literal["pilot-spending.v1"] = "pilot-spending.v1"
     experiment_id: str
+    ledger_schema_version: Literal[1] = 1
     pricing: PricingCard
     policy: BudgetPolicy
     stopped_reason: str | None
@@ -161,8 +162,11 @@ class BudgetLedger:
             raise BudgetStopped("LEDGER_BUSY") from exc
         self._db = sqlite3.connect(path)
         self._db.execute("PRAGMA synchronous=FULL")
-        self._db.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT)")
-        self._db.execute("CREATE TABLE IF NOT EXISTS attempts (id TEXT PRIMARY KEY, record TEXT)")
+        try:
+            self._migrate()
+        except Exception:
+            self.close()
+            raise
         digest = canonical_hash(
             {"pricing": pricing.model_dump(mode="json"), "policy": policy.model_dump(mode="json")}
         )
@@ -175,6 +179,16 @@ class BudgetLedger:
         # A process death leaves a reservation. No later process may assume it was unbilled.
         if any(a.status != "reconciled" for a in self.snapshot().attempts):
             self.stop("UNRESOLVED_PRIOR_ATTEMPT")
+
+    def _migrate(self) -> None:
+        version = self._db.execute("PRAGMA user_version").fetchone()[0]
+        if version == 1:
+            return
+        existing = self._db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        if version != 0 or existing:
+            raise BudgetStopped("LEDGER_SCHEMA_UNSUPPORTED")
+        migration = Path(__file__).parent / "migrations/001_spending.sql"
+        self._db.executescript(migration.read_text())
 
     def _get(self, key: str) -> str | None:
         row = self._db.execute("SELECT value FROM metadata WHERE key=?", (key,)).fetchone()
