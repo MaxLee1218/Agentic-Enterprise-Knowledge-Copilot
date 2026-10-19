@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, computed_field, model_validator
@@ -71,6 +72,22 @@ class PilotAssertion(EvaluationModel):
     actual: str | None = None
 
 
+class ClarificationObservation(EvaluationModel):
+    """Measured scripted suspension/resume facts; never an approval or runtime authority."""
+
+    version: Literal["pilot-clarification-observation.v1"] = "pilot-clarification-observation.v1"
+    scripted: Literal[True] = True
+    initial_task_id: str
+    initial_status: TaskStatus
+    tools_before_answer: int = Field(ge=0)
+    answer: str
+    answer_applied: bool = False
+    final_task_id: str | None = None
+    first_disposition: str | None = None
+    resume_dispatch_id: str | None = None
+    resume_disposition: str | None = None
+
+
 OFFLINE_LIMITATIONS = (
     "Offline model with a real read-only SQLite query, analytics and JSON renderer.",
     "P01 pilot only; this is not the completed ten-scenario or a held-out benchmark.",
@@ -82,8 +99,15 @@ OFFLINE_LIMITATIONS = (
 class PilotRun(EvaluationModel):
     """Auditable P01 result; offline model cost is unknown rather than mock zero."""
 
-    schema_version: Literal["supplier-quality-pilot-run.v1"] = "supplier-quality-pilot-run.v1"
-    case_id: Literal["P01"] = "P01"
+    schema_version: Literal["supplier-quality-pilot-run.v1", "supplier-quality-pilot-run.v2"] = (
+        "supplier-quality-pilot-run.v2"
+    )
+    case_id: str = Field(default="P01", pattern=r"^P(0[1-9]|10)$")
+    expected_outcome: Literal["report", "denial"] = "report"
+    repeat_index: int = Field(default=0, ge=0, le=1)
+    case_status: Literal["executed", "unrun"] = "executed"
+    policy_hash: str | None = None
+    interaction: ClarificationObservation | None = None
     mode: Literal["offline", "live"] = "offline"
     provider: Literal["mock", "deepseek"] = "mock"
     model: str
@@ -103,6 +127,8 @@ class PilotRun(EvaluationModel):
     source_version: str
     prompt_versions: tuple[str, ...]
     executed_tools: tuple[str, ...]
+    artifact_ids: tuple[str, ...] = ()
+    artifact_checksums: dict[str, str] = Field(default_factory=dict)
     artifact_paths: tuple[str, ...]
     assertions: tuple[PilotAssertion, ...]
     error_code: str | None = None
@@ -111,7 +137,12 @@ class PilotRun(EvaluationModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def qualified_delivery(self) -> bool:
-        return bool(self.assertions) and all(item.passed for item in self.assertions)
+        return (
+            self.expected_outcome == "report"
+            and self.case_status == "executed"
+            and bool(self.assertions)
+            and all(item.passed for item in self.assertions)
+        )
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -122,3 +153,15 @@ class PilotRun(EvaluationModel):
     @property
     def numeric_passed(self) -> int:
         return sum(item.category == "numeric" and item.passed for item in self.assertions)
+
+
+def read_pilot_run(path: Path) -> PilotRun:
+    """Load a published record and verify, rather than trust, serialized computed scores."""
+    import json
+
+    data = json.loads(path.read_bytes())
+    computed = {name: data.pop(name) for name in PilotRun.model_computed_fields if name in data}
+    run = PilotRun.model_validate(data)
+    if any(getattr(run, name) != value for name, value in computed.items()):
+        raise ValueError("Published pilot scores disagree with their assertion records")
+    return run

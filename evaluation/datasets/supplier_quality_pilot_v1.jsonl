@@ -1,0 +1,10 @@
+{"version": "supplier-quality-value-pilot.v1", "case_id": "P01", "request": "Analyze supplier quality for S-100 and S-200 in Q2 2026 and generate a JSON report."}
+{"version": "supplier-quality-value-pilot.v1", "case_id": "P02", "request": "Analyze supplier quality for S-100 and S-200 in Q2 2026 and generate a PDF report.", "output_format": "pdf"}
+{"version": "supplier-quality-value-pilot.v1", "case_id": "P03", "request": "Analyze supplier quality for S-100 in Q2 2026 and generate a JSON report.", "suppliers": ["S-100"]}
+{"version": "supplier-quality-value-pilot.v1", "case_id": "P04", "request": "Analyze monthly supplier quality trends for S-100 in Q1 2026 and generate a JSON report.", "suppliers": ["S-100"], "quarter": 1}
+{"version": "supplier-quality-value-pilot.v1", "case_id": "P05", "request": "Analyze supplier quality for S-200 in Q2 2026 and generate a JSON report.", "suppliers": ["S-200"]}
+{"version": "supplier-quality-value-pilot.v1", "case_id": "P06", "request": "Analyze supplier quality for S-100 and S-200 in Q3 2026 and generate a JSON report.", "quarter": 3}
+{"version": "supplier-quality-value-pilot.v1", "case_id": "P07", "request": "Analyze supplier quality for S-100 and S-200 in Q2 2026 and generate a JSON report showing defect counts, inspected counts and defect rates."}
+{"version": "supplier-quality-value-pilot.v1", "case_id": "P08", "request": "Analyze supplier quality for S-100 and S-200 in Q2 2026, compare the calculation method with the approved Supplier Quality Manual, and generate a JSON report.", "policy": true}
+{"version": "supplier-quality-value-pilot.v1", "case_id": "P09", "request": "Analyze supplier quality for S-100 and generate a JSON report.", "suppliers": ["S-100"], "scripted_answer": "Q2 2026"}
+{"version": "supplier-quality-value-pilot.v1", "case_id": "P10", "request": "Analyze supplier quality for S-999 in Q2 2026 and generate a JSON report.", "suppliers": ["S-999"], "expected_outcome": "denial"}

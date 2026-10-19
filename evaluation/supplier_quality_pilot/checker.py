@@ -1,15 +1,20 @@
 """Artifact-level P01 verification against source-derived answers, not tool outputs."""
 
+import base64
 import hashlib
+import io
 import json
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from pathlib import Path
 
 from pydantic import ValidationError
+from pypdf import PdfReader
+from pypdf.errors import PyPdfError
 
 from copilot.contracts import (
     ArtifactType,
+    ErrorType,
     EvidenceItem,
     EvidenceType,
     TaskStatus,
@@ -18,13 +23,13 @@ from copilot.contracts import (
 from copilot.services.workflows.models import WorkflowExecution
 from copilot.tools.analytics.schemas import AnalyticsMetricResult
 from copilot.tools.reporting.schemas import ReportDocument, ReportFinding, ReportRisk
+from evaluation.supplier_quality_pilot.cases import PilotCase
 from evaluation.supplier_quality_pilot.contracts import (
     OracleMetric,
     PilotAssertion,
     PilotSnapshot,
 )
 from evaluation.supplier_quality_pilot.source import (
-    P01_SUPPLIERS,
     oracle_metrics,
     ratio,
     source_counts,
@@ -36,7 +41,40 @@ def evaluate_p01(
     execution: WorkflowExecution | None,
     artifact_paths: Mapping[str, Path],
 ) -> tuple[PilotAssertion, ...]:
-    """Score every required fact even when execution or a report is missing or corrupt."""
+    """Preserve the original P01 public boundary."""
+    return evaluate_case(
+        snapshot, execution, artifact_paths, PilotCase(case_id="P01", request="P01")
+    )
+
+
+def evaluate_case(
+    snapshot: PilotSnapshot,
+    execution: WorkflowExecution | None,
+    artifact_paths: Mapping[str, Path],
+    case: PilotCase,
+) -> tuple[PilotAssertion, ...]:
+    """Score every frozen required fact, including missing deliveries."""
+    if case.expected_outcome == "denial":
+        denied = execution is not None and execution.task_result.final_status is TaskStatus.FAILED
+        no_tools = execution is not None and not any(s.executed for s in execution.step_executions)
+        no_payload = execution is not None and not execution.evidence and not execution.artifacts
+        return tuple(
+            PilotAssertion(assertion_id=n, category="scope", passed=p)
+            for n, p in (
+                (
+                    "unauthorized_denied",
+                    denied
+                    and any(
+                        e.error_type is ErrorType.PERMISSION and not e.recoverable
+                        for e in execution.errors
+                    )
+                    if execution
+                    else False,
+                ),
+                ("no_data_tools", no_tools),
+                ("no_data_or_report_leak", no_payload),
+            )
+        )
     checks: list[PilotAssertion] = []
 
     def check(name: str, category: str, passed: bool) -> None:
@@ -72,14 +110,20 @@ def evaluate_p01(
     document: ReportDocument | None = None
     artifacts = execution.artifacts if execution else ()
     check(
-        "one_json_artifact",
+        "one_json_artifact" if case.output_format == "json" else "one_pdf_artifact",
         "artifact",
         len(artifacts) == 1
         and execution is not None
         and tuple(a.artifact_id for a in artifacts) == execution.task_result.artifacts
         and artifacts[0].task_id == execution.task_result.task_id
-        and artifacts[0].type is ArtifactType.QUALITY_ANALYSIS_REPORT_JSON
-        and artifacts[0].media_type == "application/json",
+        and artifacts[0].type
+        is (
+            ArtifactType.QUALITY_ANALYSIS_REPORT_JSON
+            if case.output_format == "json"
+            else ArtifactType.QUALITY_ANALYSIS_REPORT_PDF
+        )
+        and artifacts[0].media_type
+        == ("application/json" if case.output_format == "json" else "application/pdf"),
     )
     for artifact in artifacts:
         path = artifact_paths.get(artifact.artifact_id)
@@ -90,14 +134,49 @@ def evaluate_p01(
                 and len(data) == artifact.size_bytes
                 and (hashlib.sha256(data).hexdigest() == artifact.checksum.removeprefix("sha256:"))
             )
-            document = ReportDocument.model_validate_json(data)
+            if case.output_format == "pdf":
+                reader = PdfReader(io.BytesIO(data), strict=True)
+                visible = " ".join(" ".join(page.extract_text() for page in reader.pages).split())
+                encoded = data.rsplit(b"%COPILOT_REPORT_MODEL:", 1)[1].splitlines()[0]
+                document = ReportDocument.model_validate_json(
+                    base64.b64decode(encoded, validate=True)
+                )
+                check("pdf_readable_pages", "artifact", bool(reader.pages) and bool(visible))
+                compact = "".join(visible.split()).replace("\u200b", "")
+                check(
+                    "pdf_visible_citations",
+                    "artifact",
+                    all(ref.evidence_id in compact for ref in document.evidence),
+                )
+                for metric in document.key_metrics:
+
+                    def raw(value: int | float | None) -> str:
+                        return "null" if value is None else str(value)
+
+                    row = (
+                        metric.metric.value
+                        + metric.dimensions.get("supplier_id", "")
+                        + metric.dimensions.get("period", "")
+                        + raw(metric.value)
+                        + metric.unit
+                        + raw(metric.numerator)
+                        + "/"
+                        + raw(metric.denominator)
+                    )
+                    check(
+                        f"pdf_visible/{metric.metric.value}/{metric.dimensions}",
+                        "artifact",
+                        row in compact,
+                    )
+            else:
+                document = ReportDocument.model_validate_json(data)
             check("artifact_schema", "artifact", True)
-        except (OSError, ValueError, ValidationError):
+        except (OSError, ValueError, ValidationError, IndexError, KeyError, PyPdfError):
             valid_file = False
             check("artifact_schema", "artifact", False)
         check("artifact_integrity", "artifact", valid_file)
 
-    expected = oracle_metrics(snapshot)
+    expected = oracle_metrics(snapshot, case)
     metrics = document.key_metrics if document else ()
     copies = document.analysis_results.metrics if document else ()
     for target in expected:
@@ -112,9 +191,11 @@ def evaluate_p01(
             )
         )
     # Quarterly checks aggregate the reported monthly counts, without requiring new product output.
-    for supplier in P01_SUPPLIERS:
-        source = [r for r in source_counts(snapshot) if r[0] == supplier]
+    for supplier in case.suppliers:
+        source = [r for r in source_counts(snapshot, case) if r[0] == supplier]
         defects, inspected = sum(r[2] for r in source), sum(r[3] for r in source)
+        if not source:
+            continue
         actual_counts: list[int | None] = []
         for name in ("defect_count", "inspected_count"):
             selected = [
@@ -149,6 +230,16 @@ def evaluate_p01(
                     actual=str(quarter_actual),
                 )
             )
+    if not expected:
+        checks.append(
+            PilotAssertion(
+                assertion_id="empty/no_fabricated_metrics",
+                category="numeric",
+                passed=document is not None
+                and not metrics
+                and document.analysis_results.empty_result,
+            )
+        )
     check(
         "exact_metric_set",
         "scope",
@@ -160,11 +251,19 @@ def evaluate_p01(
         "report_scope",
         "scope",
         document is not None
-        and document.scope.year == 2026
-        and document.scope.quarter == 2
-        and document.scope.start_date.isoformat() == "2026-04-01"
-        and document.scope.end_date.isoformat() == "2026-06-30"
-        and document.scope.supplier_ids == P01_SUPPLIERS,
+        and document.scope.year == case.year
+        and document.scope.quarter == case.quarter
+        and document.scope.start_date == case.start_date
+        and document.scope.end_date == case.end_date
+        and document.scope.supplier_ids == case.suppliers,
+    )
+    check(
+        "scope_prose_matches_quarter",
+        "scope",
+        document is not None
+        and not any(
+            "cover Q2 only" in item.statement and case.quarter != 2 for item in document.limitations
+        ),
     )
     check(
         "report_task",
@@ -174,18 +273,74 @@ def evaluate_p01(
         and document.task_summary.task_id == execution.task_result.task_id,
     )
     check(
-        "no_policy_claims",
+        "no_policy_claims" if not case.policy else "policy_is_required",
         "scope",
         document is not None
-        and not document.applicable_policies
-        and not document.quality_policy_findings,
+        and (
+            (not document.applicable_policies and not document.quality_policy_findings)
+            if not case.policy
+            else bool(document.applicable_policies)
+        ),
     )
     check(
         "null_reasons",
         "scope",
-        document is not None and _null_reasons_present(snapshot, document),
+        document is not None and _null_reasons_present(snapshot, document, case),
     )
-    checks.extend(_evidence_checks(snapshot, execution, document, expected))
+    checks.extend(_evidence_checks(snapshot, execution, document, expected, case))
+    if not expected:
+        check(
+            "support/no_records",
+            "evidence",
+            document is not None
+            and document.analysis_results.empty_result
+            and "NO_DATA_RECORDS" in {x.code for x in document.limitations}
+            and any(
+                e.source_type is EvidenceType.DATABASE and e.content.data.root.get("row_count") == 0
+                for e in execution.evidence
+            )
+            if execution
+            else False,
+        )
+    if case.policy:
+        from evaluation.supplier_quality_pilot.policy import POLICY_PATH, PolicySnapshot
+
+        p = PolicySnapshot.model_validate_json(POLICY_PATH.read_bytes())
+        docs = (
+            [e for e in execution.evidence if e.source_type is EvidenceType.DOCUMENT]
+            if execution
+            else []
+        )
+        exact = len(docs) == 1 and all(
+            e.content.checksum == p.checksum
+            and e.content.data.root.get("excerpt") == p.excerpt
+            and e.source_reference.reference.root.get("document_id") == p.document_id
+            and e.source_reference.reference.root.get("document_version") == p.document_version
+            and e.source_reference.reference.root.get("chunk_id") == p.chunk_id
+            and e.source_reference.reference.root.get("index_snapshot_id") == p.index_snapshot_id
+            for e in docs
+        )
+        check(
+            "support/policy_method_and_limit",
+            "evidence",
+            exact
+            and document is not None
+            and len(document.applicable_policies) == 1
+            and document.applicable_policies[0].excerpt == p.excerpt,
+        )
+        check(
+            "policy_no_unsupported_actions",
+            "scope",
+            document is not None
+            and not any(
+                r.basis == "POLICY_EVIDENCE"
+                and any(
+                    word in r.action.lower()
+                    for word in ("containment", "remediation", "penalty", "root cause")
+                )
+                for r in document.recommendations
+            ),
+        )
     return tuple(checks)
 
 
@@ -244,11 +399,13 @@ def _digest_matches(actual: object, expected: str) -> bool:
     return isinstance(actual, str) and actual.removeprefix("sha256:") == expected
 
 
-def _null_reasons_present(snapshot: PilotSnapshot, document: ReportDocument) -> bool:
+def _null_reasons_present(
+    snapshot: PilotSnapshot, document: ReportDocument, case: PilotCase
+) -> bool:
     """Check v1's explicit reasons for each applicable null, derived from the source."""
     reasons: set[str] = set()
     previous: dict[str, int] = {}
-    for supplier, period, _defects, inspected in source_counts(snapshot):
+    for supplier, period, _defects, inspected in source_counts(snapshot, case):
         dimensions = f"(period={period}, supplier_id={supplier})"
         if inspected == 0:
             reasons.add(f"Defect rate is undefined because inspected_count is zero {dimensions}")
@@ -261,13 +418,17 @@ def _null_reasons_present(snapshot: PilotSnapshot, document: ReportDocument) -> 
             )
         previous[supplier] = inspected
     limitation_codes = {item.code for item in document.limitations}
-    required_codes = {"FIRST_PERIOD_TREND_BASELINE"}
-    if any(row[3] == 0 for row in source_counts(snapshot)):
+    required_codes = (
+        {"FIRST_PERIOD_TREND_BASELINE"} if source_counts(snapshot, case) else {"NO_DATA_RECORDS"}
+    )
+    if any(row[3] == 0 for row in source_counts(snapshot, case)):
         required_codes.add("ZERO_DENOMINATOR_ANALYTICS_NOTE")
     return reasons <= set(document.analysis_results.warnings) and required_codes <= limitation_codes
 
 
-def _fact_references_resolve(document: ReportDocument, ledger: Mapping[str, EvidenceItem]) -> bool:
+def _fact_references_resolve(
+    document: ReportDocument, ledger: Mapping[str, EvidenceItem], case: PilotCase
+) -> bool:
     """Validate structured fact/reference locations, without judging arbitrary prose."""
     # Evidence IDs alone in an index do not establish that the actual facts cite that index.
     if (
@@ -290,13 +451,24 @@ def _fact_references_resolve(document: ReportDocument, ledger: Mapping[str, Evid
     for fact in facts:
         if not fact.evidence_ids or not set(fact.evidence_ids) <= ledger.keys():
             return False
-        if not any(ledger[e].source_type is EvidenceType.CALCULATION for e in fact.evidence_ids):
+        if not any(
+            ledger[e].source_type
+            is (
+                EvidenceType.DOCUMENT
+                if case.policy
+                and isinstance(fact, ReportFinding)
+                and fact.finding_id == "finding-policy-context"
+                else EvidenceType.CALCULATION
+            )
+            for e in fact.evidence_ids
+        ):
             return False
     for recommendation in document.recommended_actions:
         if not set(recommendation.evidence_ids) <= ledger.keys():
             return False
-        if recommendation.basis == "POLICY_EVIDENCE":
-            # This non-policy P01 has no authorized policy conclusion.
+        if recommendation.basis == "POLICY_EVIDENCE" and (
+            not case.policy or not recommendation.evidence_ids
+        ):
             return False
     for item in document.data_overview:
         evidence = ledger.get(item.evidence_id)
@@ -316,6 +488,7 @@ def _evidence_checks(
     execution: WorkflowExecution | None,
     document: ReportDocument | None,
     expected: tuple[OracleMetric, ...],
+    case: PilotCase,
 ) -> list[PilotAssertion]:
     ledger = {e.evidence_id: e for e in execution.evidence} if execution else {}
     database = [e for e in ledger.values() if e.source_type is EvidenceType.DATABASE]
@@ -324,7 +497,7 @@ def _evidence_checks(
     reference_ids = {r.evidence_id for r in refs}
     rows = [
         dict(supplier_id=s, period=p, defect_count=d, inspected_count=n)
-        for s, p, d, n in source_counts(snapshot)
+        for s, p, d, n in source_counts(snapshot, case)
     ]
     database_ids = {e.evidence_id for e in database}
     database_ok = bool(database) and all(
@@ -334,10 +507,10 @@ def _evidence_checks(
         and e.source_reference.reference.root.get("parameter_summary")
         == {
             "tenant_scope_hash": _hash(snapshot.tenant_id),
-            "start_date": "2026-04-01",
-            "end_date": "2026-06-30",
-            "supplier_count": 2,
-            "supplier_scope_hash": _hash(list(P01_SUPPLIERS)),
+            "start_date": case.start_date.isoformat(),
+            "end_date": case.end_date.isoformat(),
+            "supplier_count": len(case.suppliers),
+            "supplier_scope_hash": _hash(list(case.suppliers)),
         }
         for e in database
     )
@@ -358,7 +531,7 @@ def _evidence_checks(
         (
             bool(refs)
             and document is not None
-            and _fact_references_resolve(document, ledger)
+            and _fact_references_resolve(document, ledger, case)
             and document.evidence == document.evidence_references
             and reference_ids == set(ledger)
             and all(

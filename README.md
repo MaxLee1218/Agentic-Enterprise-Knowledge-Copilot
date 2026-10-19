@@ -255,6 +255,8 @@ It writes the report, evidence and 30 numeric checks to a fresh local run direct
 [P01 evaluation](docs/evaluation.md#offline-p01-with-an-independent-oracle) for reproduction and limits.
 An [explicit budgeted live P01 mode](docs/evaluation.md#budgeted-live-p01-calibration) adds
 per-attempt usage accounting and a persistent €10 experiment budget with a €1 calibration cap.
+The [ten-scenario controlled pilot](docs/evaluation.md#ten-scenario-controlled-pilot) adds fixed
+denominators, PDF checks, policy and scripted clarification cases, and retained failure reports.
 
 ### Run the frontend
 

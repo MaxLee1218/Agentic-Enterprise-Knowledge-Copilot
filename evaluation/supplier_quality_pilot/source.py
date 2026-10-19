@@ -7,6 +7,7 @@ from pathlib import Path
 
 from copilot.tools.database import DatabaseConnection
 from copilot.tools.database.models import Base, IncomingInspection, Supplier
+from evaluation.supplier_quality_pilot.cases import PilotCase
 from evaluation.supplier_quality_pilot.contracts import OracleMetric, PilotSnapshot
 
 DEFAULT_SOURCE = (
@@ -54,8 +55,11 @@ def seed_source(snapshot: PilotSnapshot, database_url: str) -> None:
         database.dispose()
 
 
-def source_counts(snapshot: PilotSnapshot) -> tuple[tuple[str, str, int, int], ...]:
+def source_counts(
+    snapshot: PilotSnapshot, case: PilotCase | None = None
+) -> tuple[tuple[str, str, int, int], ...]:
     """Use independent SQL over the frozen source, never the product query templates."""
+    case = case or PilotCase(case_id="P01", request=P01_REQUEST)
     connection = sqlite3.connect(":memory:")
     try:
         connection.execute("CREATE TABLE source (tenant, supplier, period, defects, inspected)")
@@ -70,20 +74,28 @@ def source_counts(snapshot: PilotSnapshot) -> tuple[tuple[str, str, int, int], .
             (str(s), str(p), int(d), int(n))
             for s, p, d, n in connection.execute(
                 "SELECT supplier, period, SUM(defects), SUM(inspected) FROM source "
-                "WHERE tenant = ? AND supplier IN (?, ?) AND period BETWEEN ? AND ? "
+                f"WHERE tenant = ? AND supplier IN ({','.join('?' for _ in case.suppliers)}) "
+                "AND period BETWEEN ? AND ? "
                 "GROUP BY supplier, period ORDER BY supplier, period",
-                (snapshot.tenant_id, *P01_SUPPLIERS, "2026-04", "2026-06"),
+                (
+                    snapshot.tenant_id,
+                    *case.suppliers,
+                    case.start_date.strftime("%Y-%m"),
+                    case.end_date.strftime("%Y-%m"),
+                ),
             )
         )
     finally:
         connection.close()
 
 
-def oracle_metrics(snapshot: PilotSnapshot) -> tuple[OracleMetric, ...]:
+def oracle_metrics(
+    snapshot: PilotSnapshot, case: PilotCase | None = None
+) -> tuple[OracleMetric, ...]:
     """Derive monthly values and operands using Decimal, without product calculators."""
     output: list[OracleMetric] = []
     previous: dict[str, Decimal | None] = {}
-    for supplier, period, defects, inspected in source_counts(snapshot):
+    for supplier, period, defects, inspected in source_counts(snapshot, case):
         rate = ratio(defects, inspected)
         prior = previous.get(supplier)
         trend = None if rate is None or prior is None else rate - prior

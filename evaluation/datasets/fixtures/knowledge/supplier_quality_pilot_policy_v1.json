@@ -1,0 +1,8 @@
+{
+  "version": "supplier-quality-pilot-policy.v1",
+  "index_snapshot_id": "supplier-quality-policy-snapshot-v1",
+  "document_id": "PILOT-Supplier-Quality-Manual",
+  "document_version": "synthetic.v1",
+  "chunk_id": "calculation-method-1",
+  "excerpt": "缺陷率按总缺陷数除以总检验数计算；检验数为零时不可计算，必须披露此限制。"
+}

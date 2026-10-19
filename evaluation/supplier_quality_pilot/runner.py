@@ -18,12 +18,13 @@ from pydantic_settings import PydanticBaseSettingsSource
 from copilot.agent.graph import WorkflowInterrupted
 from copilot.bootstrap.container import build_workflow_container
 from copilot.config import PROJECT_ROOT, Settings
+from copilot.contracts import TaskStatus
 from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.llm.prompts import (
     PLANNER_PROMPT_VERSION,
     TASK_UNDERSTANDING_PROMPT_VERSION,
 )
-from copilot.persistence.identifiers import SequentialIdentifierFactory
+from copilot.persistence.identifiers import SequentialIdentifierFactory, UuidIdentifierFactory
 from copilot.services.llm import (
     LLMCallContext,
     LLMGenerationOptions,
@@ -39,8 +40,15 @@ from copilot.services.task_intake import (
 )
 from copilot.services.workflows.models import WorkflowExecution
 from evaluation.dataset_loader import canonical_hash
-from evaluation.supplier_quality_pilot.checker import evaluate_p01
-from evaluation.supplier_quality_pilot.contracts import OFFLINE_LIMITATIONS, PilotRun, PilotSnapshot
+from evaluation.supplier_quality_pilot.cases import PilotCase
+from evaluation.supplier_quality_pilot.checker import evaluate_case
+from evaluation.supplier_quality_pilot.contracts import (
+    OFFLINE_LIMITATIONS,
+    ClarificationObservation,
+    PilotAssertion,
+    PilotRun,
+    PilotSnapshot,
+)
 from evaluation.supplier_quality_pilot.source import (
     DEFAULT_SOURCE,
     P01_REQUEST,
@@ -94,10 +102,12 @@ class _RecordingModel:
         )
 
 
-def run_p01(
+def run_case(
     output_directory: Path,
     *,
     source_path: Path = DEFAULT_SOURCE,
+    case: PilotCase,
+    persistence_url: str | None = None,
     live: "LiveModelSession | None" = None,
 ) -> PilotRun:
     """Run a governed task into an empty directory; live execution requires a session."""
@@ -113,6 +123,7 @@ def run_p01(
     task_status = None
     error_code = None
     artifact_paths: dict[str, Path] = {}
+    interaction: ClarificationObservation | None = None
     with tempfile.TemporaryDirectory(prefix="supplier-quality-p01-") as temporary:
         root = Path(temporary)
         database_url = f"sqlite:///{root / 'source.db'}"
@@ -128,6 +139,8 @@ def run_p01(
             artifact_dir=output_directory / "artifacts",
             checkpoint_database_path=root / "checkpoints.db",
             checkpoint_enabled=True,
+            persistence_database_url=persistence_url,
+            persistence_auto_create_schema=not bool(persistence_url),
             max_task_steps=14,
             workflow_retry_delay_seconds=0,
             observability_enabled=False,
@@ -135,25 +148,59 @@ def run_p01(
         )
         with build_workflow_container(
             settings,
-            ids=SequentialIdentifierFactory(),
+            ids=UuidIdentifierFactory() if persistence_url else SequentialIdentifierFactory(),
             llm_provider=model,
         ) as container:
-            try:
-                execution = container.task_service.submit(
-                    NaturalLanguageTaskCommand(
-                        task=P01_REQUEST,
-                        output_format=TaskOutputFormat.JSON,
-                        source=RequestSource.INTERNAL,
-                    ),
-                    TrustedCallerContext(
-                        user_id="U-PILOT",
-                        tenant_id=snapshot.tenant_id,
-                        data_scope=("quality.v1",),
-                        supplier_ids=P01_SUPPLIERS,
-                    ),
+            if case.policy:
+                from copilot.tools.knowledge.tool import KnowledgeTool
+                from evaluation.supplier_quality_pilot.policy import (
+                    POLICY_PATH,
+                    PolicySnapshot,
+                    SnapshotKnowledgeClient,
                 )
+
+                policy = PolicySnapshot.model_validate_json(POLICY_PATH.read_bytes())
+                container.registry.unregister("knowledge_search")
+                container.registry.register(KnowledgeTool(SnapshotKnowledgeClient(policy)))
+            try:
+                command = NaturalLanguageTaskCommand(
+                    task=case.request,
+                    output_format=TaskOutputFormat(case.output_format),
+                    source=RequestSource.INTERNAL,
+                )
+                caller = TrustedCallerContext(
+                    user_id="U-PILOT",
+                    tenant_id=snapshot.tenant_id,
+                    data_scope=("quality.v1",),
+                    supplier_ids=P01_SUPPLIERS,
+                )
+                if case.scripted_answer and persistence_url:
+                    from evaluation.supplier_quality_pilot.interaction import scripted_clarification
+
+                    execution, interaction = scripted_clarification(
+                        container, command, caller, case.scripted_answer
+                    )
+                    if execution is None:
+                        assert interaction is not None
+                        task_id = interaction.initial_task_id
+                        task_status = container.repository.state_for(
+                            task_id, tenant_id=snapshot.tenant_id
+                        ).state
+                        error_code = "SCRIPTED_TASK_PENDING"
+                else:
+                    execution = container.task_service.submit(command, caller)
+                if execution is None:
+                    raise WorkflowInterrupted(
+                        "Scripted task remains pending",
+                        task_id=str(task_id),
+                        trace_id=str(task_id),
+                        status=str(task_status),
+                        created_at=started_at,
+                    )
                 task_id = execution.task_result.task_id
                 task_status = execution.task_result.final_status
+                if execution.errors:
+                    error_code = execution.errors[-1].error_code
                 artifact_paths = {
                     a.artifact_id: container.artifacts.path_for(a) for a in execution.artifacts
                 }
@@ -170,10 +217,37 @@ def run_p01(
                     tenant_id=snapshot.tenant_id,
                 ).state
                 error_code = "WORKFLOW_INTERRUPTED"
+                if case.scripted_answer and interaction is None:
+                    state = container.engine.get_state(task_id, snapshot.tenant_id)
+                    interaction = ClarificationObservation(
+                        initial_task_id=task_id,
+                        initial_status=task_status,
+                        tools_before_answer=sum(s.executed for s in state["step_executions"]),
+                        answer=case.scripted_answer,
+                    )
+                    error_code = "SCRIPTED_POSTGRES_RUNTIME_REQUIRED"
             except Exception as exc:
                 # Safe harness failure, recorded separately from a failed business Task.
                 error_code = type(exc).__name__
-    checks = evaluate_p01(snapshot, execution, artifact_paths)
+    checks = evaluate_case(snapshot, execution, artifact_paths, case)
+    if case.scripted_answer:
+        checks += tuple(
+            PilotAssertion(assertion_id=n, category="lifecycle", passed=p)
+            for n, p in (
+                (
+                    "clarification_before_tools",
+                    interaction is not None
+                    and interaction.initial_status is TaskStatus.WAITING_CLARIFICATION
+                    and interaction.tools_before_answer == 0,
+                ),
+                (
+                    "same_task_scripted_resume",
+                    interaction is not None
+                    and interaction.answer_applied is True
+                    and interaction.initial_task_id == interaction.final_task_id,
+                ),
+            )
+        )
     spending = live.ledger.snapshot() if live else None
     attempts = (
         tuple(a for a in spending.attempts if a.run_id == live.run_id)
@@ -184,17 +258,18 @@ def run_p01(
         error_code = spending.stopped_reason
     model_cost = (
         sum((a.usd_cost for a in attempts if a.usd_cost is not None), Decimal(0))
-        if (attempts and all(a.status == "reconciled" for a in attempts))
+        if live and all(a.status == "reconciled" for a in attempts)
         else None
     )
     model_name = live.settings.llm_model if live else "offline-governed-domains-v2"
     config = {
-        "case_id": "P01",
+        "case_id": case.case_id,
         "mode": "live" if live else "offline",
         "database": "sqlite-read-only",
-        "request": P01_REQUEST,
-        "supplier_ids": P01_SUPPLIERS,
+        "request": case.request,
+        "supplier_ids": case.suppliers,
         "tenant_id": snapshot.tenant_id,
+        "case_scope": case.model_dump(mode="json"),
         "model": model_name,
         **(
             {
@@ -211,6 +286,9 @@ def run_p01(
         ),
     }
     run = PilotRun(
+        case_id=case.case_id,
+        expected_outcome=case.expected_outcome,
+        interaction=interaction,
         started_at=started_at,
         latency_ms=max(0, round((perf_counter() - timer) * 1000)),
         task_id=task_id,
@@ -240,6 +318,10 @@ def run_p01(
         prompt_versions=(TASK_UNDERSTANDING_PROMPT_VERSION, PLANNER_PROMPT_VERSION),
         executed_tools=tuple(s.tool_name for s in execution.step_executions) if execution else (),
         artifact_paths=tuple(str(p) for p in artifact_paths.values()),
+        artifact_ids=tuple(a.artifact_id for a in execution.artifacts) if execution else (),
+        artifact_checksums={a.artifact_id: a.checksum for a in execution.artifacts}
+        if execution
+        else {},
         assertions=checks,
     )
     (output_directory / "source.json").write_text(snapshot.model_dump_json(indent=2))
@@ -290,7 +372,7 @@ def _code_hash() -> str:
 
 def _markdown(run: PilotRun) -> str:
     lines = [
-        f"# {run.mode.title()} Supplier Quality P01 evaluation",
+        f"# {run.mode.title()} Supplier Quality {run.case_id} evaluation",
         "",
         f"Qualified delivery: **{run.qualified_delivery}**",
         f"Numeric assertions: **{run.numeric_passed}/{run.numeric_total}**",
@@ -327,3 +409,18 @@ def _markdown(run: PilotRun) -> str:
         "",
     ]
     return "\n".join(lines)
+
+
+def run_p01(
+    output_directory: Path,
+    *,
+    source_path: Path = DEFAULT_SOURCE,
+    live: "LiveModelSession | None" = None,
+) -> PilotRun:
+    """Retain backward-compatible calibration without changing its defaults."""
+    return run_case(
+        output_directory,
+        source_path=source_path,
+        case=PilotCase(case_id="P01", request=P01_REQUEST),
+        live=live,
+    )

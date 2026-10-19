@@ -309,3 +309,85 @@ One calibration is not the completed ten-scenario experiment or measured human-t
 
 The [first live P01 result](supplier-quality-pilot-p01-result.md) records the observed calibration
 and publishes its sanitized machine-readable result and synthetic JSON artifact.
+
+### Ten-scenario controlled pilot
+
+Issue #4 extends the pilot entry, while `evaluation/run_eval.py` remains mock-only:
+
+```bash
+python -m evaluation.supplier_quality_pilot --suite --output-dir /tmp/quality-pilot-offline
+```
+
+Freeze `evaluation/datasets/supplier_quality_pilot_v1.jsonl`, the source snapshot, and
+`evaluation/datasets/fixtures/knowledge/supplier_quality_pilot_policy_v1.json` before paid execution.
+The source-only policy is served as a fixed synthetic index through the registered production
+Knowledge Tool. It tests governance and evidence transport, not retrieval quality against a real RAG
+service. Model inputs receive requests and normal permitted context, never expected answers.
+
+Independent PDF checking uses the development dependency `pypdf==6.10.0` because the standard
+library cannot parse rendered PDF pages. It checks real page readability and visible metric rows
+and evidence IDs against the embedded canonical model, then checks that model against the source
+oracle. Merely embedding a correct model in an incorrect visible PDF cannot qualify. Rendering
+and analysis remain production tools accessed only through Registry/Executor.
+
+The nine first report tasks have **181 fixed numeric assertions**. Missing reports retain their
+required assertions as failures; an empty-data report has an explicit no-invented-metrics check.
+Enumerated evidence support is frozen separately in `manifest.json`, using `support/` assertions;
+reference existence, evidence lineage and supporting content are separate checks. The denominator
+is independent of what the model happens to output. This is not an open-ended prose faithfulness
+score. Scope prose that incorrectly says a Q1/Q3 report covers only Q2, and policy actions unsupported
+by the calculation-method-only policy, fail independent acceptance even if the product verifier
+marks the task complete. These known template defects remain visible in the pilot; no fixes or
+selected reruns replace first results.
+
+P09 uses `TaskSubmissionService`, the real PostgreSQL outbox/Queue and `TaskExecutionService` to
+acquire the existing lease/fencing authority, observe `WAITING_CLARIFICATION` with zero tools,
+persist the frozen “Q2 2026” answer through `ClarificationService.respond`, and process the exact
+same-Task resume dispatch. The evaluation hosts this existing service synchronously with bounded
+delivery counts; it adds no Queue, lease, retry owner or production background-execution claim.
+Without a dedicated migrated PostgreSQL runtime, P09 stays pending and the suite is partial.
+No business approval is fabricated. The existing offline mock can expand the supplier scope on
+clarification by re-reading the authorized scope; the evaluator retains that failure. Live model
+outcomes must be measured separately.
+
+For a full live experiment, provision a **dedicated disposable** PostgreSQL database, run the
+existing Alembic and checkpoint migrations, and place its URL only in the approved environment
+as `PILOT_PERSISTENCE_DATABASE_URL`. Never point it at shared or production data. The CLI neither
+migrates nor clears that database. The isolated business source remains read-only SQLite.
+
+```bash
+LLM_PROVIDER=deepseek LLM_MODEL=deepseek-flash LLM_MAX_OUTPUT_TOKENS=8192 \
+  python -m evaluation.supplier_quality_pilot --suite --mode live \
+  --pricing evaluation/configs/supplier-quality-pilot/pricing-2026-10-19.json \
+  --budget evaluation/configs/supplier-quality-pilot/budget-v1.json \
+  --calibration-dir evaluation/reports/supplier-quality-pilot/p01-live-096ca89 \
+  --output-dir evaluation/reports/supplier-quality-pilot/ten-scenarios-v1
+```
+
+The original paid P01 is imported and independently re-scored, not silently rerun. Its actual code
+revision, prompts, latency and fees remain recorded; the suite's scorer revision and definitions
+are separate. This disclosed cross-revision calibration is a development pilot. It is not a
+comparison of identical code/input/metric configurations. P02–P10 run once in order. Only after
+all first Tasks stop in terminal states, and the budget permits, P01/P08 each repeat once;
+repeats never enter the nine-case delivery denominator or replace a first result.
+
+All calls retain the same €10 ledger, €2 reserve, and calibrated €1 gate. The live suite holds its
+single-concurrency ledger lock throughout. A versioned pointer fixes the first-population output
+location. A versioned, atomic/fsynced journal marks cases started before dispatch and stores
+finished-record hashes. `--resume` requires the same output and frozen configuration; cached
+scores are recomputed from assertions and checked, and altered records or unfinished starts
+block new paid calls. Starting in another directory cannot obtain a new experiment. Never delete
+or reset the ledger, pointer or progress journal to force a complete result.
+
+`suite.json` and `suite.md` include each first/repeat outcome, unrun/pending IDs, complete failing
+assertion lists, separate P10 safety, hashes, actual usage, pricing/FX, and qualified first-report
+latency median/range. Failed/waiting durations remain in the per-case table. First report fees
+include failed/repaired requests; safety and repeats are separate and remain in the experiment
+total. Cost per qualified first report is unavailable when none qualify or any fee is unresolved.
+At most two actual qualified artifacts are identified as samples. Human effort stays an explicit
+26/41/64, 31/49/76 or 11/18/29 minute assumption, without a measured-savings percentage.
+
+Suite exit codes: `0` all nine reports qualified and P10 passed; `1` independent failure or
+pending/partial workflow; `2` invalid input/output; `4` budget, billing or resume/preflight stop.
+A controlled pilot with failures can be fully executed and still exit `1`; partial execution is
+explicit. CI remains offline and includes the P09 PostgreSQL test in a dedicated migrated database.

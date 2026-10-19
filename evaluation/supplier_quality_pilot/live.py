@@ -1,8 +1,11 @@
 """Explicit live P01 composition using the existing provider and production Task Service."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 import httpx
@@ -50,6 +53,16 @@ def run_live_p01(
     """
     from evaluation.supplier_quality_pilot.runner import run_p01
 
+    configured = live_settings(pricing, settings)
+    with (
+        BudgetLedger(ledger_path, pricing, policy) as ledger,
+        live_model(ledger, configured, stage="calibration", transport=transport) as session,
+    ):
+        return run_p01(output_directory, source_path=source_path, live=session)
+
+
+def live_settings(pricing: PricingCard, settings: Settings | None = None) -> Settings:
+    """Validate explicit adapter, credential and price bounds before creating a paid transport."""
     try:
         configured = settings or Settings(database_url="sqlite:///:memory:")
     except ValidationError:
@@ -67,27 +80,36 @@ def run_live_p01(
         raise BudgetStopped("OUTPUT_BOUND_MISMATCH")
     if not pricing.effective_at <= datetime.now(UTC) < pricing.expires_at:
         raise BudgetStopped("PRICING_EXPIRED_OR_NOT_EFFECTIVE")
-    run_id = uuid4().hex
-    with (
-        BudgetLedger(ledger_path, pricing, policy) as ledger,
-        httpx.Client(
-            transport=GuardedTransport(
-                ledger,
-                transport
-                if transport is not None
-                else httpx.HTTPTransport(retries=0, trust_env=False),
-                run_id=run_id,
-            ),
-            follow_redirects=False,
-            timeout=httpx.Timeout(
-                configured.llm_read_timeout_seconds, connect=configured.llm_connect_timeout_seconds
-            ),
-            headers={
-                "Authorization": f"Bearer {configured.require_llm_api_key().get_secret_value()}",
-                "User-Agent": configured.llm_user_agent,
-            },
-        ) as client,
-    ):
+    return configured
+
+
+@contextmanager
+def live_model(
+    ledger: BudgetLedger,
+    configured: Settings,
+    *,
+    stage: Literal["calibration", "suite"],
+    run_id: str | None = None,
+    transport: httpx.BaseTransport | None = None,
+) -> Iterator[LiveModelSession]:
+    """Create a model session within the one experiment-wide owned budget ledger."""
+    run_id = run_id or uuid4().hex
+    with httpx.Client(
+        transport=GuardedTransport(
+            ledger,
+            transport if transport is not None else httpx.HTTPTransport(retries=0, trust_env=False),
+            run_id=run_id,
+            stage=stage,
+        ),
+        follow_redirects=False,
+        timeout=httpx.Timeout(
+            configured.llm_read_timeout_seconds, connect=configured.llm_connect_timeout_seconds
+        ),
+        headers={
+            "Authorization": f"Bearer {configured.require_llm_api_key().get_secret_value()}",
+            "User-Agent": configured.llm_user_agent,
+        },
+    ) as client:
         provider = DeepSeekProvider(
             api_key=configured.require_llm_api_key().get_secret_value(),
             model=configured.llm_model,
@@ -97,8 +119,4 @@ def run_live_p01(
             retry_base_delay_seconds=configured.llm_retry_base_delay_seconds,
             trace_header=configured.llm_trace_header,
         )
-        return run_p01(
-            output_directory,
-            source_path=source_path,
-            live=LiveModelSession(provider, configured, ledger, run_id),
-        )
+        yield LiveModelSession(provider, configured, ledger, run_id)
