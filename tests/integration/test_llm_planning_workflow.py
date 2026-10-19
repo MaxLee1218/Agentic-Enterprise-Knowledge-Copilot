@@ -271,4 +271,5 @@ def test_unknown_model_metric_is_rejected_before_tool_execution(tmp_path: Path) 
     with build_test_container(tmp_path / "unsupported-metric", llm_provider=provider) as container:
         execution = container.service.execute(COMMAND)
         assert execution.task_result.final_status is TaskStatus.FAILED
-        assert not execution.step_executions
+        assert not any(record.executed for record in execution.step_executions)
+        assert not execution.evidence

@@ -416,3 +416,8 @@ Copyright © 2026 MaxLee1218. All rights reserved. No open-source license is gra
 The real-model ten-scenario pilot is recorded in [the result report](docs/supplier-quality-pilot-result.md):
 4/9 qualified first reports, 175/181 numeric checks and 1/1 unauthorized-scope rejection.
 Failures and repeats are retained; this synthetic pilot does not establish production success or measured human-time savings.
+
+The [post-fix regression protocol](docs/supplier-quality-post-fix-regression.md) tracks the four
+observed delivery defects in GitHub Issues #5–#8 and their retained before/after run in #9.
+Use the [explicit regression command](docs/evaluation.md#explicit-post-fix-regression) only for the
+authorized follow-up population; it preserves the first results and shares the existing spending ledger.

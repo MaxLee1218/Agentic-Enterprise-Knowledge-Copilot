@@ -336,3 +336,48 @@ def test_pdf_limitations_identify_the_actual_authorized_quarter(
         " ".join(p.extract_text() for p in PdfReader(run.artifact_paths[0]).pages).split()
     )
     assert f"cover Q{case.quarter} {case.year} only." in visible
+
+
+def test_post_fix_population_preserves_the_original_baseline(tmp_path: Path) -> None:
+    import hashlib
+
+    from copilot.config import PROJECT_ROOT
+    from evaluation.supplier_quality_pilot.suite import run_suite
+
+    baseline = PROJECT_ROOT / "evaluation/reports/pilot-ten-scenarios-live-20261019.json"
+    before = hashlib.sha256(baseline.read_bytes()).hexdigest()
+    report = run_suite(tmp_path, baseline_report_path=baseline)
+    assert report.population == "post-fix"
+    assert report.baseline_hash == "sha256:" + before
+    assert len(report.runs) == 10
+    assert not any(r.repeat_index for r in report.runs)
+    assert report.qualified_deliveries == 8  # P09 remains pending without PostgreSQL.
+    assert report.numeric_total == 181 and report.fact_total == 146
+    assert hashlib.sha256(baseline.read_bytes()).hexdigest() == before
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("numeric_passed", 181),
+        ("first_delivery_cost_usd", "0"),
+        ("total_experiment_cost_usd", "0"),
+        ("partial", True),
+    ],
+)
+def test_baseline_loader_rejects_tampered_aggregate_scores(
+    tmp_path: Path, field: str, value: object
+) -> None:
+    import json
+
+    from copilot.config import PROJECT_ROOT
+    from evaluation.supplier_quality_pilot.suite import read_suite_report
+
+    data = json.loads(
+        (PROJECT_ROOT / "evaluation/reports/pilot-ten-scenarios-live-20261019.json").read_bytes()
+    )
+    data[field] = value
+    path = tmp_path / "tampered.json"
+    path.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="Suite (scores|costs|status)"):
+        read_suite_report(path)

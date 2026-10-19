@@ -22,6 +22,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--suite", action="store_true")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--calibration-dir", type=Path)
+    parser.add_argument("--baseline-report", type=Path)
     parser.add_argument("--mode", choices=("offline", "live"), default="offline")
     parser.add_argument("--pricing", type=Path)
     parser.add_argument("--budget", type=Path)
@@ -47,9 +48,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if arguments.budget
                 else None,
                 calibration_directory=arguments.calibration_dir,
+                baseline_report_path=arguments.baseline_report,
                 resume=arguments.resume,
                 persistence_url=os.environ.get("PILOT_PERSISTENCE_DATABASE_URL"),
             )
+            if arguments.baseline_report:
+                from evaluation.supplier_quality_pilot.comparison import publish_comparison
+
+                publish_comparison(
+                    arguments.baseline_report, destination / "suite.json", destination
+                )
             print(
                 f"Pilot suite qualified={suite.qualified_deliveries}/9; "
                 f"numeric={suite.numeric_passed}/{suite.numeric_total}; "
@@ -63,7 +71,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if suite.qualified_deliveries == 9 and suite.safety_passed and not suite.partial
                 else 1
             )
-        if arguments.resume or arguments.calibration_dir:
+        if arguments.resume or arguments.calibration_dir or arguments.baseline_report:
             raise ValueError("suite options require --suite")
         if arguments.mode == "live":
             if arguments.pricing is None or arguments.budget is None:

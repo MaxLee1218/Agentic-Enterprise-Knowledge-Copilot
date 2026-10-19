@@ -391,3 +391,43 @@ Suite exit codes: `0` all nine reports qualified and P10 passed; `1` independent
 pending/partial workflow; `2` invalid input/output; `4` budget, billing or resume/preflight stop.
 A controlled pilot with failures can be fully executed and still exit `1`; partial execution is
 explicit. CI remains offline and includes the P09 PostgreSQL test in a dedicated migrated database.
+
+## Explicit post-fix regression
+
+The user authorized one separately retained post-fix population after the four defects found in
+[the first live pilot](supplier-quality-pilot-result.md). The
+[regression protocol and GitHub issues](supplier-quality-post-fix-regression.md) freeze its scope.
+Run P01–P10 once each with the repaired revision, the same independent checker and input snapshots,
+and a dedicated migrated PostgreSQL runtime (the P09 prerequisites above apply):
+
+```bash
+PILOT_PERSISTENCE_DATABASE_URL="$PILOT_TEST_POSTGRES_URL" \
+LLM_PROVIDER=deepseek LLM_MODEL=deepseek-flash LLM_MAX_OUTPUT_TOKENS=8192 \
+python -m evaluation.supplier_quality_pilot --suite --mode live \
+  --baseline-report evaluation/reports/pilot-ten-scenarios-live-20261019.json \
+  --pricing evaluation/configs/supplier-quality-pilot/pricing-2026-10-19.json \
+  --budget evaluation/configs/supplier-quality-pilot/budget-v1.json \
+  --output-dir evaluation/reports/supplier-quality-pilot/post-fix-v1
+```
+
+The existing dated price card remains valid only until its declared expiry. This command is not a
+standing authorization for more populations. Do not pass `--calibration-dir`: post-fix P01 is a new
+execution, while the original calibration remains in the aggregate ledger. No P01/P08 repeats are
+added. The original `.suite.json` pointer and all baseline files remain intact; a single fixed
+`.post-fix-v1.json` pointer binds the new directory/configuration/baseline hash. Changing the
+output directory cannot start another paid population. Never clear/copy the ledger to retry.
+
+For crash recovery, use `--resume` with the exact same revision, options, output and baseline.
+Completed case reports and artifacts must match saved hashes; a started-but-unfinished case needs
+reconciliation before any retry. Initial results are never replaced by these observations.
+Offline `--suite --baseline-report ...` is a free preflight; P09 remains pending without PostgreSQL,
+and an offline/live comparison is explicitly identified as such.
+
+The output includes `suite.json/md`, frozen `manifest.json`, per-case records and a versioned
+`comparison.json/md`. Comparisons retain original and new outcomes, all failed assertion IDs,
+fixed denominators, code/model/prompt versions and snapshot hashes. Readers recompute the
+serialized scores, status, latency and ledger-based fees. Incremental regression spending and
+whole-experiment spending are separate; both populations share the original €10 ceiling and €2
+reserve. Latency medians cover different sets of qualified reports, so no speedup percentage or
+measured human-time saving is inferred. This is a development regression on known synthetic
+cases, not held-out generalization.

@@ -262,7 +262,10 @@ jobs:
       - name: Verify scripted pilot clarification through PostgreSQL Worker authority
         env:
           PILOT_TEST_POSTGRES_URL: postgresql+psycopg://copilot_test:copilot_test_password@127.0.0.1:5432/copilot_pilot_test
-        run: pytest tests/integration/evaluation/test_pilot_suite.py -k through_postgres
+        run: >-
+          pytest tests/integration/evaluation/test_pilot_suite.py
+          tests/integration/evaluation/test_pilot_regression.py
+          -k "through_postgres or regression_uses"
 
       - name: Dry-run PostgreSQL backup and restore for both trust boundaries
         run: |

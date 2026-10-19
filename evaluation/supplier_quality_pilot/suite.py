@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from collections.abc import Callable
 from contextlib import nullcontext
@@ -35,12 +36,21 @@ from evaluation.supplier_quality_pilot.contracts import (
     PilotAssertion,
     PilotRun,
     PilotSnapshot,
+    parse_pilot_run,
     read_pilot_run,
 )
 from evaluation.supplier_quality_pilot.live import DEFAULT_LEDGER, live_model, live_settings
 from evaluation.supplier_quality_pilot.policy import POLICY_PATH, PolicySnapshot
 from evaluation.supplier_quality_pilot.runner import _code_hash, _git, run_case
 from evaluation.supplier_quality_pilot.source import DEFAULT_SOURCE
+
+_INITIAL_LIMITATIONS = (
+    "Controlled synthetic pilot; not a held-out benchmark or production success rate.",
+    "Fact support covers enumerated numeric, null, no-record and policy-method facts only.",
+    "P09 is scripted; no human interaction or observed human-time savings were measured.",
+    "USD uses pinned ceilings; EUR uses budget contingencies, not invoice FX/tax.",
+    "P01 retains its earlier code revision; it is re-scored and never replaced by a repeat.",
+)
 
 
 class CaseDenominator(EvaluationModel):
@@ -69,6 +79,8 @@ class SuiteManifest(EvaluationModel):
     temperature: float
     provider_retries: int
     denominators: dict[str, CaseDenominator]
+    population: Literal["initial", "post-fix"] = "initial"
+    baseline_hash: str | None = None
 
 
 class CaseProgress(EvaluationModel):
@@ -123,6 +135,8 @@ class SuiteReport(EvaluationModel):
     total_experiment_cost_usd: Decimal | None
     qualified_latency_median_ms: float | None
     qualified_latency_range_ms: tuple[int, int] | None
+    population: Literal["initial", "post-fix"] = "initial"
+    baseline_hash: str | None = None
     delivery_total: Literal[9] = 9
     manual_effort_minutes: dict[str, tuple[int, int, int]] = Field(
         default_factory=lambda: {
@@ -131,13 +145,7 @@ class SuiteReport(EvaluationModel):
             "empty": (11, 18, 29),
         }
     )
-    limitations: tuple[str, ...] = (
-        "Controlled synthetic pilot; not a held-out benchmark or production success rate.",
-        "Fact support covers enumerated numeric, null, no-record and policy-method facts only.",
-        "P09 is scripted; no human interaction or observed human-time savings were measured.",
-        "USD uses pinned ceilings; EUR uses budget contingencies, not invoice FX/tax.",
-        "P01 retains its earlier code revision; it is re-scored and never replaced by a repeat.",
-    )
+    limitations: tuple[str, ...] = _INITIAL_LIMITATIONS
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -229,6 +237,7 @@ def run_suite(
     pricing: PricingCard | None = None,
     policy: BudgetPolicy | None = None,
     calibration_directory: Path | None = None,
+    baseline_report_path: Path | None = None,
     settings: Settings | None = None,
     ledger_path: Path = DEFAULT_LEDGER,
     persistence_url: str | None = None,
@@ -243,8 +252,22 @@ def run_suite(
     cases = load_cases(cases_path)
     snapshot = PilotSnapshot.model_validate_json(source_path.read_bytes())
     policy_snapshot = PolicySnapshot.model_validate_json(POLICY_PATH.read_bytes())
+    baseline = read_suite_report(baseline_report_path) if baseline_report_path else None
+    baseline_hash = (
+        "sha256:" + hashlib.sha256(baseline_report_path.read_bytes()).hexdigest()
+        if baseline_report_path
+        else None
+    )
+    if baseline is not None and (
+        baseline.population != "initial" or baseline.partial or len(baseline.runs) < 10
+    ):
+        raise ValueError("Post-fix regression requires a completed original population")
+    if baseline is not None and calibration_directory is not None:
+        raise ValueError("Post-fix P01 must be executed, not imported from calibration")
     configured = live_settings(pricing, settings) if mode == "live" and pricing else None
-    if mode == "live" and (pricing is None or policy is None or calibration_directory is None):
+    if mode == "live" and (
+        pricing is None or policy is None or (baseline is None and calibration_directory is None)
+    ):
         raise BudgetStopped("LIVE_SUITE_REQUIRES_PRICING_BUDGET_CALIBRATION")
     output_directory = output_directory.resolve()
     if output_directory.exists() and any(output_directory.iterdir()) and not resume:
@@ -259,6 +282,8 @@ def run_suite(
         code_revision=_git("rev-parse", "HEAD"),
         dirty=bool(_git("status", "--porcelain")),
         mode=mode,
+        population="post-fix" if baseline else "initial",
+        baseline_hash=baseline_hash,
         pricing=pricing,
         budget=policy,
         runtime="postgresql-worker" if persistence_url else "sqlite-sync-pending-clarification",
@@ -275,6 +300,13 @@ def run_suite(
         },
     )
     fingerprint = canonical_hash(frozen.model_dump(mode="json"))
+    if baseline is not None and (
+        (baseline.dataset_hash, baseline.source_hash, baseline.policy_hash)
+        != (frozen.dataset_hash, frozen.source_hash, frozen.policy_hash)
+        or baseline.numeric_total != sum(d.numeric for d in frozen.denominators.values())
+        or baseline.fact_total != sum(d.facts for d in frozen.denominators.values())
+    ):
+        raise ValueError("Regression inputs or metric definitions differ from the baseline")
     progress_path = output_directory / "progress.json"
     if resume:
         progress = SuiteProgress.model_validate_json(progress_path.read_bytes())
@@ -291,16 +323,31 @@ def run_suite(
     )
     with ledger_context as ledger:
         if ledger:
-            pointer = ledger.path.with_suffix(".suite.json")
-            if pointer.exists() and SuitePointer.model_validate_json(
-                pointer.read_bytes()
-            ).output != str(output_directory):
-                raise BudgetStopped("EXPERIMENT_SUITE_ALREADY_EXISTS")
+            if baseline is not None:
+                spending = ledger.snapshot()
+                if baseline.mode != "live" or baseline.spending is None:
+                    raise BudgetStopped("LIVE_BASELINE_SPENDING_REQUIRED")
+                ledger_attempts = {a.attempt_id: a for a in spending.attempts}
+                if (
+                    baseline.spending.pricing != spending.pricing
+                    or baseline.spending.policy != spending.policy
+                    or not baseline.spending.attempts
+                    or any(
+                        ledger_attempts.get(a.attempt_id) != a for a in baseline.spending.attempts
+                    )
+                ):
+                    raise BudgetStopped("BASELINE_NOT_IN_EXPERIMENT_LEDGER")
+            pointer = ledger.path.with_suffix(".post-fix-v1.json" if baseline else ".suite.json")
+            if pointer.exists():
+                existing = SuitePointer.model_validate_json(pointer.read_bytes())
+                if existing.output != str(output_directory) or existing.config_hash != fingerprint:
+                    raise BudgetStopped("EXPERIMENT_SUITE_ALREADY_EXISTS")
             if not pointer.exists():
                 _save(pointer, SuitePointer(output=str(output_directory), config_hash=fingerprint))
         runs: list[PilotRun] = []
         stopped = ledger.snapshot().stopped_reason if ledger else None
-        for case, repeat in [(c, 0) for c in cases] + [(cases[0], 1), (cases[7], 1)]:
+        repetitions = [] if baseline else [(cases[0], 1), (cases[7], 1)]
+        for case, repeat in [(c, 0) for c in cases] + repetitions:
             key = f"{case.case_id}-r{repeat}"
             destination = output_directory / key
             prior = progress.cases.get(key)
@@ -336,7 +383,7 @@ def run_suite(
             run_id = uuid4().hex
             progress.cases[key] = CaseProgress(status="started", run_id=run_id)
             _save(progress_path, progress)
-            if case.case_id == "P01" and repeat == 0 and mode == "live":
+            if case.case_id == "P01" and repeat == 0 and mode == "live" and baseline is None:
                 assert calibration_directory is not None and ledger is not None
                 run = _calibration(calibration_directory, snapshot, case, ledger)
                 destination.mkdir(exist_ok=True)
@@ -536,6 +583,8 @@ def _summary(
         source_hash=frozen.source_hash,
         policy_hash=frozen.policy_hash,
         config_hash=fingerprint,
+        population=frozen.population,
+        baseline_hash=frozen.baseline_hash,
         runs=tuple(runs),
         partial=len(first) < 10
         or any(
@@ -570,6 +619,15 @@ def _summary(
         else None,
         qualified_latency_median_ms=float(median(latency)) if latency else None,
         qualified_latency_range_ms=(min(latency), max(latency)) if latency else None,
+        limitations=(
+            _INITIAL_LIMITATIONS[:-1]
+            + (
+                "Post-fix regression: every case executes once; "
+                "original P01 and repeats remain separate.",
+            )
+        )
+        if frozen.population == "post-fix"
+        else _INITIAL_LIMITATIONS,
     )
 
 
@@ -579,6 +637,7 @@ def _publish(root: Path, report: SuiteReport) -> None:
         "# Supplier Quality controlled ten-scenario pilot",
         "",
         f"Mode: {report.mode}; partial: {report.partial}; stop: {report.stop_reason}.",
+        f"Population: {report.population}; preserved baseline hash: {report.baseline_hash}.",
         f"First report deliveries: {report.qualified_deliveries}/9; "
         f"numeric: {report.numeric_passed}/{report.numeric_total}; "
         f"enumerated fact support: {report.facts_passed}/{report.fact_total}; "
@@ -630,3 +689,99 @@ def _publish(root: Path, report: SuiteReport) -> None:
         "",
     ]
     (root / "suite.md").write_text("\n".join(lines))
+
+
+def read_suite_report(path: Path) -> SuiteReport:
+    """Read immutable evidence without trusting exported aggregate scores."""
+    data = json.loads(path.read_bytes())
+    computed = {name: data.pop(name) for name in SuiteReport.model_computed_fields if name in data}
+    data["runs"] = tuple(parse_pilot_run(run) for run in data["runs"])
+    report = SuiteReport.model_validate(data)
+    values = report.model_dump(mode="json")
+    if any(values[name] != value for name, value in computed.items()):
+        raise ValueError("Suite scores disagree with underlying assertion records")
+    first = [r for r in report.runs if r.repeat_index == 0]
+    if len(first) != 10 or {r.case_id for r in first} != {f"P{i:02}" for i in range(1, 11)}:
+        raise ValueError("Suite must retain all ten first-case records")
+    if report.numeric_total != sum(r.numeric_total for r in first):
+        raise ValueError("Suite numeric denominator disagrees with assertions")
+    if report.fact_total != sum(
+        sum(a.assertion_id.startswith("support/") for a in r.assertions) for r in first
+    ):
+        raise ValueError("Suite fact denominator disagrees with assertions")
+    _validate_measurements(report)
+    return report
+
+
+def _validate_measurements(report: SuiteReport) -> None:
+    first = [r for r in report.runs if r.repeat_index == 0]
+    reports = [r for r in first if r.case_id != "P10"]
+    qualified = [r for r in reports if r.qualified_delivery]
+    partial = any(
+        r.case_status == "unrun"
+        or r.task_status not in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+        for r in first
+    )
+    latency = [r.latency_ms for r in qualified]
+    if (
+        report.partial != partial
+        or report.qualified_latency_median_ms != (float(median(latency)) if latency else None)
+        or report.qualified_latency_range_ms != ((min(latency), max(latency)) if latency else None)
+    ):
+        raise ValueError("Suite status or latency disagrees with case records")
+    spending = report.spending
+    if spending is not None:
+        for run in report.runs:
+            paid = [a for a in spending.attempts if a.run_id == run.run_id]
+            if paid:
+                actual = sum((a.usd_cost for a in paid if a.usd_cost is not None), Decimal(0))
+                expected = actual if all(a.status == "reconciled" for a in paid) else None
+                if run.model_cost != expected:
+                    raise ValueError("Case cost disagrees with its ledger attempts")
+        incurred = sum(
+            (a.eur_upper for a in spending.attempts if a.eur_upper is not None), Decimal(0)
+        )
+        unresolved = sum(
+            (a.reserved_eur for a in spending.attempts if a.status != "reconciled"), Decimal(0)
+        )
+        if (incurred, unresolved) != (spending.incurred_eur_upper, spending.unresolved_eur):
+            raise ValueError("Spending totals disagree with their ledger attempts")
+    known = report.mode == "live" and spending is not None and spending.unresolved_eur == 0
+    known = known and all(r.model_cost is not None for r in reports if r.case_status == "executed")
+    ids = {r.run_id for r in reports if r.run_id}
+    cost = (
+        sum(
+            (a.usd_cost for a in spending.attempts if a.run_id in ids and a.usd_cost is not None),
+            Decimal(0),
+        )
+        if spending
+        else Decimal(0)
+    )
+    total = (
+        sum((a.usd_cost for a in spending.attempts if a.usd_cost is not None), Decimal(0))
+        if spending and spending.unresolved_eur == 0
+        else None
+    )
+    repeat = (
+        sum(
+            (r.model_cost for r in report.runs if r.repeat_index and r.model_cost is not None),
+            Decimal(0),
+        )
+        if known and all(r.model_cost is not None for r in report.runs if r.repeat_index)
+        else None
+    )
+    expected_costs = (
+        cost if known else None,
+        cost / len(qualified) if known and qualified else None,
+        next((r.model_cost for r in first if r.case_id == "P10"), None),
+        repeat,
+        total,
+    )
+    if expected_costs != (
+        report.first_delivery_cost_usd,
+        report.cost_per_qualified_usd,
+        report.safety_cost_usd,
+        report.repeat_cost_usd,
+        report.total_experiment_cost_usd,
+    ):
+        raise ValueError("Suite costs disagree with the retained ledger")

@@ -159,7 +159,12 @@ def read_pilot_run(path: Path) -> PilotRun:
     """Load a published record and verify, rather than trust, serialized computed scores."""
     import json
 
-    data = json.loads(path.read_bytes())
+    return parse_pilot_run(json.loads(path.read_bytes()))
+
+
+def parse_pilot_run(data: dict[str, object]) -> PilotRun:
+    """Validate a nested or standalone record, including its computed scores."""
+    data = dict(data)
     computed = {name: data.pop(name) for name in PilotRun.model_computed_fields if name in data}
     run = PilotRun.model_validate(data)
     if any(getattr(run, name) != value for name, value in computed.items()):
