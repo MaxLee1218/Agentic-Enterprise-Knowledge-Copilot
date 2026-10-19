@@ -1,0 +1,17 @@
+{
+  "version": "supplier-quality-pilot-source.v1",
+  "tenant_id": "TENANT-PILOT",
+  "rows": [
+    {"tenant_id":"TENANT-PILOT","supplier_id":"S-100","period":"2026-01","defect_count":5,"inspected_count":1000},
+    {"tenant_id":"TENANT-PILOT","supplier_id":"S-100","period":"2026-02","defect_count":10,"inspected_count":1000},
+    {"tenant_id":"TENANT-PILOT","supplier_id":"S-100","period":"2026-03","defect_count":15,"inspected_count":1000},
+    {"tenant_id":"TENANT-PILOT","supplier_id":"S-100","period":"2026-04","defect_count":10,"inspected_count":1000},
+    {"tenant_id":"TENANT-PILOT","supplier_id":"S-100","period":"2026-05","defect_count":20,"inspected_count":1000},
+    {"tenant_id":"TENANT-PILOT","supplier_id":"S-100","period":"2026-06","defect_count":30,"inspected_count":1000},
+    {"tenant_id":"TENANT-PILOT","supplier_id":"S-200","period":"2026-04","defect_count":1,"inspected_count":100},
+    {"tenant_id":"TENANT-PILOT","supplier_id":"S-200","period":"2026-05","defect_count":9,"inspected_count":900},
+    {"tenant_id":"TENANT-PILOT","supplier_id":"S-200","period":"2026-06","defect_count":0,"inspected_count":0},
+    {"tenant_id":"TENANT-PILOT","supplier_id":"S-999","period":"2026-04","defect_count":99,"inspected_count":100},
+    {"tenant_id":"TENANT-OTHER","supplier_id":"S-100","period":"2026-04","defect_count":88,"inspected_count":100}
+  ]
+}

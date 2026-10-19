@@ -182,3 +182,53 @@ Do not use an LLM judge for deterministic numeric, citation, lineage, or safety 
 - Stage 15 metrics validate deterministic demo Guardrails, not production IAM, live-model, or
   enterprise infrastructure security.
 - Retrieval ranking quality and open-ended semantic report quality need separate future datasets.
+
+## Supplier Quality value pilot
+
+The [Supplier Quality value pilot plan](supplier-quality-value-pilot.md) defines ten proposed
+scenarios, independent numeric oracles, delivery acceptance, a €10 live-model API budget, and
+explicitly assumed manual effort ranges. It is an experiment plan, not an executed benchmark.
+The existing CLI remains mock-only; live evaluation and budget enforcement require implementation.
+Manual effort estimates do not establish measured time savings.
+
+### Offline P01 with an independent oracle
+
+Run the first implementation slice without credentials or network services:
+
+```bash
+python -m evaluation.supplier_quality_pilot
+```
+
+This separate entry point uses an offline model, the production Task Service/Graph/Executor,
+a real SELECT-only SQLite business connection, the production analytics and JSON renderer,
+and the product Verifier. It does not change `run_eval.py` or enable its live mode.
+Ambient environment and `.env` settings are excluded from the pilot composition.
+
+The source fixture contains nine planned monthly aggregates plus unauthorized-supplier and
+cross-tenant sentinel rows. Independent SQL and Decimal calculations select the six authorized
+Q2 rows. The checker validates 24 monthly metric/operand assertions and six quarterly checks
+reconstructed from reported monthly counts. It does not require a new quarterly product output.
+Absent reports and required metrics retain the full 30-assertion numeric denominator.
+
+Each run creates a fresh directory under `evaluation/reports/supplier-quality-pilot/` containing
+`report.json`, `report.md`, the actual JSON artifact, source/config snapshots, execution/evidence
+records, and the synthetic model input transcript for oracle-isolation inspection.
+Reports record code/source/config hashes, revision/dirty state, model/prompt versions and UTC time.
+Generated runs are ignored by Git. Inputs and transcripts in this entry point are synthetic only.
+
+To choose a new output location or a compatible source snapshot:
+
+```bash
+python -m evaluation.supplier_quality_pilot --output-dir /tmp/copilot-p01-run
+python -m evaluation.supplier_quality_pilot --source /tmp/synthetic-source.json
+```
+
+An existing nonempty output directory is rejected. Source snapshots must preserve all six
+authorized Q2 supplier/month keys; count changes have a new source hash and flow through the actual
+query and independent oracle. Expected values are never submitted to the model.
+
+Exit codes: `0` qualified P01; `1` failed acceptance or workflow interruption; `2` invalid input/output;
+`3` captured harness failure. The evidence-support checks cover enumerated structured numeric
+facts and their lineage, not open-ended semantic report correctness. This is an offline P01 pilot,
+not a ten-case benchmark, live-model measurement, provider cost measurement, or human-time study.
+Model cost remains unavailable. Live usage/budget enforcement is tracked separately in Issue #3.

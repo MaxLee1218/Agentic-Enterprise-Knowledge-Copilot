@@ -244,6 +244,16 @@ python scripts/smoke_agent.py
 
 This path uses deterministic local adapters and requires no production service or credentials.
 
+For a Supplier Quality task scored against an independent SQL/Decimal oracle:
+
+```bash
+python -m evaluation.supplier_quality_pilot
+```
+
+This offline P01 pilot uses a real read-only SQLite query, analytics and JSON report generation.
+It writes the report, evidence and 30 numeric checks to a fresh local run directory. See
+[P01 evaluation](docs/evaluation.md#offline-p01-with-an-independent-oracle) for reproduction and limits.
+
 ### Run the frontend
 
 ```bash
