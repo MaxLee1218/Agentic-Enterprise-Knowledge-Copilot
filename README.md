@@ -17,6 +17,7 @@
 </p>
 
 <p align="center">
+  <a href="#measured-outcomes"><strong>Measured outcomes</strong></a> ·
   <a href="#product-tour"><strong>Product tour</strong></a> ·
   <a href="docs/assets/readme/product-tour.webm"><strong>Watch demo</strong></a> ·
   <a href="#architecture"><strong>Architecture</strong></a> ·
@@ -26,6 +27,34 @@
 </p>
 
 ---
+
+## Measured outcomes
+
+**15/16 verified reports · 4/4 safe denials · $0.00235 model cost per qualified report**
+
+Twenty versioned synthetic scenarios run through the real model, governed tools and PostgreSQL
+Worker. Delivery requires independent numeric/evidence checks and an audit of the actual PDF.
+
+| Metric | First audited baseline | Development regression v1 |
+|---|---|---|
+| Qualified report delivery | 8/16 (50.0%) | **15/16 (93.8%)** |
+| Numeric assertions | 270/317 | **287/317 (90.5%)** |
+| Enumerated evidence-backed facts | 218/256 | **232/256 (90.6%)** |
+| Unauthorized-scope requests safely denied | 4/4 | **4/4** |
+| Model cost ceiling per qualified report | $0.00314 | **$0.00235** |
+| Qualified task latency, median | 8.87 s | **8.16 s** |
+
+Same inputs, model settings and checker; regression code `45885a9`, 2026-10-20. All failures and
+retry costs are included. V01 remains a Schema failure ([#17](https://github.com/MaxLee1218/Agentic-Enterprise-Knowledge-Copilot/issues/17));
+15/16 is the complete result. This is a development regression after fixes, not blinded validation
+or production reliability. Latency populations differ; no speedup or measured human savings are claimed.
+Costs are conservative model-usage ceilings, excluding infrastructure and human review.
+
+[Results & limitations](docs/supplier-quality-validation-regression-result.md) ·
+[Full before/after comparison](evaluation/reports/supplier-validation-regression-v1-20261020-comparison.md) ·
+[Machine-readable evidence](evaluation/reports/supplier-validation-regression-v1-20261020-audited.json) ·
+[Actual PDF sample](evaluation/reports/supplier-validation-regression-v1-20261020-samples/V02.pdf) ·
+[JSON sample](evaluation/reports/supplier-validation-regression-v1-20261020-samples/V16.json)
 
 ## Product tour
 
@@ -93,7 +122,7 @@ provided out of the box.
 | Signal | Current repository evidence |
 |---|---|
 | Business coverage | 2 end-to-end governed workflows |
-| Backend tests | 696 test functions across unit, integration, contract, smoke and security suites |
+| Backend tests | 1,015 passed / 35 skipped in the [recorded local run](docs/supplier-quality-validation-regression-result.md), across unit, integration, contract, smoke and security suites |
 | Architecture discipline | 23 documented Architecture Decision Records |
 | Full-stack quality | Python, PostgreSQL and real-browser frontend CI jobs |
 | Recovery model | Transactional dispatch, at-least-once delivery, leases, heartbeats and fencing |

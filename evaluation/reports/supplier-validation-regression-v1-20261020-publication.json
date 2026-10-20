@@ -1,0 +1,53 @@
+{
+  "version": "supplier-quality-validation-regression-publication.v1",
+  "normalization": "Public report copies change artifact_paths only to repository-relative paths. Private originals, progress/config, ledger population bindings and first-population files remain unchanged. Progress case hashes identify private case records. Public comparison is recomputed from the normalized audited view; the manifest binds both private/public hashes. Only the two listed qualified sample artifacts are committed.",
+  "reports": [
+    {
+      "view": "automated",
+      "private_path": "evaluation/reports/supplier-quality-pilot/validation-regression-v1/report.json",
+      "raw_sha256": "sha256:b4fe861b163a335f45baaff23e14203d5acd5a0c83b03a3cbb459fa9530f2891",
+      "raw_canonical_hash": "sha256:f12e5eec414380331abaea8a2eaf893a311499204f876d04e410eeeb6229d9c0",
+      "public_path": "evaluation/reports/supplier-validation-regression-v1-20261020-automated.json",
+      "public_sha256": "sha256:2ff556cded3d7f246d79613c63fd0f2dba8bf2132116b86a44d1fa70a3171301",
+      "public_canonical_hash": "sha256:70c4029f0a15df20ec84c11cb58bca363719a3651e94b8b7cdb12b3224d99a6c"
+    },
+    {
+      "view": "audited",
+      "private_path": "evaluation/reports/supplier-quality-pilot/validation-regression-v1/audited-report.json",
+      "raw_sha256": "sha256:bbcfbcd5e970ce5ff8b4c367d66a3f3c9a46edcae7e01434d90e7db6a0e59ae0",
+      "raw_canonical_hash": "sha256:039cd8793da3555e1cc284aeaf3c804c7f5471e7d5a32921174d30a564ae7f00",
+      "public_path": "evaluation/reports/supplier-validation-regression-v1-20261020-audited.json",
+      "public_sha256": "sha256:ca384f1ea3ccf6b8945abdf85193f7360f5275f3b60381b16e2028a09dd05737",
+      "public_canonical_hash": "sha256:147935e9eb95a16bf5927d2e4a5df3e0474b1b2824077d8f4571f60361259cb5"
+    }
+  ],
+  "samples": [
+    {
+      "case_id": "V02",
+      "path": "evaluation/reports/supplier-validation-regression-v1-20261020-samples/V02.pdf",
+      "origin_path": "evaluation/reports/supplier-quality-pilot/validation-regression-v1/V02/artifacts/supplier-quality-analysis-T-43f4e3d8c67d4d34ae759a968057510f-A-03d9b4ecf5abc279155122846556bfe5e3a1aa818a935b1acb0c7b36df9cabec.pdf",
+      "sha256": "sha256:d400f82aaeddeb393cb93d7fe6c8c5fb5b015488f68fea5a69ae06869c175e28"
+    },
+    {
+      "case_id": "V16",
+      "path": "evaluation/reports/supplier-validation-regression-v1-20261020-samples/V16.json",
+      "origin_path": "evaluation/reports/supplier-quality-pilot/validation-regression-v1/V16/artifacts/supplier-quality-analysis-T-59fc92a640434d05b3f46be07a419515-A-ab50083a4ffe5cc72285491ccd3e61ec4ef4d7527cc758dedcb27a5a24420fc3.json",
+      "sha256": "sha256:365219e3f0bd86510db20563e71b92b93430d706f16c6f8d4b7db0f6edce0271"
+    }
+  ],
+  "config": {
+    "path": "evaluation/reports/supplier-validation-regression-v1-20261020-config.json",
+    "sha256": "sha256:1f464f585ed8bd84edfe2b8250283914f65060fba690b8811a591444e4e07975",
+    "meaning": "byte-identical execution metadata; progress hashes refer to private records"
+  },
+  "progress": {
+    "path": "evaluation/reports/supplier-validation-regression-v1-20261020-progress.json",
+    "sha256": "sha256:1c4934b16a406ab4c725f2c617ca3b118bc7cace61334034d35c8cebc3efe869",
+    "meaning": "byte-identical execution metadata; progress hashes refer to private records"
+  },
+  "original_attempt_prefix": {
+    "count": 81,
+    "raw_records_sha256": "5b28b7f1130850438814ffa8ee0199f807cbaf98469b6b9612304ec1ff62539c",
+    "aggregate_count": 124
+  }
+}
