@@ -79,6 +79,31 @@ def test_scripted_clarification_resumes_through_postgres_worker(tmp_path: Path) 
     assert run.interaction.tools_before_answer == 0
 
 
+@pytest.mark.parametrize(
+    "raw,answer",
+    [
+        ("Review supplier quality for S-100 in Q2 and deliver JSON.", "2026"),
+        ("Review supplier quality for S-100 in 2026 and deliver JSON.", "Q2"),
+    ],
+)
+def test_partial_period_resumes_the_same_task_through_postgres_worker(
+    tmp_path: Path, raw: str, answer: str
+) -> None:
+    import os
+
+    url = os.environ.get("PILOT_TEST_POSTGRES_URL")
+    if not url:
+        pytest.skip("A dedicated migrated PILOT_TEST_POSTGRES_URL is required")
+    case = load_cases()[2].model_copy(update={"request": raw, "scripted_answer": answer})
+    run = run_case(tmp_path, case=case, persistence_url=url)
+    assert run.interaction is not None and run.interaction.answer_applied
+    assert run.interaction.initial_status == "WAITING_CLARIFICATION"
+    assert run.interaction.tools_before_answer == 0
+    assert run.interaction.initial_task_id == run.interaction.final_task_id == run.task_id
+    assert run.qualified_delivery, (run.task_status, run.error_code)
+    assert run.numeric_passed == 15
+
+
 def test_offline_suite_keeps_fixed_denominators_and_pending_case(tmp_path: Path) -> None:
     from evaluation.supplier_quality_pilot.suite import run_suite
 

@@ -212,6 +212,7 @@ class TaskIntakeValidationError(ValueError):
 
 _SUPPLIER_QUALITY_SIGNALS = (
     r"\bsupplier\s+quality\b",
+    r"\bquality\s+(?:report|of)\b.{0,64}\b(?:suppliers?|s-\d{3})\b",
     r"\b(?:analyze|analyse|investigate|review)\b.{0,48}\bsuppliers?\b",
     r"\bquality\s+(?:issue|issues|analysis|deviation|deviations|trend|trends)\b",
     r"\bdefect(?:s|\s+rate|\s+rates)?\b",

@@ -25,6 +25,7 @@ _YEAR_ONLY = re.compile(
 )
 _YEAR_COMPACT = re.compile(rf"\byear\s*({_YEAR})\b", re.IGNORECASE)
 _BARE_YEAR = re.compile(rf"(?<!\d)({_YEAR})(?!\d)")
+_SUPPLIER_YEAR = re.compile(rf"(?<![\w-])({_YEAR})(?![\w-])")
 _QUARTER = re.compile(rf"\bq([1-4])\s*(?:of\s+)?({_YEAR})\b", re.IGNORECASE)
 _YEAR_QUARTER = re.compile(rf"\b({_YEAR})\s*[-/]?\s*q([1-4])\b", re.IGNORECASE)
 _QUARTER_ONLY = re.compile(r"\bq([1-4])\b", re.IGNORECASE)
@@ -302,9 +303,17 @@ def normalize_accounts_payable_time_range(
     return _missing(normalized, "No supported absolute AP period was supplied.")
 
 
-def normalize_supplier_period(text: str, *, prior_year: int | None = None) -> FieldResolution:
-    """Resolve a Supplier Quality quarter while retaining its year/quarter contract shape."""
+def normalize_supplier_period(
+    text: str, *, prior_year: int | None = None, prior_quarter: int | None = None
+) -> FieldResolution:
+    """Retain explicit partial facts; only a complete period is NORMALIZED.
+
+    A MISSING resolution may carry a partial canonical value for clarification context,
+    never an executable TaskContract. No model candidate supplies these facts.
+    """
     normalized = " ".join(text.strip().split())
+    year: int | None
+    quarter: int | None
     match = _QUARTER.search(normalized) or _YEAR_QUARTER.search(normalized)
     if match is not None:
         if match.re is _YEAR_QUARTER:
@@ -327,27 +336,25 @@ def normalize_supplier_period(text: str, *, prior_year: int | None = None) -> Fi
             )
             year = int(chinese.group(1) or chinese.group(3))
         else:
-            quarter_only = _QUARTER_ONLY.search(normalized)
-            if quarter_only is not None and prior_year is not None:
-                quarter, year = int(quarter_only.group(1)), prior_year
-                value: dict[str, JsonValue] = {"year": year, "quarter": quarter}
+            years = tuple(dict.fromkeys(_SUPPLIER_YEAR.findall(normalized)))
+            quarters = tuple(dict.fromkeys(_QUARTER_ONLY.findall(normalized)))
+            year = int(years[0]) if len(years) == 1 else prior_year
+            quarter = int(quarters[0]) if len(quarters) == 1 else prior_quarter
+            if year is None or quarter is None:
+                partial: dict[str, JsonValue] = {}
+                if year is not None:
+                    partial["year"] = year
+                if quarter is not None:
+                    partial["quarter"] = quarter
                 return FieldResolution(
                     field_name="time_range",
-                    status=ResolutionStatus.NORMALIZED,
+                    status=ResolutionStatus.MISSING,
                     raw_text=normalized,
-                    candidate_value=value,
-                    canonical_value=value,
-                    reason=f"Applied Q{quarter} to the previously validated year {year}",
+                    canonical_value=partial or None,
+                    reason="Supplier Quality requires an explicit calendar quarter and year.",
                     source=ResolutionSource.DETERMINISTIC_NORMALIZER,
                 )
-            return FieldResolution(
-                field_name="time_range",
-                status=ResolutionStatus.MISSING,
-                raw_text=normalized,
-                reason="Supplier Quality requires an explicit calendar quarter and year.",
-                source=ResolutionSource.DETERMINISTIC_NORMALIZER,
-            )
-    value = {"year": year, "quarter": quarter}
+    value: dict[str, JsonValue] = {"year": year, "quarter": quarter}
     return FieldResolution(
         field_name="time_range",
         status=ResolutionStatus.NORMALIZED,

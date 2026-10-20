@@ -28,6 +28,14 @@ The deterministic normalizers support these current domain expressions:
 - Entity scope: exact legal-entity/supplier IDs and documented natural labels matched only inside
   the caller's current authorized set.
 
+Supplier Quality also retains an explicit year or `Q1`–`Q4` independently when the other field
+is missing. The partial period remains `MISSING`, is persisted only as clarification context,
+and cannot create a Contract or Plan. A later year-only or quarter-only answer fills the missing
+part on the same Task. Supplier identifiers containing four digits are not calendar years.
+Partial model candidates can reach this deterministic decision; their date fields never supply
+execution authority. The immutable original request and trusted supplier authorization remain
+separate. These corrections are tracked by [#15](https://github.com/MaxLee1218/Agentic-Enterprise-Knowledge-Copilot/issues/15).
+
 Month ends come from the standard calendar library, including leap-year February. Relative time
 (`recently`, `last period`, `the usual period`, `a while ago`) never becomes an implicit duration.
 The resulting canonical dates still pass the frozen AP 366-day and snapshot validations.

@@ -327,20 +327,19 @@ class LLMPlanningService:
             if clarification_response is not None and clarification_response.message is not None
             else request.raw_input
         )
-        period_resolution = normalize_supplier_period(resolution_text, prior_year=prior_year)
+        period_resolution = normalize_supplier_period(
+            resolution_text, prior_year=prior_year, prior_quarter=prior_quarter
+        )
         year = prior_year
         quarter = prior_quarter
-        if _RESOLUTION_POLICY.accepts(period_resolution):
-            period_value = period_resolution.canonical_value
-            assert isinstance(period_value, dict)
+        period_value = period_resolution.canonical_value
+        if isinstance(period_value, dict):
             resolved_year = period_value.get("year")
             resolved_quarter = period_value.get("quarter")
-            if not isinstance(resolved_year, int) or not isinstance(resolved_quarter, int):
-                raise LLMSchemaValidationError("Normalized Supplier period is malformed")
-            year = resolved_year
-            quarter = resolved_quarter
-        elif prior_year is not None and prior_quarter is not None:
-            year, quarter = prior_year, prior_quarter
+            if isinstance(resolved_year, int):
+                year = resolved_year
+            if isinstance(resolved_quarter, int):
+                quarter = resolved_quarter
         # A time answer fills a missing field; it cannot redefine the request scope.
         # Resolve the immutable request independently of the model and auth defaults.
         original_supplier = resolve_suppliers(
@@ -400,11 +399,10 @@ class LLMPlanningService:
         if missing:
             context_values = dict(previous_values)
             context_values["supplier_ids"] = list(original_ids)
-            if year is not None and quarter is not None:
-                context_values.update(
-                    year=year,
-                    quarter=quarter,
-                )
+            if year is not None:
+                context_values["year"] = year
+            if quarter is not None:
+                context_values["quarter"] = quarter
             outcome = TaskUnderstandingOutcome(
                 contract=None,
                 missing_information=tuple(dict.fromkeys(missing)),

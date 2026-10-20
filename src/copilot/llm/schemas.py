@@ -80,13 +80,6 @@ class TaskUnderstandingOutput(BaseModel):
     include_policy_comparison: bool = False
     missing_information: tuple[str, ...] = ()
 
-    @model_validator(mode="after")
-    def preserve_missing_time_information(self) -> TaskUnderstandingOutput:
-        """Do not silently accept a partial or invented frozen time range."""
-        if (self.time_range.year is None) != (self.time_range.quarter is None):
-            raise ValueError("year and quarter must either both be present or both be absent")
-        return self
-
 
 class APDateRangeCandidate(BaseModel):
     """Explicit AP date range; missing endpoints remain visible to deterministic code."""

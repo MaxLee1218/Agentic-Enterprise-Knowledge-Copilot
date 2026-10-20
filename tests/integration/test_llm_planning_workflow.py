@@ -79,6 +79,49 @@ def _proposal() -> ProposedPlan:
     )
 
 
+@pytest.mark.parametrize("supplier", ["SUP-001", "SUP-2027"])
+def test_a_partial_time_candidate_pauses_for_the_missing_year(
+    tmp_path: Path, supplier: str
+) -> None:
+    from copilot.llm.schemas import ClarificationAssistantOutput
+    from copilot.services.task_intake import (
+        NaturalLanguageTaskCommand,
+        RequestSource,
+        TrustedCallerContext,
+    )
+
+    candidate = _understanding().model_dump(mode="json")
+    candidate["time_range"] = {"year": None, "quarter": 3}
+    candidate["entities"] = {"supplier_ids": [supplier]}
+    provider = MockLLM(
+        responses_by_node={
+            "understand_task": [candidate],
+            "compose_clarification": [
+                ClarificationAssistantOutput(
+                    message="Which reporting year should be used?", covered_fields=("time_range",)
+                )
+            ],
+        }
+    )
+    raw = f"Analyze supplier quality for {supplier} in Q3 and generate JSON."
+    caller = TrustedCallerContext(
+        user_id="U-QUALITY",
+        tenant_id="TENANT-DEMO",
+        data_scope=("quality.v1",),
+        supplier_ids=(supplier, "SUP-002"),
+    )
+    with build_test_container(tmp_path / "partial", llm_provider=provider) as container:
+        with pytest.raises(WorkflowInterrupted) as caught:
+            container.task_service.submit(
+                NaturalLanguageTaskCommand(task=raw, source=RequestSource.API), caller
+            )
+        assert caught.value.status == "WAITING_CLARIFICATION"
+        state = container.engine.get_state(caught.value.task_id, caller.tenant_id)
+        assert state["contract"] is None and state["plan"] is None
+        assert state["tool_results"] == []
+        assert state["request"].raw_input == raw
+
+
 def test_llm_plan_repair_is_checkpointed_and_invalid_plan_never_executes(
     tmp_path: Path,
 ) -> None:

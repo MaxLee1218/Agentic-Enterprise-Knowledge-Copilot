@@ -253,7 +253,9 @@ def _management_pages(
         ),
         _supplier_overview_table(document, styles.table_body, width),
         Spacer(1, 8),
-        Paragraph("Supplier Defect Rate - Q2 Monthly View", styles.subheading),
+        Paragraph(
+            f"Supplier Defect Rate - Q{document.scope.quarter} Monthly View", styles.subheading
+        ),
     ]
     chart = supplier_defect_rate_chart(overview, periods, width=width)
     if chart is None:
