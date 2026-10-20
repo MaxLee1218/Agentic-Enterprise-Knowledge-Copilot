@@ -46,7 +46,9 @@ class ValidationRun(EvaluationModel):
     case_id: str
     expected_outcome: Literal["report", "denial"]
     mode: Literal["control", "live"]
-    case_status: Literal["executed", "unrun", "interrupted"]
+    case_status: Literal["executed", "intake_rejected", "unrun", "interrupted"]
+    code_revision: str | None = None
+    code_hash: str | None = None
     run_id: str | None = None
     started_at: datetime | None = None
     latency_ms: int | None = None
@@ -209,7 +211,13 @@ def run_validation_case(
         case_id=case.case_id,
         expected_outcome=case.expected_outcome,
         mode="live" if live else "control",
-        case_status="interrupted" if captured.harness_error else "executed",
+        case_status=(
+            "interrupted"
+            if captured.harness_error
+            else "intake_rejected"
+            if captured.intake_rejected
+            else "executed"
+        ),
         run_id=live.run_id if live else None,
         started_at=started_at,
         latency_ms=max(0, round((perf_counter() - timer) * 1000)),

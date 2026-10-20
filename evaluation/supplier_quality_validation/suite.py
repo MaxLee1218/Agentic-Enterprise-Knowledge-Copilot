@@ -43,6 +43,18 @@ class CaseDefinition(EvaluationModel):
     fact_ids: tuple[str, ...]
 
 
+def execution_settings(settings: Settings) -> dict[str, int | float | str]:
+    """Recorded model/transport conditions checked before paid continuation dispatch."""
+    return {
+        "max_output_tokens": settings.llm_max_output_tokens,
+        "temperature": settings.llm_temperature,
+        "provider_retries": settings.llm_max_retries,
+        "transport_retries": 0,
+        "clarification_runtime": "postgresql-worker",
+        "read_timeout_seconds": settings.llm_read_timeout_seconds,
+    }
+
+
 class PopulationConfig(EvaluationModel):
     """Safe execution identity; contains no credential, provider body or database URL."""
 
@@ -58,9 +70,18 @@ class PopulationConfig(EvaluationModel):
     policy_hash: str
     model: str
     pricing_hash: str
+    parent_report_hash: str | None = None
     budget_hash: str
     settings: dict[str, int | float | str]
     cases: tuple[CaseDefinition, ...]
+
+
+class ExecutionSegment(EvaluationModel):
+    """First case attempts bound to each harness version and immutable stop report."""
+
+    config: PopulationConfig
+    case_ids: tuple[str, ...]
+    report_hash: str
 
 
 class ValidationReport(EvaluationModel):
@@ -76,6 +97,7 @@ class ValidationReport(EvaluationModel):
     runs: tuple[ValidationRun, ...]
     spending: SpendingSnapshot
     prior_attempt_ids: tuple[str, ...]
+    segments: tuple[ExecutionSegment, ...] = ()
     limitations: tuple[str, ...] = (
         "Synthetic validation authored by the same coding agent after development defects; "
         "not independently blinded.",
@@ -93,6 +115,22 @@ class ValidationReport(EvaluationModel):
     def validate_population(self) -> "ValidationReport":
         if tuple(r.case_id for r in self.runs) != tuple(c.case_id for c in self.config.cases):
             raise ValueError("population changed")
+        if self.segments:
+            if tuple(case_id for s in self.segments for case_id in s.case_ids) != tuple(
+                r.case_id for r in self.runs
+            ):
+                raise ValueError("execution segment population changed")
+            for segment in self.segments:
+                for run in self.runs:
+                    if (
+                        run.case_id in segment.case_ids
+                        and run.case_status != "unrun"
+                        and (
+                            run.code_revision != segment.config.code_revision
+                            or run.code_hash != segment.config.code_hash
+                        )
+                    ):
+                        raise ValueError("case harness provenance disagrees with its segment")
         for run, case in zip(self.runs, self.config.cases, strict=True):
             if (run.numeric_ids, run.fact_ids, run.expected_outcome) != (
                 case.numeric_ids,
@@ -168,7 +206,7 @@ class ValidationReport(EvaluationModel):
     def partial(self) -> bool:
         return (
             bool(self.stop_reason)
-            or any(r.case_status != "executed" for r in self.runs)
+            or any(r.case_status in {"unrun", "interrupted"} for r in self.runs)
             or bool(self.spending.unresolved_eur)
             or any(
                 r.case_status == "executed"
@@ -310,6 +348,8 @@ def unavailable_run(
         expected_outcome=case.expected_outcome,
         mode="live",
         case_status="interrupted" if started else "unrun",
+        code_revision=config.code_revision,
+        code_hash=config.code_hash,
         run_id=started.run_id if started else None,
         started_at=started.started_at if started else None,
         latency_ms=max(0, round((datetime.now(UTC) - started.started_at).total_seconds() * 1000))
@@ -350,6 +390,10 @@ def run_population(
     settings: Settings,
     persistence_url: str | None = None,
     transport_factory: Callable[[], httpx.BaseTransport] | None = None,
+    population_name: Literal[
+        "supplier-quality-validation.v1", "supplier-quality-validation.v1-continuation"
+    ] = "supplier-quality-validation.v1",
+    parent_report_hash: str | None = None,
 ) -> ValidationReport:
     """Run one ordered population, preserving every first outcome and original ledger.
 
@@ -374,14 +418,8 @@ def run_population(
         model=settings.llm_model,
         pricing_hash=canonical_hash(ledger.pricing.model_dump(mode="json")),
         budget_hash=canonical_hash(ledger.policy.model_dump(mode="json")),
-        settings={
-            "max_output_tokens": settings.llm_max_output_tokens,
-            "temperature": settings.llm_temperature,
-            "provider_retries": settings.llm_max_retries,
-            "transport_retries": 0,
-            "clarification_runtime": "postgresql-worker",
-            "read_timeout_seconds": settings.llm_read_timeout_seconds,
-        },
+        parent_report_hash=parent_report_hash,
+        settings=execution_settings(settings),
         cases=tuple(
             CaseDefinition(
                 case_id=c.case_id,
@@ -409,7 +447,7 @@ def run_population(
     output_directory = output_directory.resolve()
     config_hash = canonical_hash(config.model_dump(mode="json"))
     ledger.bind_population(
-        "supplier-quality-validation.v1",
+        population_name,
         canonical_hash({"output": str(output_directory), "config": config_hash}),
     )
     output_directory.mkdir(parents=True, exist_ok=True)
@@ -481,6 +519,7 @@ def run_population(
                     )
                 if run.case_status == "interrupted":
                     stop = f"HARNESS_{run.error_code}"
+                run.code_revision, run.code_hash = config.code_revision, config.code_hash
             except Exception as exc:
                 stop = f"HARNESS_{type(exc).__name__}"
                 run = unavailable_run(case, oracle, config, stop, started=started, ledger=ledger)
@@ -550,6 +589,11 @@ def markdown(report: ValidationReport) -> str:
             f"frozen revision: {report.config.frozen_revision}.",
             f"Execution code: {report.config.code_revision}; dirty: {report.config.git_dirty}; "
             f"hash: {report.config.code_hash}.",
+            *[
+                f"Segment {index}: code {segment.config.code_revision}; "
+                f"cases {', '.join(segment.case_ids)}; result hash {segment.report_hash}."
+                for index, segment in enumerate(report.segments, start=1)
+            ],
             "",
             "| Case | State | Task status | Qualified | Safety | Numeric | Facts | "
             "Latency ms | USD | Error |",

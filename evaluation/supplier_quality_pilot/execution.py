@@ -26,6 +26,7 @@ from copilot.services.llm import (
 )
 from copilot.services.task_intake import (
     NaturalLanguageTaskCommand,
+    TaskIntakeValidationError,
     TrustedCallerContext,
 )
 from copilot.services.workflows.models import WorkflowExecution
@@ -95,6 +96,7 @@ class CapturedTask:
     artifact_paths: dict[str, Path]
     interaction: ClarificationObservation | None
     harness_error: bool = False
+    intake_rejected: bool = False
 
 
 def capture_task(
@@ -125,6 +127,7 @@ def capture_task(
     artifact_paths: dict[str, Path] = {}
     interaction: ClarificationObservation | None = None
     harness_error = False
+    intake_rejected = False
     with tempfile.TemporaryDirectory(prefix="supplier-quality-p01-") as temporary:
         root = Path(temporary)
         database_url = f"sqlite:///{root / 'source.db'}"
@@ -203,6 +206,10 @@ def capture_task(
                 (output_directory / "evidence.json").write_text(
                     json.dumps([e.model_dump(mode="json") for e in execution.evidence], indent=2)
                 )
+            except TaskIntakeValidationError as exc:
+                # Deterministic product refusal before persistence/model, not a harness IO fault.
+                error_code = exc.code
+                intake_rejected = True
             except WorkflowInterrupted as exc:
                 task_id = exc.task_id
                 task_status = container.repository.state_for(
@@ -230,5 +237,12 @@ def capture_task(
         )
     )
     return CapturedTask(
-        execution, task_id, task_status, error_code, artifact_paths, interaction, harness_error
+        execution,
+        task_id,
+        task_status,
+        error_code,
+        artifact_paths,
+        interaction,
+        harness_error,
+        intake_rejected,
     )

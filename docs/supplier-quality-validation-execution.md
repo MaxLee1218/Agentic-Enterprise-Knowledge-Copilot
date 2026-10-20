@@ -21,7 +21,9 @@ python -m evaluation.supplier_quality_validation
 凭据继续来自批准的 `.env`/环境，只注入现有模型适配器。首次执行命令：
 
 ```bash
-python -m evaluation.supplier_quality_validation --execute-live \
+env LLM_PROVIDER=deepseek LLM_MODEL=deepseek-flash LLM_MAX_OUTPUT_TOKENS=8192 \
+  LLM_TEMPERATURE=0 LLM_BASE_URL=https://api.deepseek.com \
+  python -m evaluation.supplier_quality_validation --execute-live \
   --output evaluation/reports/supplier-quality-pilot/validation-v1 \
   --pricing evaluation/configs/supplier-quality-pilot/pricing-2026-10-20.json \
   --previous-pricing evaluation/configs/supplier-quality-pilot/pricing-2026-10-19.json \
@@ -77,3 +79,34 @@ V01–V20 按序各一次。澄清沿既有接口、PostgreSQL dispatcher/Worker
 这是同一编码 agent 编写的小型合成验证，不是独立盲测、生产成功率或实测人工节省。
 本集分母/数据不同于开发集，分开报告，不合并或直接计算成功率提升。首轮后据此修改产品，
 该集即转为开发数据；原首轮结果必须保留，修复回归另行版本化。
+
+
+## 输入拒绝与一次性尾段续行
+
+首次段在 `a0df048` 上运行，V04 被现有任务类型识别在创建 Task/调用模型前拒绝。
+当时执行器把 `TaskIntakeValidationError` 当作捕获故障停止，原报告为 3/16、75/317、60/256、
+安全 0/4，V05–V20 未运行。本地停止报告、配置、progress、原 population binding 和已计费用
+保持原字节，原失败不能被下一次成功替换。跟踪修正见 [#12](https://github.com/MaxLee1218/Agentic-Enterprise-Knowledge-Copilot/issues/12)。
+
+修正只涉及评估执行器：typed intake refusal 是不合格场景，记录安全的产品错误码；未创建
+Task，不能伪造 FAILED Task 或安全拒绝。真正 IO/运行时捕获故障仍停止。生产分类规则、
+模型提示词、请求和标准答案均保持不变，因此 V04 继续失败。
+
+只允许 hash 绑定的未运行尾段续行：先核对原账本 binding、原报告/config/progress hash、
+逐场景结果/Artifact 和所有原费用；必须为纯 intake stop、无 Task/付费/工具的最后已启动场景，
+其后均为 unrun。续行配置绑定 parent_report_hash，另存输出和唯一 continuation binding，
+不清除或修改原绑定/stop，不调度 V01–V04。已开始或可能计费的中断仍不能用此入口重试。
+
+在相同模型/价格/预算设置下，将首次命令的输出改为：
+
+```text
+--output evaluation/reports/supplier-quality-pilot/validation-v1-continuation
+--continue-unrun-from evaluation/reports/supplier-quality-pilot/validation-v1
+```
+
+组合报告逐场景保留首次结果，披露两段代码/config/hash，仍使用完整固定分母及原累计账本。
+只在组合视图将原 typed intake exception 归类为 intake_rejected；异常类、失败断言和原停止快照
+保留，不反推伪造原错误码。不将这次分段执行包装成单一执行器版本的无中断测试。
+
+公开停止报告仅将 Artifact 路径转为仓库相对路径；`supplier-validation-v1-stop-20261020-publication.json`
+披露原始/公开 hash 的关系。本地原始数据仍用于父段绑定，公开脱敏副本不替代原账本或恢复权威。

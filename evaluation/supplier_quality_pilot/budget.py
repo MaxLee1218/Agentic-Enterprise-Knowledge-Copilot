@@ -321,6 +321,10 @@ class BudgetLedger:
         self._db.execute("INSERT OR IGNORE INTO metadata VALUES (?, ?)", (key, identity))
         self._db.commit()
 
+    def population_identity(self, name: str) -> str | None:
+        """Read an existing evaluation binding without creating or clearing it."""
+        return self._get(f"population/{name}")
+
     def stop(self, reason: str) -> None:
         """Persist the first refusal; all later calls and restarts inherit it."""
         self._db.execute("INSERT OR IGNORE INTO metadata VALUES ('stopped_reason', ?)", (reason,))

@@ -17,6 +17,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--pricing", type=Path)
     parser.add_argument("--previous-pricing", type=Path)
     parser.add_argument("--budget", type=Path)
+    parser.add_argument("--continue-unrun-from", type=Path)
     arguments = parser.parse_args(argv)
     if arguments.execute_live:
         if arguments.bundle != DEFAULT_BUNDLE or not all(
@@ -34,11 +35,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             BudgetStopped,
             PricingCard,
         )
+        from evaluation.supplier_quality_validation.continuation import continue_validation_live
         from evaluation.supplier_quality_validation.live import run_validation_live
 
         try:
-            report = run_validation_live(
-                arguments.output,
+            operation = (
+                continue_validation_live if arguments.continue_unrun_from else run_validation_live
+            )
+            positional = (
+                (arguments.continue_unrun_from, arguments.output)
+                if arguments.continue_unrun_from
+                else (arguments.output,)
+            )
+            report = operation(
+                *positional,
                 pricing=PricingCard.model_validate_json(arguments.pricing.read_bytes()),
                 previous_pricing=PricingCard.model_validate_json(
                     arguments.previous_pricing.read_bytes()

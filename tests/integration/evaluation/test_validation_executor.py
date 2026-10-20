@@ -555,3 +555,194 @@ def test_waiting_control_is_partial_and_capture_failure_stops_next_case(
         assert report.runs[1].case_status == "unrun"
         assert len(report.spending.attempts) == 2
         assert report.report_usd == Decimal("0.002040")
+
+
+def test_intake_rejection_is_a_failed_case_without_stopping_the_population(tmp_path: Path) -> None:
+    from pydantic import AnyHttpUrl, SecretStr
+
+    from copilot.config import Settings
+    from evaluation.supplier_quality_pilot.budget import BudgetLedger, BudgetPolicy
+    from evaluation.supplier_quality_validation.suite import run_population
+    from tests.integration.evaluation.test_pilot_budget import card
+
+    source, case, oracle, policy = control()
+    # Distinct control input exercising a supported transport's deterministic intake refusal.
+    rejected = case.model_copy(update={"request": "Write a poem about an unrelated topic as JSON."})
+    other = case.model_copy(update={"case_id": "P04"})
+    other_oracle = oracle.model_copy(update={"case_id": "P04"})
+    settings = Settings(
+        database_url="sqlite:///:memory:",
+        llm_provider="deepseek",
+        llm_model="test-model",
+        llm_base_url=AnyHttpUrl("https://provider.test"),
+        llm_api_key=SecretStr("control-secret"),
+        llm_max_output_tokens=1000,
+    )
+    with BudgetLedger(tmp_path / "ledger.db", card(), BudgetPolicy()) as ledger:
+        report = run_population(
+            tmp_path / "population",
+            source=source,
+            cases=(rejected, other),
+            oracles=(oracle, other_oracle),
+            policy=policy,
+            freeze_hash="control-rejection",
+            frozen_revision="control",
+            settings=settings,
+            ledger=ledger,
+            transport_factory=lambda: httpx.MockTransport(_valid_control_response),
+        )
+        assert report.runs[0].case_status == "intake_rejected"
+        assert report.runs[0].error_code == "UNSUPPORTED_TASK_TYPE"
+        assert report.runs[0].task_id is None
+        assert report.runs[0].attempts == ()
+        assert report.runs[1].qualified_delivery
+        assert not report.partial and report.stop_reason is None
+        assert report.numeric_total == 30 and report.qualified_deliveries == 1
+
+
+def test_continuation_only_consumes_unrun_tail_and_keeps_original_failure(tmp_path: Path) -> None:
+    from datetime import UTC, datetime
+
+    from pydantic import AnyHttpUrl, SecretStr
+
+    from copilot.config import Settings
+    from evaluation.supplier_quality_pilot.budget import BudgetLedger, BudgetPolicy
+    from evaluation.supplier_quality_validation.continuation import (
+        combine_first_attempts,
+        unrun_tail,
+    )
+    from evaluation.supplier_quality_validation.suite import (
+        ValidationReport,
+        run_population,
+        unavailable_run,
+    )
+    from tests.integration.evaluation.test_pilot_budget import card
+
+    source, case, oracle, policy = control()
+    rejected = case.model_copy(update={"request": "Write an unrelated poem as JSON."})
+    other = case.model_copy(update={"case_id": "P04"})
+    other_oracle = oracle.model_copy(update={"case_id": "P04"})
+    settings = Settings(
+        database_url="sqlite:///:memory:",
+        llm_provider="deepseek",
+        llm_model="test-model",
+        llm_base_url=AnyHttpUrl("https://provider.test"),
+        llm_api_key=SecretStr("control-secret"),
+        llm_max_output_tokens=1000,
+    )
+    calls = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return _valid_control_response(request)
+
+    with BudgetLedger(tmp_path / "ledger.db", card(), BudgetPolicy()) as ledger:
+        first = run_population(
+            tmp_path / "first",
+            source=source,
+            cases=(rejected,),
+            oracles=(oracle,),
+            policy=policy,
+            freeze_hash="control-segments",
+            frozen_revision="control",
+            settings=settings,
+            ledger=ledger,
+            transport_factory=lambda: httpx.MockTransport(respond),
+        )
+        assert calls == []
+        child = run_population(
+            tmp_path / "child",
+            source=source,
+            cases=(other,),
+            oracles=(other_oracle,),
+            policy=policy,
+            freeze_hash="control-segments",
+            frozen_revision="control",
+            settings=settings,
+            ledger=ledger,
+            population_name="supplier-quality-validation.v1-continuation",
+            parent_report_hash="parent-control",
+            transport_factory=lambda: httpx.MockTransport(respond),
+        )
+        config = first.config.model_copy(update={"cases": first.config.cases + child.config.cases})
+        # Legacy stopped-record fixture: same observed zero-Task/zero-cost intake failure.
+        stopped = first.runs[0].model_copy(
+            update={"case_status": "interrupted", "error_code": "TaskIntakeValidationError"}
+        )
+        missing = unavailable_run(
+            other, other_oracle, config, "HARNESS_TaskIntakeValidationError", ledger=ledger
+        )
+        parent = ValidationReport(
+            config=config,
+            started_at=first.started_at,
+            stopped_at=datetime.now(UTC),
+            stop_reason="HARNESS_TaskIntakeValidationError",
+            runs=(stopped, missing),
+            spending=first.spending,
+            prior_attempt_ids=first.prior_attempt_ids,
+        )
+        original = parent.model_dump_json()
+        assert unrun_tail(parent) == ("P04",)
+        from evaluation.supplier_quality_pilot.budget import BudgetStopped
+        from evaluation.supplier_quality_validation.continuation import (
+            validate_continuation_configuration,
+        )
+
+        validate_continuation_configuration(parent, ledger.pricing, ledger.policy, settings)
+        with pytest.raises(BudgetStopped, match="CONTINUATION_CONFIG_CHANGED"):
+            validate_continuation_configuration(
+                parent,
+                ledger.pricing,
+                ledger.policy,
+                settings.model_copy(update={"llm_max_output_tokens": 900}),
+            )
+        with pytest.raises(ValueError, match="cannot be repeated"):
+            unrun_tail(
+                parent.model_copy(
+                    update={
+                        "runs": (
+                            stopped,
+                            missing.model_copy(update={"task_id": "ALREADY-STARTED"}),
+                        )
+                    }
+                )
+            )
+        combined = combine_first_attempts(
+            parent, child, parent_hash="parent-control", child_hash="child-control"
+        )
+        assert parent.model_dump_json() == original
+        assert len(calls) == 2
+        assert combined.qualified_deliveries == 1 and not combined.partial
+        assert combined.runs[0].case_status == "intake_rejected"
+        assert not combined.runs[0].qualified_delivery
+        assert combined.numeric_total == 30
+        assert combined.report_usd == Decimal("0.002040")
+        assert len(combined.segments) == 2
+        from evaluation.supplier_quality_validation.suite import CaseProgress
+
+        interrupted = unavailable_run(
+            other,
+            other_oracle,
+            child.config,
+            "HARNESS_OSError",
+            ledger=ledger,
+            started=CaseProgress(
+                case_id=other.case_id, run_id=str(child.runs[0].run_id), started_at=child.started_at
+            ),
+        )
+        child_partial = child.model_copy(
+            update={"runs": (interrupted,), "stop_reason": "HARNESS_OSError"}
+        )
+        combined_partial = combine_first_attempts(
+            parent, child_partial, parent_hash="parent-control", child_hash="child-partial-control"
+        )
+        assert combined_partial.partial
+        assert combined_partial.runs[1].case_status == "interrupted"
+        assert combined_partial.report_usd == Decimal("0.002040")
+        with pytest.raises(ValueError, match="identity"):
+            combine_first_attempts(
+                parent,
+                child.model_copy(update={"runs": (stopped,)}),
+                parent_hash="parent-control",
+                child_hash="bad-control",
+            )
