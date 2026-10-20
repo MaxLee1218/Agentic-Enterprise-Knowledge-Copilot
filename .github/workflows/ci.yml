@@ -15,7 +15,8 @@ concurrency:
 jobs:
   frontend-quality:
     name: Frontend quality and real browser E2E
-    runs-on: ubuntu-latest
+    # Playwright 1.55.0 supports 24.04; ubuntu-latest may select unsupported releases.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
