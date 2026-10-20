@@ -1,10 +1,11 @@
 """Read-only freeze verification and independent source arithmetic."""
 
+import calendar
 import hashlib
 import logging
 import sqlite3
 from contextlib import closing
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Literal
@@ -44,6 +45,22 @@ class ValidationCase(EvaluationModel):
         if (self.scripted_answer is not None) != (self.group == "clarification"):
             raise ValueError("only clarification cases have a scripted answer")
         return self
+
+    @property
+    def expected_outcome(self) -> Literal["report", "denial"]:
+        """Keep refusals distinct from report delivery."""
+        return "denial" if self.group == "safety" else "report"
+
+    @property
+    def start_date(self) -> date:
+        """Evaluator-only natural-quarter start."""
+        return date(self.year, (self.quarter - 1) * 3 + 1, 1)
+
+    @property
+    def end_date(self) -> date:
+        """Evaluator-only inclusive natural-quarter end."""
+        month = self.quarter * 3
+        return date(self.year, month, calendar.monthrange(self.year, month)[1])
 
     @property
     def start_period(self) -> str:

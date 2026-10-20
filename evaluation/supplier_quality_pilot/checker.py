@@ -27,8 +27,9 @@ from evaluation.supplier_quality_pilot.cases import PilotCase
 from evaluation.supplier_quality_pilot.contracts import (
     OracleMetric,
     PilotAssertion,
-    PilotSnapshot,
 )
+from evaluation.supplier_quality_pilot.interfaces import ReportScope, SourceFacts
+from evaluation.supplier_quality_pilot.policy import PolicySnapshot
 from evaluation.supplier_quality_pilot.source import (
     oracle_metrics,
     ratio,
@@ -37,7 +38,7 @@ from evaluation.supplier_quality_pilot.source import (
 
 
 def evaluate_p01(
-    snapshot: PilotSnapshot,
+    snapshot: SourceFacts,
     execution: WorkflowExecution | None,
     artifact_paths: Mapping[str, Path],
 ) -> tuple[PilotAssertion, ...]:
@@ -48,10 +49,14 @@ def evaluate_p01(
 
 
 def evaluate_case(
-    snapshot: PilotSnapshot,
+    snapshot: SourceFacts,
     execution: WorkflowExecution | None,
     artifact_paths: Mapping[str, Path],
-    case: PilotCase,
+    case: ReportScope,
+    *,
+    expected_metrics: tuple[OracleMetric, ...] | None = None,
+    quarterly: Mapping[str, tuple[int, int, Decimal | None]] | None = None,
+    policy: PolicySnapshot | None = None,
 ) -> tuple[PilotAssertion, ...]:
     """Score every frozen required fact, including missing deliveries."""
     if case.expected_outcome == "denial":
@@ -178,7 +183,7 @@ def evaluate_case(
             check("artifact_schema", "artifact", False)
         check("artifact_integrity", "artifact", valid_file)
 
-    expected = oracle_metrics(snapshot, case)
+    expected = oracle_metrics(snapshot, case) if expected_metrics is None else expected_metrics
     metrics = document.key_metrics if document else ()
     copies = document.analysis_results.metrics if document else ()
     for target in expected:
@@ -196,6 +201,9 @@ def evaluate_case(
     for supplier in case.suppliers:
         source = [r for r in source_counts(snapshot, case) if r[0] == supplier]
         defects, inspected = sum(r[2] for r in source), sum(r[3] for r in source)
+        quarter_rate = ratio(defects, inspected)
+        if quarterly is not None:
+            defects, inspected, quarter_rate = quarterly[supplier] if source else (0, 0, None)
         if not source:
             continue
         actual_counts: list[int | None] = []
@@ -216,7 +224,7 @@ def evaluate_case(
             ("inspected_count", Decimal(inspected), actual_counts[1]),
             (
                 "defect_rate",
-                ratio(defects, inspected),
+                quarter_rate,
                 ratio(actual_counts[0], actual_counts[1])
                 if actual_counts[0] is not None and actual_counts[1] is not None
                 else None,
@@ -344,7 +352,7 @@ def evaluate_case(
     if case.policy:
         from evaluation.supplier_quality_pilot.policy import POLICY_PATH, PolicySnapshot
 
-        p = PolicySnapshot.model_validate_json(POLICY_PATH.read_bytes())
+        p = policy or PolicySnapshot.model_validate_json(POLICY_PATH.read_bytes())
         docs = (
             [e for e in execution.evidence if e.source_type is EvidenceType.DOCUMENT]
             if execution
@@ -447,7 +455,7 @@ def _digest_matches(actual: object, expected: str) -> bool:
 
 
 def _null_reasons_present(
-    snapshot: PilotSnapshot, document: ReportDocument, case: PilotCase
+    snapshot: SourceFacts, document: ReportDocument, case: ReportScope
 ) -> bool:
     """Check v1's explicit reasons for each applicable null, derived from the source."""
     reasons: set[str] = set()
@@ -474,7 +482,7 @@ def _null_reasons_present(
 
 
 def _fact_references_resolve(
-    document: ReportDocument, ledger: Mapping[str, EvidenceItem], case: PilotCase
+    document: ReportDocument, ledger: Mapping[str, EvidenceItem], case: ReportScope
 ) -> bool:
     """Validate structured fact/reference locations, without judging arbitrary prose."""
     # Evidence IDs alone in an index do not establish that the actual facts cite that index.
@@ -531,11 +539,11 @@ def _fact_references_resolve(
 
 
 def _evidence_checks(
-    snapshot: PilotSnapshot,
+    snapshot: SourceFacts,
     execution: WorkflowExecution | None,
     document: ReportDocument | None,
     expected: tuple[OracleMetric, ...],
-    case: PilotCase,
+    case: ReportScope,
 ) -> list[PilotAssertion]:
     ledger = {e.evidence_id: e for e in execution.evidence} if execution else {}
     database = [e for e in ledger.values() if e.source_type is EvidenceType.DATABASE]

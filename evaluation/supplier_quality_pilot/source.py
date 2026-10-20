@@ -8,7 +8,8 @@ from pathlib import Path
 from copilot.tools.database import DatabaseConnection
 from copilot.tools.database.models import Base, IncomingInspection, Supplier
 from evaluation.supplier_quality_pilot.cases import PilotCase
-from evaluation.supplier_quality_pilot.contracts import OracleMetric, PilotSnapshot
+from evaluation.supplier_quality_pilot.contracts import OracleMetric
+from evaluation.supplier_quality_pilot.interfaces import ReportScope, SourceFacts
 
 DEFAULT_SOURCE = (
     Path(__file__).resolve().parents[1]
@@ -18,7 +19,7 @@ P01_REQUEST = "Analyze supplier quality for S-100 and S-200 in Q2 2026 and gener
 P01_SUPPLIERS = ("S-100", "S-200")
 
 
-def seed_source(snapshot: PilotSnapshot, database_url: str) -> None:
+def seed_source(snapshot: SourceFacts, database_url: str) -> None:
     """Prepare synthetic facts before opening the production SELECT-only connection."""
     database = DatabaseConnection(database_url, read_only=False)
     try:
@@ -56,7 +57,7 @@ def seed_source(snapshot: PilotSnapshot, database_url: str) -> None:
 
 
 def source_counts(
-    snapshot: PilotSnapshot, case: PilotCase | None = None
+    snapshot: SourceFacts, case: ReportScope | None = None
 ) -> tuple[tuple[str, str, int, int], ...]:
     """Use independent SQL over the frozen source, never the product query templates."""
     case = case or PilotCase(case_id="P01", request=P01_REQUEST)
@@ -90,7 +91,7 @@ def source_counts(
 
 
 def oracle_metrics(
-    snapshot: PilotSnapshot, case: PilotCase | None = None
+    snapshot: SourceFacts, case: ReportScope | None = None
 ) -> tuple[OracleMetric, ...]:
     """Derive monthly values and operands using Decimal, without product calculators."""
     output: list[OracleMetric] = []

@@ -139,19 +139,82 @@ class SpendingSnapshot(EvaluationModel):
 
     schema_version: Literal["pilot-spending.v1"] = "pilot-spending.v1"
     experiment_id: str
-    ledger_schema_version: Literal[1] = 1
+    ledger_schema_version: Literal[1, 2] = 1
     pricing: PricingCard
+    pricing_history: tuple[PricingCard, ...] = ()
     policy: BudgetPolicy
     stopped_reason: str | None
     attempts: tuple[PaidAttempt, ...]
     incurred_eur_upper: Decimal
     unresolved_eur: Decimal
 
+    @model_validator(mode="after")
+    def validate_price_history(self) -> SpendingSnapshot:
+        """v2 exports bind old and new charges to their own recorded price cards."""
+        if self.ledger_schema_version == 1:
+            return self  # Immutable legacy reports retain their original schema.
+        cards = {canonical_hash(c.model_dump(mode="json")): c for c in self.pricing_history}
+        if canonical_hash(self.pricing.model_dump(mode="json")) not in cards:
+            raise ValueError("current price absent from history")
+        if len({a.attempt_id for a in self.attempts}) != len(self.attempts):
+            raise ValueError("duplicate paid attempt")
+        for attempt in self.attempts:
+            card = cards.get(attempt.pricing_hash)
+            if card is None:
+                raise ValueError("attempt price absent from history")
+            if attempt.reserved_eur != card.maximum_eur(attempt.max_output_tokens):
+                raise ValueError("attempt reservation disagrees with its price")
+            if attempt.status == "reconciled":
+                usage = attempt.usage or {}
+                keys = (
+                    "prompt_tokens",
+                    "prompt_cache_hit_tokens",
+                    "prompt_cache_miss_tokens",
+                    "completion_tokens",
+                    "total_tokens",
+                )
+                if any(type(usage.get(k)) is not int for k in keys):
+                    raise ValueError("reconciled attempt lacks token usage")
+                counts = {k: v for k, v in usage.items() if isinstance(v, int)}
+                if (
+                    any(counts[k] < 0 for k in keys)
+                    or counts["prompt_tokens"]
+                    != counts["prompt_cache_hit_tokens"] + counts["prompt_cache_miss_tokens"]
+                    or counts["total_tokens"]
+                    != counts["prompt_tokens"] + counts["completion_tokens"]
+                    or counts["prompt_tokens"] > card.input_context_limit
+                    or counts["completion_tokens"] > attempt.max_output_tokens
+                ):
+                    raise ValueError("attempt token bounds disagree")
+                usd = (
+                    counts["prompt_cache_hit_tokens"] * card.input_hit_per_million
+                    + counts["prompt_cache_miss_tokens"] * card.input_miss_per_million
+                    + counts["completion_tokens"] * card.output_per_million
+                ) / Decimal(1000000)
+                if attempt.usd_cost != usd or attempt.eur_upper != card.eur_upper(usd):
+                    raise ValueError("attempt charges disagree with its price and usage")
+            elif attempt.usd_cost is not None or attempt.eur_upper is not None:
+                raise ValueError("unreconciled cost must remain unknown")
+        if self.incurred_eur_upper != sum(
+            (a.eur_upper for a in self.attempts if a.eur_upper is not None), Decimal(0)
+        ) or self.unresolved_eur != sum(
+            (a.reserved_eur for a in self.attempts if a.status != "reconciled"), Decimal(0)
+        ):
+            raise ValueError("spending totals disagree with attempts")
+        return self
+
 
 class BudgetLedger:
     """One persistent experiment ledger, locked for the full synchronous run."""
 
-    def __init__(self, path: Path, pricing: PricingCard, policy: BudgetPolicy) -> None:
+    def __init__(
+        self,
+        path: Path,
+        pricing: PricingCard,
+        policy: BudgetPolicy,
+        *,
+        previous_pricing: PricingCard | None = None,
+    ) -> None:
         self.path, self.pricing, self.policy = path, pricing, policy
         path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = path.with_suffix(path.suffix + ".lock").open("a+b")
@@ -170,29 +233,93 @@ class BudgetLedger:
         digest = canonical_hash(
             {"pricing": pricing.model_dump(mode="json"), "policy": policy.model_dump(mode="json")}
         )
-        existing = self._get("config_hash")
-        if existing is not None and existing != digest:
+        try:
+            existing = self._get("config_hash")
+            policy_json = policy.model_dump_json()
+            saved_policy = self._get("policy")
+            known = self._db.execute(
+                "SELECT record FROM pricing_cards WHERE hash=?",
+                (canonical_hash(pricing.model_dump(mode="json")),),
+            ).fetchone()
+            predecessor = (
+                canonical_hash(
+                    {
+                        "pricing": previous_pricing.model_dump(mode="json"),
+                        "policy": policy.model_dump(mode="json"),
+                    }
+                )
+                if previous_pricing
+                else None
+            )
+            if existing is not None and not (
+                existing == digest
+                or (known and saved_policy == policy_json)
+                or (
+                    previous_pricing
+                    and existing == predecessor
+                    and saved_policy in (None, policy_json)
+                )
+            ):
+                raise BudgetStopped("LEDGER_CONFIG_MISMATCH")
+            self._db.execute("INSERT OR IGNORE INTO metadata VALUES ('config_hash', ?)", (digest,))
+            self._db.execute("INSERT OR IGNORE INTO metadata VALUES ('policy', ?)", (policy_json,))
+            for card in (previous_pricing, pricing):
+                if card is not None:
+                    self._db.execute(
+                        "INSERT OR IGNORE INTO pricing_cards VALUES (?, ?)",
+                        (
+                            canonical_hash(card.model_dump(mode="json")),
+                            card.model_dump_json(),
+                        ),
+                    )
+            self._db.commit()
+            if any(
+                a.pricing_hash
+                not in {
+                    canonical_hash(c.model_dump(mode="json"))
+                    for c in self.snapshot().pricing_history
+                }
+                for a in self.snapshot().attempts
+            ):
+                raise BudgetStopped("LEDGER_PRICE_HISTORY_MISSING")
+        except Exception:
             self.close()
-            raise BudgetStopped("LEDGER_CONFIG_MISMATCH")
-        self._db.execute("INSERT OR IGNORE INTO metadata VALUES ('config_hash', ?)", (digest,))
-        self._db.commit()
+            raise
         # A process death leaves a reservation. No later process may assume it was unbilled.
         if any(a.status != "reconciled" for a in self.snapshot().attempts):
             self.stop("UNRESOLVED_PRIOR_ATTEMPT")
 
     def _migrate(self) -> None:
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
+        if version == 2:
+            return
         if version == 1:
+            migration = Path(__file__).parent / "migrations/002_pricing_history.sql"
+            self._db.executescript(migration.read_text())
             return
         existing = self._db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         if version != 0 or existing:
             raise BudgetStopped("LEDGER_SCHEMA_UNSUPPORTED")
         migration = Path(__file__).parent / "migrations/001_spending.sql"
         self._db.executescript(migration.read_text())
+        self._migrate()
 
     def _get(self, key: str) -> str | None:
         row = self._db.execute("SELECT value FROM metadata WHERE key=?", (key,)).fetchone()
         return str(row[0]) if row else None
+
+    def bind_population(self, name: str, identity: str) -> None:
+        """Bind one evaluation population to its immutable config and output location.
+
+        Uses the same held ledger lock; changing output directories cannot buy another
+        first population. This has no Task/runtime authority and never releases spending.
+        """
+        key = f"population/{name}"
+        existing = self._get(key)
+        if existing is not None and existing != identity:
+            raise BudgetStopped("VALIDATION_POPULATION_ALREADY_BOUND")
+        self._db.execute("INSERT OR IGNORE INTO metadata VALUES (?, ?)", (key, identity))
+        self._db.commit()
 
     def stop(self, reason: str) -> None:
         """Persist the first refusal; all later calls and restarts inherit it."""
@@ -207,8 +334,13 @@ class BudgetLedger:
             for row in self._db.execute("SELECT record FROM attempts ORDER BY rowid")
         )
         return SpendingSnapshot(
+            ledger_schema_version=2,
             experiment_id=self.policy.experiment_id,
             pricing=self.pricing,
+            pricing_history=tuple(
+                PricingCard.model_validate_json(row[0])
+                for row in self._db.execute("SELECT record FROM pricing_cards ORDER BY rowid")
+            ),
             policy=self.policy,
             stopped_reason=self._get("stopped_reason"),
             attempts=attempts,

@@ -4,47 +4,30 @@ import hashlib
 import json
 import logging
 import subprocess
-import tempfile
-from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from time import perf_counter
 from typing import TYPE_CHECKING, TypeVar
 
-from pydantic import BaseModel, TypeAdapter
-from pydantic_settings import PydanticBaseSettingsSource
+from pydantic import BaseModel
 
-from copilot.agent.graph import WorkflowInterrupted
-from copilot.bootstrap.container import build_workflow_container
-from copilot.config import PROJECT_ROOT, Settings
+from copilot.config import PROJECT_ROOT
 from copilot.contracts import TaskStatus
-from copilot.llm.offline_mock import OfflineMockLLM
 from copilot.llm.prompts import (
     PLANNER_PROMPT_VERSION,
     TASK_UNDERSTANDING_PROMPT_VERSION,
-)
-from copilot.persistence.identifiers import SequentialIdentifierFactory, UuidIdentifierFactory
-from copilot.services.llm import (
-    LLMCallContext,
-    LLMGenerationOptions,
-    LLMMessage,
-    LLMProvider,
-    StructuredLLMResult,
 )
 from copilot.services.task_intake import (
     NaturalLanguageTaskCommand,
     RequestSource,
     TaskOutputFormat,
-    TrustedCallerContext,
 )
-from copilot.services.workflows.models import WorkflowExecution
 from evaluation.dataset_loader import canonical_hash
 from evaluation.supplier_quality_pilot.cases import PilotCase
 from evaluation.supplier_quality_pilot.checker import evaluate_case
 from evaluation.supplier_quality_pilot.contracts import (
     OFFLINE_LIMITATIONS,
-    ClarificationObservation,
     PilotAssertion,
     PilotRun,
     PilotSnapshot,
@@ -52,8 +35,6 @@ from evaluation.supplier_quality_pilot.contracts import (
 from evaluation.supplier_quality_pilot.source import (
     DEFAULT_SOURCE,
     P01_REQUEST,
-    P01_SUPPLIERS,
-    seed_source,
 )
 
 if TYPE_CHECKING:
@@ -61,45 +42,6 @@ if TYPE_CHECKING:
 
 LOGGER = logging.getLogger(__name__)
 TModel = TypeVar("TModel", bound=BaseModel)
-
-
-class _OfflineSettings(Settings):
-    """Exclude ambient environment and dotenv settings from an offline experiment."""
-
-    @classmethod
-    def settings_customise_sources(
-        cls,
-        settings_cls: type[BaseModel],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ) -> tuple[PydanticBaseSettingsSource, ...]:
-        return (init_settings,)
-
-
-class _RecordingModel:
-    """Capture synthetic inputs to make oracle isolation independently inspectable."""
-
-    def __init__(self, delegate: LLMProvider) -> None:
-        self._delegate = delegate
-        self.messages: list[tuple[LLMMessage, ...]] = []
-
-    def generate_structured(
-        self,
-        *,
-        messages: Sequence[LLMMessage],
-        output_schema: type[TModel],
-        context: LLMCallContext,
-        options: LLMGenerationOptions,
-    ) -> StructuredLLMResult[TModel]:
-        self.messages.append(tuple(messages))
-        return self._delegate.generate_structured(
-            messages=messages,
-            output_schema=output_schema,
-            context=context,
-            options=options,
-        )
 
 
 def run_case(
@@ -111,124 +53,34 @@ def run_case(
     live: "LiveModelSession | None" = None,
 ) -> PilotRun:
     """Run a governed task into an empty directory; live execution requires a session."""
-    output_directory = output_directory.resolve()
-    if output_directory.exists() and any(output_directory.iterdir()):
-        raise ValueError("Pilot output directory must be empty")
-    snapshot = PilotSnapshot.model_validate_json(source_path.read_bytes())
-    output_directory.mkdir(parents=True, exist_ok=True)
+    from evaluation.supplier_quality_pilot.execution import capture_task
+    from evaluation.supplier_quality_pilot.policy import POLICY_PATH, PolicySnapshot
+
     started_at, timer = datetime.now(UTC), perf_counter()
-    model = _RecordingModel(live.provider if live else OfflineMockLLM())
-    execution: WorkflowExecution | None = None
-    task_id = None
-    task_status = None
-    error_code = None
-    artifact_paths: dict[str, Path] = {}
-    interaction: ClarificationObservation | None = None
-    with tempfile.TemporaryDirectory(prefix="supplier-quality-p01-") as temporary:
-        root = Path(temporary)
-        database_url = f"sqlite:///{root / 'source.db'}"
-        seed_source(snapshot, database_url)
-        settings = _OfflineSettings(
-            app_env="test",
-            database_url=database_url,
-            database_provider="sqlalchemy",
-            llm_provider="mock",  # The explicit injected provider owns live transport credentials.
-            llm_max_output_tokens=live.settings.llm_max_output_tokens if live else 4096,
-            llm_temperature=live.settings.llm_temperature if live else 0,
-            knowledge_provider="mock",
-            artifact_dir=output_directory / "artifacts",
-            checkpoint_database_path=root / "checkpoints.db",
-            checkpoint_enabled=True,
-            persistence_database_url=persistence_url,
-            persistence_auto_create_schema=not bool(persistence_url),
-            max_task_steps=14,
-            workflow_retry_delay_seconds=0,
-            observability_enabled=False,
-            log_level="ERROR",
-        )
-        with build_workflow_container(
-            settings,
-            ids=UuidIdentifierFactory() if persistence_url else SequentialIdentifierFactory(),
-            llm_provider=model,
-        ) as container:
-            if case.policy:
-                from copilot.tools.knowledge.tool import KnowledgeTool
-                from evaluation.supplier_quality_pilot.policy import (
-                    POLICY_PATH,
-                    PolicySnapshot,
-                    SnapshotKnowledgeClient,
-                )
-
-                policy = PolicySnapshot.model_validate_json(POLICY_PATH.read_bytes())
-                container.registry.unregister("knowledge_search")
-                container.registry.register(KnowledgeTool(SnapshotKnowledgeClient(policy)))
-            try:
-                command = NaturalLanguageTaskCommand(
-                    task=case.request,
-                    output_format=TaskOutputFormat(case.output_format),
-                    source=RequestSource.INTERNAL,
-                )
-                caller = TrustedCallerContext(
-                    user_id="U-PILOT",
-                    tenant_id=snapshot.tenant_id,
-                    data_scope=("quality.v1",),
-                    supplier_ids=P01_SUPPLIERS,
-                )
-                if case.scripted_answer and persistence_url:
-                    from evaluation.supplier_quality_pilot.interaction import scripted_clarification
-
-                    execution, interaction = scripted_clarification(
-                        container, command, caller, case.scripted_answer
-                    )
-                    if execution is None:
-                        assert interaction is not None
-                        task_id = interaction.initial_task_id
-                        task_status = container.repository.state_for(
-                            task_id, tenant_id=snapshot.tenant_id
-                        ).state
-                        error_code = "SCRIPTED_TASK_PENDING"
-                else:
-                    execution = container.task_service.submit(command, caller)
-                if execution is None:
-                    raise WorkflowInterrupted(
-                        "Scripted task remains pending",
-                        task_id=str(task_id),
-                        trace_id=str(task_id),
-                        status=str(task_status),
-                        created_at=started_at,
-                    )
-                task_id = execution.task_result.task_id
-                task_status = execution.task_result.final_status
-                if execution.errors:
-                    error_code = execution.errors[-1].error_code
-                artifact_paths = {
-                    a.artifact_id: container.artifacts.path_for(a) for a in execution.artifacts
-                }
-                (output_directory / "execution.json").write_bytes(
-                    TypeAdapter(WorkflowExecution).dump_json(execution, indent=2)
-                )
-                (output_directory / "evidence.json").write_text(
-                    json.dumps([e.model_dump(mode="json") for e in execution.evidence], indent=2)
-                )
-            except WorkflowInterrupted as exc:
-                task_id = exc.task_id
-                task_status = container.repository.state_for(
-                    task_id,
-                    tenant_id=snapshot.tenant_id,
-                ).state
-                error_code = "WORKFLOW_INTERRUPTED"
-                if case.scripted_answer and interaction is None:
-                    state = container.engine.get_state(task_id, snapshot.tenant_id)
-                    interaction = ClarificationObservation(
-                        initial_task_id=task_id,
-                        initial_status=task_status,
-                        tools_before_answer=sum(s.executed for s in state["step_executions"]),
-                        answer=case.scripted_answer,
-                    )
-                    error_code = "SCRIPTED_POSTGRES_RUNTIME_REQUIRED"
-            except Exception as exc:
-                # Safe harness failure, recorded separately from a failed business Task.
-                error_code = type(exc).__name__
+    snapshot = PilotSnapshot.model_validate_json(source_path.read_bytes())
+    captured = capture_task(
+        output_directory,
+        snapshot=snapshot,
+        command=NaturalLanguageTaskCommand(
+            task=case.request,
+            output_format=TaskOutputFormat(case.output_format),
+            source=RequestSource.INTERNAL,
+        ),
+        scripted_answer=case.scripted_answer,
+        policy=PolicySnapshot.model_validate_json(POLICY_PATH.read_bytes())
+        if case.policy
+        else None,
+        persistence_url=persistence_url,
+        live=live,
+    )
+    execution, task_id, task_status, error_code, artifact_paths, interaction = (
+        captured.execution,
+        captured.task_id,
+        captured.task_status,
+        captured.error_code,
+        captured.artifact_paths,
+        captured.interaction,
+    )
     checks = evaluate_case(snapshot, execution, artifact_paths, case)
     if case.scripted_answer:
         checks += tuple(
@@ -326,12 +178,6 @@ def run_case(
     )
     (output_directory / "source.json").write_text(snapshot.model_dump_json(indent=2))
     (output_directory / "config.json").write_text(json.dumps(config, indent=2))
-    (output_directory / "model-inputs.json").write_text(
-        json.dumps(
-            [[m.model_dump(mode="json") for m in call] for call in model.messages],
-            indent=2,
-        )
-    )
     if spending:
         (output_directory / "spending.json").write_text(spending.model_dump_json(indent=2))
     (output_directory / "report.json").write_text(run.model_dump_json(indent=2))

@@ -44,6 +44,40 @@ def card() -> PricingCard:
     )
 
 
+def test_price_renewal_preserves_old_attempts_and_aggregate_budget(tmp_path: Path) -> None:
+    old = card()
+    new = old.model_copy(update={"version": "renewed.v2", "output_per_million": Decimal("3")})
+    path = tmp_path / "renewal.db"
+    request = httpx.Request("POST", old.endpoint, json={"model": old.model, "max_tokens": 1000})
+    body = {
+        "model": old.model,
+        "usage": {
+            "prompt_tokens": 1000,
+            "prompt_cache_hit_tokens": 200,
+            "prompt_cache_miss_tokens": 800,
+            "completion_tokens": 100,
+            "total_tokens": 1100,
+        },
+    }
+    with BudgetLedger(path, old, BudgetPolicy()) as ledger:
+        attempt = ledger.reserve(request, run_id="old", stage="suite")
+        ledger.reconcile(attempt, httpx.Response(200, json=body))
+        original = ledger.snapshot().attempts
+    with pytest.raises(BudgetStopped, match="LEDGER_CONFIG_MISMATCH"):
+        BudgetLedger(path, new, BudgetPolicy())
+    with BudgetLedger(path, new, BudgetPolicy(), previous_pricing=old) as ledger:
+        assert ledger.snapshot().attempts == original
+        assert len(ledger.snapshot().pricing_history) == 2
+        attempt = ledger.reserve(request, run_id="new", stage="suite")
+        ledger.reconcile(attempt, httpx.Response(200, json=body))
+        assert ledger.snapshot().incurred_eur_upper == Decimal("0.002140")
+    with BudgetLedger(path, new, BudgetPolicy()) as ledger:
+        assert ledger.snapshot().attempts[0] == original[0]
+        assert ledger.snapshot().attempts[1].usd_cost == Decimal("0.00112")
+    with pytest.raises(BudgetStopped, match="LEDGER_CONFIG_MISMATCH"):
+        BudgetLedger(path, new, BudgetPolicy(authorized_eur=Decimal("9")), previous_pricing=old)
+
+
 def test_insufficient_calibration_budget_never_dispatches(tmp_path: Path) -> None:
     calls: list[httpx.Request] = []
 

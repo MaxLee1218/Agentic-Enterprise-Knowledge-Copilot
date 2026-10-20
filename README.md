@@ -261,6 +261,8 @@ denominators, PDF checks, policy and scripted clarification cases, and retained 
 The [twenty-case validation freeze](docs/supplier-quality-validation-v1.md) adds new synthetic
 inputs and literal independent answers. Verify them with `python -m evaluation.supplier_quality_validation`.
 This read-only command checks the frozen dataset; it does not run product tasks or measure live quality.
+The [validation executor](docs/supplier-quality-validation-execution.md) provides an explicit first
+live population, literal-oracle acceptance, PostgreSQL scripted resume and the original cumulative budget.
 
 ### Run the frontend
 

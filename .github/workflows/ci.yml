@@ -266,6 +266,7 @@ jobs:
         run: >-
           pytest tests/integration/evaluation/test_pilot_suite.py
           tests/integration/evaluation/test_pilot_regression.py
+          tests/integration/evaluation/test_validation_executor.py
           -k "through_postgres or regression_uses"
 
       - name: Dry-run PostgreSQL backup and restore for both trust boundaries
