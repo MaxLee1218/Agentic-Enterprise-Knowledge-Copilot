@@ -330,6 +330,8 @@ class LLMPlanningService:
         period_resolution = normalize_supplier_period(
             resolution_text, prior_year=prior_year, prior_quarter=prior_quarter
         )
+        if period_resolution.status is ResolutionStatus.INVALID:
+            raise LLMSchemaValidationError("Supplier reporting period is invalid or conflicting")
         year = prior_year
         quarter = prior_quarter
         period_value = period_resolution.canonical_value

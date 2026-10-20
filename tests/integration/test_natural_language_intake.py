@@ -53,6 +53,40 @@ def test_quality_report_with_a_supplier_code_reaches_governed_execution(
         }
 
 
+def test_quality_report_recognizes_the_existing_sup_identifier_form(tmp_path: Path) -> None:
+    raw = "Generate a JSON quality report for SUP-001 for Q3 2026."
+    caller = CALLER.model_copy(update={"supplier_ids": ("SUP-001", "SUP-002")})
+    with build_test_container(tmp_path / "artifacts", llm_provider=OfflineMockLLM()) as container:
+        execution = container.task_service.submit(
+            NaturalLanguageTaskCommand(task=raw, source=RequestSource.API), caller
+        )
+        state = container.engine.get_state(execution.task_result.task_id, caller.tenant_id)
+        assert execution.task_result.final_status is TaskStatus.COMPLETED
+        assert state["contract"].constraints.supplier_ids == ("SUP-001",)
+        assert state["request"].raw_input == raw
+
+
+@pytest.mark.parametrize("year", [2026, 2100])
+def test_supplier_contract_keeps_an_explicit_year_within_frozen_bounds(
+    tmp_path: Path, year: int
+) -> None:
+    raw = f"Analyze supplier quality for Q2 {year} and generate a JSON report."
+    with build_test_container(
+        tmp_path / "artifacts",
+        llm_provider=OfflineMockLLM(),
+        interrupt_after=("understand_task",),
+    ) as container:
+        with pytest.raises(WorkflowInterrupted) as caught:
+            container.task_service.submit(
+                NaturalLanguageTaskCommand(task=raw, source=RequestSource.API), CALLER
+            )
+        state = container.engine.get_state(caught.value.task_id, CALLER.tenant_id)
+        contract = state["contract"]
+        assert contract is not None and isinstance(contract.constraints, TaskConstraints)
+        assert contract.constraints.year == year and contract.constraints.quarter == 2
+        assert state["tool_results"] == []
+
+
 @pytest.mark.parametrize("quarter", [1, 2, 3])
 def test_actual_pdf_chart_title_matches_requested_scope(tmp_path: Path, quarter: int) -> None:
     with build_test_container(tmp_path / "artifacts", llm_provider=OfflineMockLLM()) as container:

@@ -61,3 +61,9 @@ pytest tests/unit/evaluation tests/contract/evaluation
 
 Invalid JSON, missing/duplicate case IDs, illegal categories or statuses, negative tolerances,
 unsafe/missing fixtures, or filters with no matches return exit code 2.
+
+Supplier Quality **1.2.1** corrects only `invalid-quarter`: frozen design requires direct
+failure, no clarification or tools/artifacts, with `LLM_SCHEMA_VALIDATION_ERROR`. The 1.2.0
+baseline is retained as `evaluation/baselines/supplier_quality_v1-1.2.0.json`; comparisons
+across these dataset versions are incompatible. The separate frozen V01–V20 validation
+bundle and audited first population are unchanged.

@@ -20,7 +20,9 @@ V14 原始记录只保留安全的 `LLM_SCHEMA_VALIDATION_ERROR`，没有 provid
 Checkpoint 权威来修复理解层的问题。
 
 保留不支持任务、越权供应商、非法字段的安全失败；模型时间不作为授权或日历事实来源。供应商编号
-`SUP-2027` 不被误识别为年份。原始 raw_input 不变，TaskContract 仍要求完整年份/季度及授权范围；
+`SUP-2027` 不被误识别为年份；带单位/明确字段名的业务计数也不能补全年份。
+期间 token 独立识别并校验，覆盖带标点的非法年份/季度以及契约允许的 2100–2999 年。
+非法原请求或非法澄清答案直接失败，不能回退到之前的合法期间。原始 raw_input 不变，TaskContract 仍要求完整年份/季度及授权范围；
 澄清响应仍经同一 Task 的既有 PostgreSQL dispatcher/Worker 进入 UNDERSTANDING。
 
 ## 修复前后证据
@@ -37,7 +39,12 @@ Checkpoint 权威来修复理解层的问题。
   数值断言通过。现有越权/供应商保持测试继续通过。
 - 三份控制 PDF 的实际第 2 页已渲染检查：Q1/Q2/Q3 标题正确，未见裁切、重叠或字号问题。
 
-完整本地门槛：**1006 passed、35 skipped**（需要单独环境的门槛保留原 skip 条件）；Ruff、format、
+完整本地门槛：**1014 passed、35 skipped**（需要单独环境的门槛保留原 skip 条件）；Ruff、format、
 Mypy（540 source files）、docs/architecture、actionlint、distribution build 均通过。
 Supplier mock **30/30**、AP mock **25/25**，MCP interoperability **13/13**、safety **12/12**。
 本节是离线修复证据，不是新的真实模型成绩。复核、提交与后续回归结果在 Issues 留档。
+
+复核校准：遗留 30-case 开发集的 `invalid-quarter` 同时要求非法季度失败和发起澄清，
+后者违反 `docs/design/business_scope.md:25`。开发集升至 **1.2.1**，仅改该用例的澄清期望
+和安全错误码；仍要求 FAILED、零工具和零产物。旧 1.2.0 baseline 单独保留，1.2.1
+重新建立同版本门槛，不把口径变化称为性能提升。V01–V20 冻结集及本轮对比口径不变。

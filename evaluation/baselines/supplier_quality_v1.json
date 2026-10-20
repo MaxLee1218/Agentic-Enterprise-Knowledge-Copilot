@@ -32,11 +32,11 @@
     "unauthorized-supplier-access": "passed",
     "unregistered-tool-rejected": "passed"
   },
-  "created_at": "2026-10-03T13:06:29.055470Z",
-  "dataset_hash": "sha256:cf8407184f6d31948b86c156e8f275b4732c8520971317bc27d799594fb19caf",
+  "created_at": "2026-10-20T19:24:59.927954Z",
+  "dataset_hash": "sha256:5b18f7c8b672f9f2fca6b53b4aa5d86306ca6c5e9fdb675ce09b06366507105d",
   "dataset_id": "supplier_quality",
-  "dataset_version": "1.2.0",
-  "git_commit": "4c1fecdca4fcd035ca9f48bea02e1595d6f5a4fa",
+  "dataset_version": "1.2.1",
+  "git_commit": "48e7f839508c86106ca55b8e0a10b05de26e1e11",
   "git_dirty": true,
   "known_failures": [],
   "metrics": {
@@ -65,7 +65,7 @@
       "value": "1"
     },
     "average_clarification_rounds": {
-      "coverage": "0.06666666666666666666666666667",
+      "coverage": "0.03333333333333333333333333333",
       "direction": "informational",
       "tolerance": "0",
       "value": "1"
@@ -86,7 +86,7 @@
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "393.3333333333333333333333333"
+      "value": "386.6666666666666666666666667"
     },
     "citation_correctness": {
       "coverage": "0.4333333333333333333333333333",
@@ -218,7 +218,7 @@
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "140.2666666666666666666666667"
+      "value": "151.4"
     },
     "latency_max_ms": {
       "coverage": "1",
@@ -230,19 +230,19 @@
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "102"
+      "value": "107"
     },
     "latency_p50_ms": {
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "136"
+      "value": "151"
     },
     "latency_p95_ms": {
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "183"
+      "value": "201"
     },
     "legitimate_task_false_rejection_rate": {
       "coverage": "0.03333333333333333333333333333",
@@ -392,19 +392,19 @@
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "7080"
+      "value": "6960"
     },
     "total_output_tokens": {
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "4720"
+      "value": "4640"
     },
     "total_tokens": {
       "coverage": "1",
       "direction": "informational",
       "tolerance": "0",
-      "value": "11800"
+      "value": "11600"
     },
     "unauthorized_auto_inference_rate": {
       "coverage": "0",
@@ -445,5 +445,5 @@
   },
   "schema_version": "evaluation-baseline.v1",
   "seed": 42,
-  "source_hash": "sha256:5c5bcad09af8a25ed6a6ee5c7c07144812e28cb54bc1e407d664809fb4da895c"
+  "source_hash": "sha256:4b23e4f6daa0f199d6ab4614a6f942f7668ad8f74770213784675e029c50bab5"
 }

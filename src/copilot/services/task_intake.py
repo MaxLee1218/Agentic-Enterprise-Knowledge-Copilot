@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from copilot.contracts import ArtifactType, JsonObject, MoneyThreshold, TaskType
 from copilot.security import SensitiveDataRegistry
+from copilot.understanding.entity_resolver import CANONICAL_SUPPLIER_PATTERN
 
 MetadataValue: TypeAlias = JsonValue
 
@@ -212,7 +213,7 @@ class TaskIntakeValidationError(ValueError):
 
 _SUPPLIER_QUALITY_SIGNALS = (
     r"\bsupplier\s+quality\b",
-    r"\bquality\s+(?:report|of)\b.{0,64}\b(?:suppliers?|s-\d{3})\b",
+    rf"\bquality\s+(?:report|of)\b.{{0,64}}(?:\bsuppliers?\b|{CANONICAL_SUPPLIER_PATTERN.pattern})",
     r"\b(?:analyze|analyse|investigate|review)\b.{0,48}\bsuppliers?\b",
     r"\bquality\s+(?:issue|issues|analysis|deviation|deviations|trend|trends)\b",
     r"\bdefect(?:s|\s+rate|\s+rates)?\b",
