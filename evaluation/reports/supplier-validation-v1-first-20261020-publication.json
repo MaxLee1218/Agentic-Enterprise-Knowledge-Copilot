@@ -1,0 +1,42 @@
+{
+  "version": "supplier-quality-validation-publication.v1",
+  "normalization": "Public copies change artifact_paths only to repository-relative paths. Original private stop/config/progress/bindings/attempts/artifacts remain unchanged. Canonical segment hashes identify private originals, not normalized public copies.",
+  "reports": [
+    {
+      "view": "automated",
+      "private_path": "evaluation/reports/supplier-quality-pilot/validation-v1-continuation/combined-report.json",
+      "raw_sha256": "sha256:378807cff9c854892661597abb86b17245d98e4bc0a44c2683ef0fd9d3b1a957",
+      "raw_canonical_hash": "sha256:07a4f5840919e299b34d4f71cda3b9075819bd788d1736bbcdc8760d43f4fa14",
+      "public_path": "evaluation/reports/supplier-validation-v1-first-20261020-automated.json",
+      "public_sha256": "sha256:839832ade94a52714b42ca85fe6b3654767e4c733131514a32e5b0f3fb6685df"
+    },
+    {
+      "view": "audited",
+      "private_path": "evaluation/reports/supplier-quality-pilot/validation-v1-audit/report.json",
+      "raw_sha256": "sha256:0ea10c25360bd482cbbc09bc3d040c8c334e2e787901648646994e1583ea3cf1",
+      "raw_canonical_hash": "sha256:5117d6343be05a5a0f5a9f4916991410e297c634c91644f616a9554d49885865",
+      "public_path": "evaluation/reports/supplier-validation-v1-first-20261020-audited.json",
+      "public_sha256": "sha256:15951571eb9dec2114bab7a708d9426972a1c9d7e8c0c3afdb9420e030c78338"
+    },
+    {
+      "view": "continuation",
+      "private_path": "evaluation/reports/supplier-quality-pilot/validation-v1-continuation/report.json",
+      "raw_sha256": "sha256:03a6461f6de6248ec97a516fda8f799baf71add522a10fbdf899cedefaddc7dc",
+      "raw_canonical_hash": "sha256:26c69b9429c5903995935608deaebe572009a4f84d82600997bc064bce8ba099",
+      "public_path": "evaluation/reports/supplier-validation-v1-first-20261020-continuation.json",
+      "public_sha256": "sha256:81323a096a8f541f14559296e0638ccb1c0cd5eafec9456c410dd6de03c3ab43"
+    }
+  ],
+  "samples": [
+    {
+      "case_id": "V01",
+      "path": "evaluation/reports/supplier-validation-v1-first-20261020-samples/V01.json",
+      "sha256": "sha256:ec5ed3f222044c692f16c7ab3f4db8ad5ab3000ebae1fedfa9f5b589018f257f"
+    },
+    {
+      "case_id": "V06",
+      "path": "evaluation/reports/supplier-validation-v1-first-20261020-samples/V06.pdf",
+      "sha256": "sha256:b2eface724d5d97918c88fa9598f57d339cb85abd8bd7e4d7ea9752cefc0a50e"
+    }
+  ]
+}

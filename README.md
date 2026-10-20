@@ -263,6 +263,10 @@ inputs and literal independent answers. Verify them with `python -m evaluation.s
 This read-only command checks the frozen dataset; it does not run product tasks or measure live quality.
 The [validation executor](docs/supplier-quality-validation-execution.md) provides an explicit first
 live population, literal-oracle acceptance, PostgreSQL scripted resume and the original cumulative budget.
+The [first live validation result](docs/supplier-quality-validation-result.md) records 8/16 qualified
+reports after actual PDF scope audit, 270/317 numeric assertions, 218/256 enumerated facts and 4/4
+safety refusals. All twenty were attempted once; V16 remains pending, so the report is partial.
+The original automated 11/16 and the earlier stop snapshot remain available.
 
 ### Run the frontend
 
