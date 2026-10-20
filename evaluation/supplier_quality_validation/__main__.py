@@ -12,14 +12,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Return nonzero on invalid or changed inputs without rewriting any file."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bundle", type=Path, default=DEFAULT_BUNDLE)
-    parser.add_argument("--execute-live", action="store_true")
+    execution = parser.add_mutually_exclusive_group()
+    execution.add_argument("--execute-live", action="store_true")
+    execution.add_argument("--execute-regression", action="store_true")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--pricing", type=Path)
     parser.add_argument("--previous-pricing", type=Path)
     parser.add_argument("--budget", type=Path)
     parser.add_argument("--continue-unrun-from", type=Path)
     arguments = parser.parse_args(argv)
-    if arguments.execute_live:
+    if arguments.execute_regression and arguments.continue_unrun_from:
+        parser.error("regression cannot continue or replace the first population")
+    if arguments.execute_live or arguments.execute_regression:
         if arguments.bundle != DEFAULT_BUNDLE or not all(
             (arguments.output, arguments.pricing, arguments.previous_pricing, arguments.budget)
         ):
@@ -37,10 +41,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         from evaluation.supplier_quality_validation.continuation import continue_validation_live
         from evaluation.supplier_quality_validation.live import run_validation_live
+        from evaluation.supplier_quality_validation.regression import run_regression_live
 
         try:
             operation = (
-                continue_validation_live if arguments.continue_unrun_from else run_validation_live
+                run_regression_live
+                if arguments.execute_regression
+                else (
+                    continue_validation_live
+                    if arguments.continue_unrun_from
+                    else run_validation_live
+                )
             )
             positional = (
                 (arguments.continue_unrun_from, arguments.output)
@@ -61,8 +72,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             reason = exc.reason if isinstance(exc, BudgetStopped) else type(exc).__name__
             print(f"Validation live stopped: {reason}")
             return 2
+        label = "Development regression v1" if arguments.execute_regression else "First population"
         print(
-            f"First population: reports {report.qualified_deliveries}/{report.report_total}; "
+            f"{label}: reports {report.qualified_deliveries}/{report.report_total}; "
             f"safety {report.safety_passed}/{report.safety_total}; partial={report.partial}"
         )
         return (

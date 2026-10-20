@@ -377,6 +377,35 @@ def unavailable_run(
     )
 
 
+def case_definitions(
+    cases: tuple[CaseInput, ...], oracles: tuple[CaseOracle, ...]
+) -> tuple[CaseDefinition, ...]:
+    """Bind raw requests, scripted answers, evaluator scope and literal assertions."""
+    return tuple(
+        CaseDefinition(
+            case_id=c.case_id,
+            expected_outcome=c.expected_outcome,
+            numeric_ids=o.numeric_ids,
+            fact_ids=o.fact_ids,
+            input_hash=canonical_hash(
+                {
+                    "request": c.request,
+                    "output_format": c.output_format,
+                    "scripted_answer": c.scripted_answer,
+                    "expected_scope": {
+                        "supplier_ids": c.suppliers,
+                        "year": c.year,
+                        "quarter": c.quarter,
+                        "policy": c.policy,
+                    },
+                    "oracle": o.model_dump(mode="json"),
+                }
+            ),
+        )
+        for c, o in zip(cases, oracles, strict=True)
+    )
+
+
 def run_population(
     output_directory: Path,
     *,
@@ -391,7 +420,9 @@ def run_population(
     persistence_url: str | None = None,
     transport_factory: Callable[[], httpx.BaseTransport] | None = None,
     population_name: Literal[
-        "supplier-quality-validation.v1", "supplier-quality-validation.v1-continuation"
+        "supplier-quality-validation.v1",
+        "supplier-quality-validation.v1-continuation",
+        "supplier-quality-validation.regression.v1",
     ] = "supplier-quality-validation.v1",
     parent_report_hash: str | None = None,
 ) -> ValidationReport:
@@ -420,29 +451,7 @@ def run_population(
         budget_hash=canonical_hash(ledger.policy.model_dump(mode="json")),
         parent_report_hash=parent_report_hash,
         settings=execution_settings(settings),
-        cases=tuple(
-            CaseDefinition(
-                case_id=c.case_id,
-                expected_outcome=c.expected_outcome,
-                numeric_ids=o.numeric_ids,
-                fact_ids=o.fact_ids,
-                input_hash=canonical_hash(
-                    {
-                        "request": c.request,
-                        "output_format": c.output_format,
-                        "scripted_answer": c.scripted_answer,
-                        "expected_scope": {
-                            "supplier_ids": c.suppliers,
-                            "year": c.year,
-                            "quarter": c.quarter,
-                            "policy": c.policy,
-                        },
-                        "oracle": o.model_dump(mode="json"),
-                    }
-                ),
-            )
-            for c, o in zip(cases, oracles, strict=True)
-        ),
+        cases=case_definitions(cases, oracles),
     )
     output_directory = output_directory.resolve()
     config_hash = canonical_hash(config.model_dump(mode="json"))
@@ -557,9 +566,22 @@ def run_population(
             spending=ledger.snapshot(),
             prior_attempt_ids=progress.prior_attempt_ids,
         )
+        if population_name == "supplier-quality-validation.regression.v1":
+            report = report.model_copy(update={"limitations": REGRESSION_LIMITATIONS})
         save_record(output_directory / "report.json", report)
         (output_directory / "report.md").write_text(markdown(report))
     return report
+
+
+REGRESSION_LIMITATIONS = (
+    "Same synthetic V01–V20 inputs and checker as the audited baseline; now development "
+    "regression data, not independent blinded validation or production reliability.",
+    "All first outcomes remain separate; no adaptive case repeats or additional answers.",
+    "Enumerated structured facts only; not general claim correctness.",
+    "USD peak-rate usage ceilings and conservative EUR/tax bounds, not provider invoices.",
+    "Scripted clarification; human time savings unmeasured.",
+    "Qualified latency populations may differ; median/range do not measure speedup or p50/p95.",
+)
 
 
 def markdown(report: ValidationReport) -> str:
@@ -569,7 +591,11 @@ def markdown(report: ValidationReport) -> str:
     ]
     return "\n".join(
         [
-            "# Supplier Quality validation v1 — first live population",
+            (
+                "# Supplier Quality validation — development regression v1"
+                if report.limitations[:1] == REGRESSION_LIMITATIONS[:1]
+                else "# Supplier Quality validation v1 — first live population"
+            ),
             "",
             f"Qualified reports: **{report.qualified_deliveries}/{report.report_total}**; "
             f"safety: **{report.safety_passed}/{report.safety_total}**; "
