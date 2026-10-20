@@ -16,6 +16,7 @@ import httpx
 from pydantic import computed_field, model_validator
 
 from copilot.config import Settings
+from copilot.contracts import TaskStatus
 from evaluation.contracts import EvaluationModel
 from evaluation.dataset_loader import canonical_hash
 from evaluation.supplier_quality_pilot.budget import BudgetLedger, BudgetStopped, SpendingSnapshot
@@ -169,6 +170,16 @@ class ValidationReport(EvaluationModel):
             bool(self.stop_reason)
             or any(r.case_status != "executed" for r in self.runs)
             or bool(self.spending.unresolved_eur)
+            or any(
+                r.case_status == "executed"
+                and r.task_status
+                not in {
+                    TaskStatus.COMPLETED,
+                    TaskStatus.FAILED,
+                    TaskStatus.CANCELLED,
+                }
+                for r in self.runs
+            )
         )
 
     def _cost(self, outcome: str | None = None) -> Decimal | None:
@@ -468,6 +479,8 @@ def run_population(
                         persistence_url=persistence_url,
                         live=live,
                     )
+                if run.case_status == "interrupted":
+                    stop = f"HARNESS_{run.error_code}"
             except Exception as exc:
                 stop = f"HARNESS_{type(exc).__name__}"
                 run = unavailable_run(case, oracle, config, stop, started=started, ledger=ledger)

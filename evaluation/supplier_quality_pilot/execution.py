@@ -94,6 +94,7 @@ class CapturedTask:
     error_code: str | None
     artifact_paths: dict[str, Path]
     interaction: ClarificationObservation | None
+    harness_error: bool = False
 
 
 def capture_task(
@@ -123,6 +124,7 @@ def capture_task(
     error_code = None
     artifact_paths: dict[str, Path] = {}
     interaction: ClarificationObservation | None = None
+    harness_error = False
     with tempfile.TemporaryDirectory(prefix="supplier-quality-p01-") as temporary:
         root = Path(temporary)
         database_url = f"sqlite:///{root / 'source.db'}"
@@ -220,10 +222,13 @@ def capture_task(
             except Exception as exc:
                 # Safe harness failure, recorded separately from a failed business Task.
                 error_code = type(exc).__name__
+                harness_error = True
     (output_directory / "model-inputs.json").write_text(
         json.dumps(
             [[m.model_dump(mode="json") for m in call] for call in model.messages],
             indent=2,
         )
     )
-    return CapturedTask(execution, task_id, task_status, error_code, artifact_paths, interaction)
+    return CapturedTask(
+        execution, task_id, task_status, error_code, artifact_paths, interaction, harness_error
+    )

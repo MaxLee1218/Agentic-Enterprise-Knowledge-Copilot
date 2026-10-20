@@ -7,7 +7,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Literal, Protocol
 
-from pydantic import computed_field
+from pydantic import computed_field, model_validator
 
 from copilot.contracts import TaskStatus
 from copilot.llm.prompts import PLANNER_PROMPT_VERSION, TASK_UNDERSTANDING_PROMPT_VERSION
@@ -65,6 +65,23 @@ class ValidationRun(EvaluationModel):
     source_hash: str
     policy_hash: str
     prompt_versions: tuple[str, ...] = (TASK_UNDERSTANDING_PROMPT_VERSION, PLANNER_PROMPT_VERSION)
+
+    @model_validator(mode="after")
+    def validate_required_assertions(self) -> "ValidationRun":
+        """Missing/duplicate required assertions can never inflate qualified delivery."""
+        if (
+            tuple(a.assertion_id for a in self.assertions if a.category == "numeric")
+            != self.numeric_ids
+        ):
+            raise ValueError("numeric assertion identities missing, duplicated or changed")
+        facts = tuple(
+            a.assertion_id
+            for a in self.assertions
+            if a.category == "evidence" and a.assertion_id in self.fact_ids
+        )
+        if facts != self.fact_ids:
+            raise ValueError("fact assertion identities missing, duplicated or changed")
+        return self
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -159,6 +176,10 @@ def run_validation_case(
         },
         policy=policy,
     )
+    if captured.harness_error:
+        checks += (
+            PilotAssertion(assertion_id="capture_complete", category="lifecycle", passed=False),
+        )
     if case.scripted_answer:
         interaction = captured.interaction
         checks += tuple(
@@ -188,7 +209,7 @@ def run_validation_case(
         case_id=case.case_id,
         expected_outcome=case.expected_outcome,
         mode="live" if live else "control",
-        case_status="executed",
+        case_status="interrupted" if captured.harness_error else "executed",
         run_id=live.run_id if live else None,
         started_at=started_at,
         latency_ms=max(0, round((perf_counter() - timer) * 1000)),
