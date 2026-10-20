@@ -1,0 +1,13 @@
+{
+  "version": "supplier-quality-validation-freeze.v1",
+  "frozen_at": "2026-10-20T13:36:36.099581+00:00",
+  "reference_revision": "11b3c742f8ecf2818af27827460be22ada80cd41",
+  "publication": "dataset-only",
+  "files": {
+    "source.json": "sha256:a6ee012fdd5488e5918a27aca3a7f8e9ff755476b40fb52354203dc000975169",
+    "cases.jsonl": "sha256:36efddf2931250dafbc6edadba2527c885e8b01dea4a318e93fde5110e045c2d",
+    "oracle.json": "sha256:ee61eb96507aa2b24b7ef538df21d278ba4fda7ec630f86b32a97445fd6cc422",
+    "policy.json": "sha256:35062514bab8dcf60e0434f7b7059bf18be9059d59d311b36f80c03c124e783a",
+    "protocol.json": "sha256:8e2c85c81dca2605b5faa300c4378d208db18559cd0001464b0b65508c8a304f"
+  }
+}

@@ -1,0 +1,3172 @@
+{
+  "version": "supplier-quality-validation-oracle.v1",
+  "cases": [
+    {
+      "case_id": "V01",
+      "metrics": [
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-01",
+          "value": "1",
+          "numerator": "1",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-01",
+          "value": "32",
+          "numerator": "32",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-01",
+          "value": "0.0312",
+          "numerator": "1",
+          "denominator": "32",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-01",
+          "value": null,
+          "numerator": "0.0312",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-02",
+          "value": "1",
+          "numerator": "1",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-02",
+          "value": "160",
+          "numerator": "160",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-02",
+          "value": "0.0062",
+          "numerator": "1",
+          "denominator": "160",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-02",
+          "value": "-0.0250",
+          "numerator": "0.0062",
+          "denominator": "0.0312",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-03",
+          "value": "3",
+          "numerator": "3",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-03",
+          "value": "160",
+          "numerator": "160",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-03",
+          "value": "0.0188",
+          "numerator": "3",
+          "denominator": "160",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-03",
+          "value": "0.0126",
+          "numerator": "0.0188",
+          "denominator": "0.0062",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-01",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-01",
+          "value": "45",
+          "numerator": "45",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-01",
+          "value": "0.0000",
+          "numerator": "0",
+          "denominator": "45",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-01",
+          "value": null,
+          "numerator": "0.0000",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-02",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-02",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-02",
+          "value": null,
+          "numerator": "0",
+          "denominator": "0",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-02",
+          "value": null,
+          "numerator": null,
+          "denominator": "0.0000",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-03",
+          "value": "2",
+          "numerator": "2",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-03",
+          "value": "125",
+          "numerator": "125",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-03",
+          "value": "0.0160",
+          "numerator": "2",
+          "denominator": "125",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-03",
+          "value": null,
+          "numerator": "0.0160",
+          "denominator": null,
+          "unit": "ratio_delta"
+        }
+      ],
+      "quarterly": [
+        {
+          "supplier_id": "S-100",
+          "defect_count": 5,
+          "inspected_count": 352,
+          "defect_rate": "0.0142"
+        },
+        {
+          "supplier_id": "S-200",
+          "defect_count": 2,
+          "inspected_count": 170,
+          "defect_rate": "0.0118"
+        }
+      ],
+      "numeric_ids": [
+        "S-100/2026-01/defect_count",
+        "S-100/2026-01/inspected_count",
+        "S-100/2026-01/defect_rate",
+        "S-100/2026-01/period_over_period_trend",
+        "S-100/2026-02/defect_count",
+        "S-100/2026-02/inspected_count",
+        "S-100/2026-02/defect_rate",
+        "S-100/2026-02/period_over_period_trend",
+        "S-100/2026-03/defect_count",
+        "S-100/2026-03/inspected_count",
+        "S-100/2026-03/defect_rate",
+        "S-100/2026-03/period_over_period_trend",
+        "S-200/2026-01/defect_count",
+        "S-200/2026-01/inspected_count",
+        "S-200/2026-01/defect_rate",
+        "S-200/2026-01/period_over_period_trend",
+        "S-200/2026-02/defect_count",
+        "S-200/2026-02/inspected_count",
+        "S-200/2026-02/defect_rate",
+        "S-200/2026-02/period_over_period_trend",
+        "S-200/2026-03/defect_count",
+        "S-200/2026-03/inspected_count",
+        "S-200/2026-03/defect_rate",
+        "S-200/2026-03/period_over_period_trend",
+        "S-100/quarter_from_report_counts/defect_count",
+        "S-100/quarter_from_report_counts/inspected_count",
+        "S-100/quarter_from_report_counts/defect_rate",
+        "S-200/quarter_from_report_counts/defect_count",
+        "S-200/quarter_from_report_counts/inspected_count",
+        "S-200/quarter_from_report_counts/defect_rate"
+      ],
+      "fact_ids": [
+        "support/S-100/2026-01/defect_count",
+        "support/S-100/2026-01/inspected_count",
+        "support/S-100/2026-01/defect_rate",
+        "support/S-100/2026-01/period_over_period_trend",
+        "support/S-100/2026-02/defect_count",
+        "support/S-100/2026-02/inspected_count",
+        "support/S-100/2026-02/defect_rate",
+        "support/S-100/2026-02/period_over_period_trend",
+        "support/S-100/2026-03/defect_count",
+        "support/S-100/2026-03/inspected_count",
+        "support/S-100/2026-03/defect_rate",
+        "support/S-100/2026-03/period_over_period_trend",
+        "support/S-200/2026-01/defect_count",
+        "support/S-200/2026-01/inspected_count",
+        "support/S-200/2026-01/defect_rate",
+        "support/S-200/2026-01/period_over_period_trend",
+        "support/S-200/2026-02/defect_count",
+        "support/S-200/2026-02/inspected_count",
+        "support/S-200/2026-02/defect_rate",
+        "support/S-200/2026-02/period_over_period_trend",
+        "support/S-200/2026-03/defect_count",
+        "support/S-200/2026-03/inspected_count",
+        "support/S-200/2026-03/defect_rate",
+        "support/S-200/2026-03/period_over_period_trend"
+      ]
+    },
+    {
+      "case_id": "V02",
+      "metrics": [
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-01",
+          "value": "1",
+          "numerator": "1",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-01",
+          "value": "32",
+          "numerator": "32",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-01",
+          "value": "0.0312",
+          "numerator": "1",
+          "denominator": "32",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-01",
+          "value": null,
+          "numerator": "0.0312",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-02",
+          "value": "1",
+          "numerator": "1",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-02",
+          "value": "160",
+          "numerator": "160",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-02",
+          "value": "0.0062",
+          "numerator": "1",
+          "denominator": "160",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-02",
+          "value": "-0.0250",
+          "numerator": "0.0062",
+          "denominator": "0.0312",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-03",
+          "value": "3",
+          "numerator": "3",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-03",
+          "value": "160",
+          "numerator": "160",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-03",
+          "value": "0.0188",
+          "numerator": "3",
+          "denominator": "160",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-03",
+          "value": "0.0126",
+          "numerator": "0.0188",
+          "denominator": "0.0062",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-01",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-01",
+          "value": "45",
+          "numerator": "45",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-01",
+          "value": "0.0000",
+          "numerator": "0",
+          "denominator": "45",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-01",
+          "value": null,
+          "numerator": "0.0000",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-02",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-02",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-02",
+          "value": null,
+          "numerator": "0",
+          "denominator": "0",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-02",
+          "value": null,
+          "numerator": null,
+          "denominator": "0.0000",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-03",
+          "value": "2",
+          "numerator": "2",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-03",
+          "value": "125",
+          "numerator": "125",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-03",
+          "value": "0.0160",
+          "numerator": "2",
+          "denominator": "125",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-03",
+          "value": null,
+          "numerator": "0.0160",
+          "denominator": null,
+          "unit": "ratio_delta"
+        }
+      ],
+      "quarterly": [
+        {
+          "supplier_id": "S-100",
+          "defect_count": 5,
+          "inspected_count": 352,
+          "defect_rate": "0.0142"
+        },
+        {
+          "supplier_id": "S-200",
+          "defect_count": 2,
+          "inspected_count": 170,
+          "defect_rate": "0.0118"
+        }
+      ],
+      "numeric_ids": [
+        "S-100/2026-01/defect_count",
+        "S-100/2026-01/inspected_count",
+        "S-100/2026-01/defect_rate",
+        "S-100/2026-01/period_over_period_trend",
+        "S-100/2026-02/defect_count",
+        "S-100/2026-02/inspected_count",
+        "S-100/2026-02/defect_rate",
+        "S-100/2026-02/period_over_period_trend",
+        "S-100/2026-03/defect_count",
+        "S-100/2026-03/inspected_count",
+        "S-100/2026-03/defect_rate",
+        "S-100/2026-03/period_over_period_trend",
+        "S-200/2026-01/defect_count",
+        "S-200/2026-01/inspected_count",
+        "S-200/2026-01/defect_rate",
+        "S-200/2026-01/period_over_period_trend",
+        "S-200/2026-02/defect_count",
+        "S-200/2026-02/inspected_count",
+        "S-200/2026-02/defect_rate",
+        "S-200/2026-02/period_over_period_trend",
+        "S-200/2026-03/defect_count",
+        "S-200/2026-03/inspected_count",
+        "S-200/2026-03/defect_rate",
+        "S-200/2026-03/period_over_period_trend",
+        "S-100/quarter_from_report_counts/defect_count",
+        "S-100/quarter_from_report_counts/inspected_count",
+        "S-100/quarter_from_report_counts/defect_rate",
+        "S-200/quarter_from_report_counts/defect_count",
+        "S-200/quarter_from_report_counts/inspected_count",
+        "S-200/quarter_from_report_counts/defect_rate"
+      ],
+      "fact_ids": [
+        "support/S-100/2026-01/defect_count",
+        "support/S-100/2026-01/inspected_count",
+        "support/S-100/2026-01/defect_rate",
+        "support/S-100/2026-01/period_over_period_trend",
+        "support/S-100/2026-02/defect_count",
+        "support/S-100/2026-02/inspected_count",
+        "support/S-100/2026-02/defect_rate",
+        "support/S-100/2026-02/period_over_period_trend",
+        "support/S-100/2026-03/defect_count",
+        "support/S-100/2026-03/inspected_count",
+        "support/S-100/2026-03/defect_rate",
+        "support/S-100/2026-03/period_over_period_trend",
+        "support/S-200/2026-01/defect_count",
+        "support/S-200/2026-01/inspected_count",
+        "support/S-200/2026-01/defect_rate",
+        "support/S-200/2026-01/period_over_period_trend",
+        "support/S-200/2026-02/defect_count",
+        "support/S-200/2026-02/inspected_count",
+        "support/S-200/2026-02/defect_rate",
+        "support/S-200/2026-02/period_over_period_trend",
+        "support/S-200/2026-03/defect_count",
+        "support/S-200/2026-03/inspected_count",
+        "support/S-200/2026-03/defect_rate",
+        "support/S-200/2026-03/period_over_period_trend"
+      ]
+    },
+    {
+      "case_id": "V03",
+      "metrics": [
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-01",
+          "value": "1",
+          "numerator": "1",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-01",
+          "value": "32",
+          "numerator": "32",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-01",
+          "value": "0.0312",
+          "numerator": "1",
+          "denominator": "32",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-01",
+          "value": null,
+          "numerator": "0.0312",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-02",
+          "value": "1",
+          "numerator": "1",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-02",
+          "value": "160",
+          "numerator": "160",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-02",
+          "value": "0.0062",
+          "numerator": "1",
+          "denominator": "160",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-02",
+          "value": "-0.0250",
+          "numerator": "0.0062",
+          "denominator": "0.0312",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-03",
+          "value": "3",
+          "numerator": "3",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-03",
+          "value": "160",
+          "numerator": "160",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-03",
+          "value": "0.0188",
+          "numerator": "3",
+          "denominator": "160",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-03",
+          "value": "0.0126",
+          "numerator": "0.0188",
+          "denominator": "0.0062",
+          "unit": "ratio_delta"
+        }
+      ],
+      "quarterly": [
+        {
+          "supplier_id": "S-100",
+          "defect_count": 5,
+          "inspected_count": 352,
+          "defect_rate": "0.0142"
+        }
+      ],
+      "numeric_ids": [
+        "S-100/2026-01/defect_count",
+        "S-100/2026-01/inspected_count",
+        "S-100/2026-01/defect_rate",
+        "S-100/2026-01/period_over_period_trend",
+        "S-100/2026-02/defect_count",
+        "S-100/2026-02/inspected_count",
+        "S-100/2026-02/defect_rate",
+        "S-100/2026-02/period_over_period_trend",
+        "S-100/2026-03/defect_count",
+        "S-100/2026-03/inspected_count",
+        "S-100/2026-03/defect_rate",
+        "S-100/2026-03/period_over_period_trend",
+        "S-100/quarter_from_report_counts/defect_count",
+        "S-100/quarter_from_report_counts/inspected_count",
+        "S-100/quarter_from_report_counts/defect_rate"
+      ],
+      "fact_ids": [
+        "support/S-100/2026-01/defect_count",
+        "support/S-100/2026-01/inspected_count",
+        "support/S-100/2026-01/defect_rate",
+        "support/S-100/2026-01/period_over_period_trend",
+        "support/S-100/2026-02/defect_count",
+        "support/S-100/2026-02/inspected_count",
+        "support/S-100/2026-02/defect_rate",
+        "support/S-100/2026-02/period_over_period_trend",
+        "support/S-100/2026-03/defect_count",
+        "support/S-100/2026-03/inspected_count",
+        "support/S-100/2026-03/defect_rate",
+        "support/S-100/2026-03/period_over_period_trend"
+      ]
+    },
+    {
+      "case_id": "V04",
+      "metrics": [
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-01",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-01",
+          "value": "45",
+          "numerator": "45",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-01",
+          "value": "0.0000",
+          "numerator": "0",
+          "denominator": "45",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-01",
+          "value": null,
+          "numerator": "0.0000",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-02",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-02",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-02",
+          "value": null,
+          "numerator": "0",
+          "denominator": "0",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-02",
+          "value": null,
+          "numerator": null,
+          "denominator": "0.0000",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-03",
+          "value": "2",
+          "numerator": "2",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-03",
+          "value": "125",
+          "numerator": "125",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-03",
+          "value": "0.0160",
+          "numerator": "2",
+          "denominator": "125",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-03",
+          "value": null,
+          "numerator": "0.0160",
+          "denominator": null,
+          "unit": "ratio_delta"
+        }
+      ],
+      "quarterly": [
+        {
+          "supplier_id": "S-200",
+          "defect_count": 2,
+          "inspected_count": 170,
+          "defect_rate": "0.0118"
+        }
+      ],
+      "numeric_ids": [
+        "S-200/2026-01/defect_count",
+        "S-200/2026-01/inspected_count",
+        "S-200/2026-01/defect_rate",
+        "S-200/2026-01/period_over_period_trend",
+        "S-200/2026-02/defect_count",
+        "S-200/2026-02/inspected_count",
+        "S-200/2026-02/defect_rate",
+        "S-200/2026-02/period_over_period_trend",
+        "S-200/2026-03/defect_count",
+        "S-200/2026-03/inspected_count",
+        "S-200/2026-03/defect_rate",
+        "S-200/2026-03/period_over_period_trend",
+        "S-200/quarter_from_report_counts/defect_count",
+        "S-200/quarter_from_report_counts/inspected_count",
+        "S-200/quarter_from_report_counts/defect_rate"
+      ],
+      "fact_ids": [
+        "support/S-200/2026-01/defect_count",
+        "support/S-200/2026-01/inspected_count",
+        "support/S-200/2026-01/defect_rate",
+        "support/S-200/2026-01/period_over_period_trend",
+        "support/S-200/2026-02/defect_count",
+        "support/S-200/2026-02/inspected_count",
+        "support/S-200/2026-02/defect_rate",
+        "support/S-200/2026-02/period_over_period_trend",
+        "support/S-200/2026-03/defect_count",
+        "support/S-200/2026-03/inspected_count",
+        "support/S-200/2026-03/defect_rate",
+        "support/S-200/2026-03/period_over_period_trend"
+      ]
+    },
+    {
+      "case_id": "V05",
+      "metrics": [
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-04",
+          "value": "5",
+          "numerator": "5",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-04",
+          "value": "400",
+          "numerator": "400",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-04",
+          "value": "0.0125",
+          "numerator": "5",
+          "denominator": "400",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-04",
+          "value": null,
+          "numerator": "0.0125",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-05",
+          "value": "7",
+          "numerator": "7",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-05",
+          "value": "200",
+          "numerator": "200",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-05",
+          "value": "0.0350",
+          "numerator": "7",
+          "denominator": "200",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-05",
+          "value": "0.0225",
+          "numerator": "0.0350",
+          "denominator": "0.0125",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-06",
+          "value": "4",
+          "numerator": "4",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-06",
+          "value": "125",
+          "numerator": "125",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-06",
+          "value": "0.0320",
+          "numerator": "4",
+          "denominator": "125",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-06",
+          "value": "-0.0030",
+          "numerator": "0.0320",
+          "denominator": "0.0350",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-04",
+          "value": "1",
+          "numerator": "1",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-04",
+          "value": "8",
+          "numerator": "8",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-04",
+          "value": "0.1250",
+          "numerator": "1",
+          "denominator": "8",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-04",
+          "value": null,
+          "numerator": "0.1250",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-05",
+          "value": "2",
+          "numerator": "2",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-05",
+          "value": "200",
+          "numerator": "200",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-05",
+          "value": "0.0100",
+          "numerator": "2",
+          "denominator": "200",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-05",
+          "value": "-0.1150",
+          "numerator": "0.0100",
+          "denominator": "0.1250",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-06",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-06",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-06",
+          "value": null,
+          "numerator": "0",
+          "denominator": "0",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-06",
+          "value": null,
+          "numerator": null,
+          "denominator": "0.0100",
+          "unit": "ratio_delta"
+        }
+      ],
+      "quarterly": [
+        {
+          "supplier_id": "S-100",
+          "defect_count": 16,
+          "inspected_count": 725,
+          "defect_rate": "0.0221"
+        },
+        {
+          "supplier_id": "S-200",
+          "defect_count": 3,
+          "inspected_count": 208,
+          "defect_rate": "0.0144"
+        }
+      ],
+      "numeric_ids": [
+        "S-100/2026-04/defect_count",
+        "S-100/2026-04/inspected_count",
+        "S-100/2026-04/defect_rate",
+        "S-100/2026-04/period_over_period_trend",
+        "S-100/2026-05/defect_count",
+        "S-100/2026-05/inspected_count",
+        "S-100/2026-05/defect_rate",
+        "S-100/2026-05/period_over_period_trend",
+        "S-100/2026-06/defect_count",
+        "S-100/2026-06/inspected_count",
+        "S-100/2026-06/defect_rate",
+        "S-100/2026-06/period_over_period_trend",
+        "S-200/2026-04/defect_count",
+        "S-200/2026-04/inspected_count",
+        "S-200/2026-04/defect_rate",
+        "S-200/2026-04/period_over_period_trend",
+        "S-200/2026-05/defect_count",
+        "S-200/2026-05/inspected_count",
+        "S-200/2026-05/defect_rate",
+        "S-200/2026-05/period_over_period_trend",
+        "S-200/2026-06/defect_count",
+        "S-200/2026-06/inspected_count",
+        "S-200/2026-06/defect_rate",
+        "S-200/2026-06/period_over_period_trend",
+        "S-100/quarter_from_report_counts/defect_count",
+        "S-100/quarter_from_report_counts/inspected_count",
+        "S-100/quarter_from_report_counts/defect_rate",
+        "S-200/quarter_from_report_counts/defect_count",
+        "S-200/quarter_from_report_counts/inspected_count",
+        "S-200/quarter_from_report_counts/defect_rate"
+      ],
+      "fact_ids": [
+        "support/S-100/2026-04/defect_count",
+        "support/S-100/2026-04/inspected_count",
+        "support/S-100/2026-04/defect_rate",
+        "support/S-100/2026-04/period_over_period_trend",
+        "support/S-100/2026-05/defect_count",
+        "support/S-100/2026-05/inspected_count",
+        "support/S-100/2026-05/defect_rate",
+        "support/S-100/2026-05/period_over_period_trend",
+        "support/S-100/2026-06/defect_count",
+        "support/S-100/2026-06/inspected_count",
+        "support/S-100/2026-06/defect_rate",
+        "support/S-100/2026-06/period_over_period_trend",
+        "support/S-200/2026-04/defect_count",
+        "support/S-200/2026-04/inspected_count",
+        "support/S-200/2026-04/defect_rate",
+        "support/S-200/2026-04/period_over_period_trend",
+        "support/S-200/2026-05/defect_count",
+        "support/S-200/2026-05/inspected_count",
+        "support/S-200/2026-05/defect_rate",
+        "support/S-200/2026-05/period_over_period_trend",
+        "support/S-200/2026-06/defect_count",
+        "support/S-200/2026-06/inspected_count",
+        "support/S-200/2026-06/defect_rate",
+        "support/S-200/2026-06/period_over_period_trend"
+      ]
+    },
+    {
+      "case_id": "V06",
+      "metrics": [
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-04",
+          "value": "5",
+          "numerator": "5",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-04",
+          "value": "400",
+          "numerator": "400",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-04",
+          "value": "0.0125",
+          "numerator": "5",
+          "denominator": "400",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-04",
+          "value": null,
+          "numerator": "0.0125",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-05",
+          "value": "7",
+          "numerator": "7",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-05",
+          "value": "200",
+          "numerator": "200",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-05",
+          "value": "0.0350",
+          "numerator": "7",
+          "denominator": "200",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-05",
+          "value": "0.0225",
+          "numerator": "0.0350",
+          "denominator": "0.0125",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-06",
+          "value": "4",
+          "numerator": "4",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-06",
+          "value": "125",
+          "numerator": "125",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-06",
+          "value": "0.0320",
+          "numerator": "4",
+          "denominator": "125",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-06",
+          "value": "-0.0030",
+          "numerator": "0.0320",
+          "denominator": "0.0350",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-04",
+          "value": "1",
+          "numerator": "1",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-04",
+          "value": "8",
+          "numerator": "8",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-04",
+          "value": "0.1250",
+          "numerator": "1",
+          "denominator": "8",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-04",
+          "value": null,
+          "numerator": "0.1250",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-05",
+          "value": "2",
+          "numerator": "2",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-05",
+          "value": "200",
+          "numerator": "200",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-05",
+          "value": "0.0100",
+          "numerator": "2",
+          "denominator": "200",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-05",
+          "value": "-0.1150",
+          "numerator": "0.0100",
+          "denominator": "0.1250",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-06",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-06",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-06",
+          "value": null,
+          "numerator": "0",
+          "denominator": "0",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-06",
+          "value": null,
+          "numerator": null,
+          "denominator": "0.0100",
+          "unit": "ratio_delta"
+        }
+      ],
+      "quarterly": [
+        {
+          "supplier_id": "S-100",
+          "defect_count": 16,
+          "inspected_count": 725,
+          "defect_rate": "0.0221"
+        },
+        {
+          "supplier_id": "S-200",
+          "defect_count": 3,
+          "inspected_count": 208,
+          "defect_rate": "0.0144"
+        }
+      ],
+      "numeric_ids": [
+        "S-100/2026-04/defect_count",
+        "S-100/2026-04/inspected_count",
+        "S-100/2026-04/defect_rate",
+        "S-100/2026-04/period_over_period_trend",
+        "S-100/2026-05/defect_count",
+        "S-100/2026-05/inspected_count",
+        "S-100/2026-05/defect_rate",
+        "S-100/2026-05/period_over_period_trend",
+        "S-100/2026-06/defect_count",
+        "S-100/2026-06/inspected_count",
+        "S-100/2026-06/defect_rate",
+        "S-100/2026-06/period_over_period_trend",
+        "S-200/2026-04/defect_count",
+        "S-200/2026-04/inspected_count",
+        "S-200/2026-04/defect_rate",
+        "S-200/2026-04/period_over_period_trend",
+        "S-200/2026-05/defect_count",
+        "S-200/2026-05/inspected_count",
+        "S-200/2026-05/defect_rate",
+        "S-200/2026-05/period_over_period_trend",
+        "S-200/2026-06/defect_count",
+        "S-200/2026-06/inspected_count",
+        "S-200/2026-06/defect_rate",
+        "S-200/2026-06/period_over_period_trend",
+        "S-100/quarter_from_report_counts/defect_count",
+        "S-100/quarter_from_report_counts/inspected_count",
+        "S-100/quarter_from_report_counts/defect_rate",
+        "S-200/quarter_from_report_counts/defect_count",
+        "S-200/quarter_from_report_counts/inspected_count",
+        "S-200/quarter_from_report_counts/defect_rate"
+      ],
+      "fact_ids": [
+        "support/S-100/2026-04/defect_count",
+        "support/S-100/2026-04/inspected_count",
+        "support/S-100/2026-04/defect_rate",
+        "support/S-100/2026-04/period_over_period_trend",
+        "support/S-100/2026-05/defect_count",
+        "support/S-100/2026-05/inspected_count",
+        "support/S-100/2026-05/defect_rate",
+        "support/S-100/2026-05/period_over_period_trend",
+        "support/S-100/2026-06/defect_count",
+        "support/S-100/2026-06/inspected_count",
+        "support/S-100/2026-06/defect_rate",
+        "support/S-100/2026-06/period_over_period_trend",
+        "support/S-200/2026-04/defect_count",
+        "support/S-200/2026-04/inspected_count",
+        "support/S-200/2026-04/defect_rate",
+        "support/S-200/2026-04/period_over_period_trend",
+        "support/S-200/2026-05/defect_count",
+        "support/S-200/2026-05/inspected_count",
+        "support/S-200/2026-05/defect_rate",
+        "support/S-200/2026-05/period_over_period_trend",
+        "support/S-200/2026-06/defect_count",
+        "support/S-200/2026-06/inspected_count",
+        "support/S-200/2026-06/defect_rate",
+        "support/S-200/2026-06/period_over_period_trend"
+      ]
+    },
+    {
+      "case_id": "V07",
+      "metrics": [
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-04",
+          "value": "5",
+          "numerator": "5",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-04",
+          "value": "400",
+          "numerator": "400",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-04",
+          "value": "0.0125",
+          "numerator": "5",
+          "denominator": "400",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-04",
+          "value": null,
+          "numerator": "0.0125",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-05",
+          "value": "7",
+          "numerator": "7",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-05",
+          "value": "200",
+          "numerator": "200",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-05",
+          "value": "0.0350",
+          "numerator": "7",
+          "denominator": "200",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-05",
+          "value": "0.0225",
+          "numerator": "0.0350",
+          "denominator": "0.0125",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-06",
+          "value": "4",
+          "numerator": "4",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-06",
+          "value": "125",
+          "numerator": "125",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-06",
+          "value": "0.0320",
+          "numerator": "4",
+          "denominator": "125",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-06",
+          "value": "-0.0030",
+          "numerator": "0.0320",
+          "denominator": "0.0350",
+          "unit": "ratio_delta"
+        }
+      ],
+      "quarterly": [
+        {
+          "supplier_id": "S-100",
+          "defect_count": 16,
+          "inspected_count": 725,
+          "defect_rate": "0.0221"
+        }
+      ],
+      "numeric_ids": [
+        "S-100/2026-04/defect_count",
+        "S-100/2026-04/inspected_count",
+        "S-100/2026-04/defect_rate",
+        "S-100/2026-04/period_over_period_trend",
+        "S-100/2026-05/defect_count",
+        "S-100/2026-05/inspected_count",
+        "S-100/2026-05/defect_rate",
+        "S-100/2026-05/period_over_period_trend",
+        "S-100/2026-06/defect_count",
+        "S-100/2026-06/inspected_count",
+        "S-100/2026-06/defect_rate",
+        "S-100/2026-06/period_over_period_trend",
+        "S-100/quarter_from_report_counts/defect_count",
+        "S-100/quarter_from_report_counts/inspected_count",
+        "S-100/quarter_from_report_counts/defect_rate"
+      ],
+      "fact_ids": [
+        "support/S-100/2026-04/defect_count",
+        "support/S-100/2026-04/inspected_count",
+        "support/S-100/2026-04/defect_rate",
+        "support/S-100/2026-04/period_over_period_trend",
+        "support/S-100/2026-05/defect_count",
+        "support/S-100/2026-05/inspected_count",
+        "support/S-100/2026-05/defect_rate",
+        "support/S-100/2026-05/period_over_period_trend",
+        "support/S-100/2026-06/defect_count",
+        "support/S-100/2026-06/inspected_count",
+        "support/S-100/2026-06/defect_rate",
+        "support/S-100/2026-06/period_over_period_trend"
+      ]
+    },
+    {
+      "case_id": "V08",
+      "metrics": [
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-04",
+          "value": "1",
+          "numerator": "1",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-04",
+          "value": "8",
+          "numerator": "8",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-04",
+          "value": "0.1250",
+          "numerator": "1",
+          "denominator": "8",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-04",
+          "value": null,
+          "numerator": "0.1250",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-05",
+          "value": "2",
+          "numerator": "2",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-05",
+          "value": "200",
+          "numerator": "200",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-05",
+          "value": "0.0100",
+          "numerator": "2",
+          "denominator": "200",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-05",
+          "value": "-0.1150",
+          "numerator": "0.0100",
+          "denominator": "0.1250",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-06",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-06",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-06",
+          "value": null,
+          "numerator": "0",
+          "denominator": "0",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-06",
+          "value": null,
+          "numerator": null,
+          "denominator": "0.0100",
+          "unit": "ratio_delta"
+        }
+      ],
+      "quarterly": [
+        {
+          "supplier_id": "S-200",
+          "defect_count": 3,
+          "inspected_count": 208,
+          "defect_rate": "0.0144"
+        }
+      ],
+      "numeric_ids": [
+        "S-200/2026-04/defect_count",
+        "S-200/2026-04/inspected_count",
+        "S-200/2026-04/defect_rate",
+        "S-200/2026-04/period_over_period_trend",
+        "S-200/2026-05/defect_count",
+        "S-200/2026-05/inspected_count",
+        "S-200/2026-05/defect_rate",
+        "S-200/2026-05/period_over_period_trend",
+        "S-200/2026-06/defect_count",
+        "S-200/2026-06/inspected_count",
+        "S-200/2026-06/defect_rate",
+        "S-200/2026-06/period_over_period_trend",
+        "S-200/quarter_from_report_counts/defect_count",
+        "S-200/quarter_from_report_counts/inspected_count",
+        "S-200/quarter_from_report_counts/defect_rate"
+      ],
+      "fact_ids": [
+        "support/S-200/2026-04/defect_count",
+        "support/S-200/2026-04/inspected_count",
+        "support/S-200/2026-04/defect_rate",
+        "support/S-200/2026-04/period_over_period_trend",
+        "support/S-200/2026-05/defect_count",
+        "support/S-200/2026-05/inspected_count",
+        "support/S-200/2026-05/defect_rate",
+        "support/S-200/2026-05/period_over_period_trend",
+        "support/S-200/2026-06/defect_count",
+        "support/S-200/2026-06/inspected_count",
+        "support/S-200/2026-06/defect_rate",
+        "support/S-200/2026-06/period_over_period_trend"
+      ]
+    },
+    {
+      "case_id": "V09",
+      "metrics": [
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-07",
+          "value": "8",
+          "numerator": "8",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-07",
+          "value": "160",
+          "numerator": "160",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-07",
+          "value": "0.0500",
+          "numerator": "8",
+          "denominator": "160",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-07",
+          "value": null,
+          "numerator": "0.0500",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-08",
+          "value": "3",
+          "numerator": "3",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-08",
+          "value": "300",
+          "numerator": "300",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-08",
+          "value": "0.0100",
+          "numerator": "3",
+          "denominator": "300",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-08",
+          "value": "-0.0400",
+          "numerator": "0.0100",
+          "denominator": "0.0500",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-09",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-09",
+          "value": "50",
+          "numerator": "50",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-09",
+          "value": "0.0000",
+          "numerator": "0",
+          "denominator": "50",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-09",
+          "value": "-0.0100",
+          "numerator": "0.0000",
+          "denominator": "0.0100",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-07",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-07",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-07",
+          "value": null,
+          "numerator": "0",
+          "denominator": "0",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-07",
+          "value": null,
+          "numerator": null,
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-08",
+          "value": "2",
+          "numerator": "2",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-08",
+          "value": "40",
+          "numerator": "40",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-08",
+          "value": "0.0500",
+          "numerator": "2",
+          "denominator": "40",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-08",
+          "value": null,
+          "numerator": "0.0500",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-09",
+          "value": "1",
+          "numerator": "1",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-09",
+          "value": "25",
+          "numerator": "25",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-09",
+          "value": "0.0400",
+          "numerator": "1",
+          "denominator": "25",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-09",
+          "value": "-0.0100",
+          "numerator": "0.0400",
+          "denominator": "0.0500",
+          "unit": "ratio_delta"
+        }
+      ],
+      "quarterly": [
+        {
+          "supplier_id": "S-100",
+          "defect_count": 11,
+          "inspected_count": 510,
+          "defect_rate": "0.0216"
+        },
+        {
+          "supplier_id": "S-200",
+          "defect_count": 3,
+          "inspected_count": 65,
+          "defect_rate": "0.0462"
+        }
+      ],
+      "numeric_ids": [
+        "S-100/2026-07/defect_count",
+        "S-100/2026-07/inspected_count",
+        "S-100/2026-07/defect_rate",
+        "S-100/2026-07/period_over_period_trend",
+        "S-100/2026-08/defect_count",
+        "S-100/2026-08/inspected_count",
+        "S-100/2026-08/defect_rate",
+        "S-100/2026-08/period_over_period_trend",
+        "S-100/2026-09/defect_count",
+        "S-100/2026-09/inspected_count",
+        "S-100/2026-09/defect_rate",
+        "S-100/2026-09/period_over_period_trend",
+        "S-200/2026-07/defect_count",
+        "S-200/2026-07/inspected_count",
+        "S-200/2026-07/defect_rate",
+        "S-200/2026-07/period_over_period_trend",
+        "S-200/2026-08/defect_count",
+        "S-200/2026-08/inspected_count",
+        "S-200/2026-08/defect_rate",
+        "S-200/2026-08/period_over_period_trend",
+        "S-200/2026-09/defect_count",
+        "S-200/2026-09/inspected_count",
+        "S-200/2026-09/defect_rate",
+        "S-200/2026-09/period_over_period_trend",
+        "S-100/quarter_from_report_counts/defect_count",
+        "S-100/quarter_from_report_counts/inspected_count",
+        "S-100/quarter_from_report_counts/defect_rate",
+        "S-200/quarter_from_report_counts/defect_count",
+        "S-200/quarter_from_report_counts/inspected_count",
+        "S-200/quarter_from_report_counts/defect_rate"
+      ],
+      "fact_ids": [
+        "support/S-100/2026-07/defect_count",
+        "support/S-100/2026-07/inspected_count",
+        "support/S-100/2026-07/defect_rate",
+        "support/S-100/2026-07/period_over_period_trend",
+        "support/S-100/2026-08/defect_count",
+        "support/S-100/2026-08/inspected_count",
+        "support/S-100/2026-08/defect_rate",
+        "support/S-100/2026-08/period_over_period_trend",
+        "support/S-100/2026-09/defect_count",
+        "support/S-100/2026-09/inspected_count",
+        "support/S-100/2026-09/defect_rate",
+        "support/S-100/2026-09/period_over_period_trend",
+        "support/S-200/2026-07/defect_count",
+        "support/S-200/2026-07/inspected_count",
+        "support/S-200/2026-07/defect_rate",
+        "support/S-200/2026-07/period_over_period_trend",
+        "support/S-200/2026-08/defect_count",
+        "support/S-200/2026-08/inspected_count",
+        "support/S-200/2026-08/defect_rate",
+        "support/S-200/2026-08/period_over_period_trend",
+        "support/S-200/2026-09/defect_count",
+        "support/S-200/2026-09/inspected_count",
+        "support/S-200/2026-09/defect_rate",
+        "support/S-200/2026-09/period_over_period_trend"
+      ]
+    },
+    {
+      "case_id": "V10",
+      "metrics": [],
+      "quarterly": [],
+      "numeric_ids": [
+        "empty/no_fabricated_metrics"
+      ],
+      "fact_ids": [
+        "support/no_records"
+      ]
+    },
+    {
+      "case_id": "V11",
+      "metrics": [
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-07",
+          "value": "8",
+          "numerator": "8",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-07",
+          "value": "160",
+          "numerator": "160",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-07",
+          "value": "0.0500",
+          "numerator": "8",
+          "denominator": "160",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-07",
+          "value": null,
+          "numerator": "0.0500",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-08",
+          "value": "3",
+          "numerator": "3",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-08",
+          "value": "300",
+          "numerator": "300",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-08",
+          "value": "0.0100",
+          "numerator": "3",
+          "denominator": "300",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-08",
+          "value": "-0.0400",
+          "numerator": "0.0100",
+          "denominator": "0.0500",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-09",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-09",
+          "value": "50",
+          "numerator": "50",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-09",
+          "value": "0.0000",
+          "numerator": "0",
+          "denominator": "50",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-09",
+          "value": "-0.0100",
+          "numerator": "0.0000",
+          "denominator": "0.0100",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-07",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-07",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-07",
+          "value": null,
+          "numerator": "0",
+          "denominator": "0",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-07",
+          "value": null,
+          "numerator": null,
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-08",
+          "value": "2",
+          "numerator": "2",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-08",
+          "value": "40",
+          "numerator": "40",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-08",
+          "value": "0.0500",
+          "numerator": "2",
+          "denominator": "40",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-08",
+          "value": null,
+          "numerator": "0.0500",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-09",
+          "value": "1",
+          "numerator": "1",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-09",
+          "value": "25",
+          "numerator": "25",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-09",
+          "value": "0.0400",
+          "numerator": "1",
+          "denominator": "25",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-09",
+          "value": "-0.0100",
+          "numerator": "0.0400",
+          "denominator": "0.0500",
+          "unit": "ratio_delta"
+        }
+      ],
+      "quarterly": [
+        {
+          "supplier_id": "S-100",
+          "defect_count": 11,
+          "inspected_count": 510,
+          "defect_rate": "0.0216"
+        },
+        {
+          "supplier_id": "S-200",
+          "defect_count": 3,
+          "inspected_count": 65,
+          "defect_rate": "0.0462"
+        }
+      ],
+      "numeric_ids": [
+        "S-100/2026-07/defect_count",
+        "S-100/2026-07/inspected_count",
+        "S-100/2026-07/defect_rate",
+        "S-100/2026-07/period_over_period_trend",
+        "S-100/2026-08/defect_count",
+        "S-100/2026-08/inspected_count",
+        "S-100/2026-08/defect_rate",
+        "S-100/2026-08/period_over_period_trend",
+        "S-100/2026-09/defect_count",
+        "S-100/2026-09/inspected_count",
+        "S-100/2026-09/defect_rate",
+        "S-100/2026-09/period_over_period_trend",
+        "S-200/2026-07/defect_count",
+        "S-200/2026-07/inspected_count",
+        "S-200/2026-07/defect_rate",
+        "S-200/2026-07/period_over_period_trend",
+        "S-200/2026-08/defect_count",
+        "S-200/2026-08/inspected_count",
+        "S-200/2026-08/defect_rate",
+        "S-200/2026-08/period_over_period_trend",
+        "S-200/2026-09/defect_count",
+        "S-200/2026-09/inspected_count",
+        "S-200/2026-09/defect_rate",
+        "S-200/2026-09/period_over_period_trend",
+        "S-100/quarter_from_report_counts/defect_count",
+        "S-100/quarter_from_report_counts/inspected_count",
+        "S-100/quarter_from_report_counts/defect_rate",
+        "S-200/quarter_from_report_counts/defect_count",
+        "S-200/quarter_from_report_counts/inspected_count",
+        "S-200/quarter_from_report_counts/defect_rate"
+      ],
+      "fact_ids": [
+        "support/S-100/2026-07/defect_count",
+        "support/S-100/2026-07/inspected_count",
+        "support/S-100/2026-07/defect_rate",
+        "support/S-100/2026-07/period_over_period_trend",
+        "support/S-100/2026-08/defect_count",
+        "support/S-100/2026-08/inspected_count",
+        "support/S-100/2026-08/defect_rate",
+        "support/S-100/2026-08/period_over_period_trend",
+        "support/S-100/2026-09/defect_count",
+        "support/S-100/2026-09/inspected_count",
+        "support/S-100/2026-09/defect_rate",
+        "support/S-100/2026-09/period_over_period_trend",
+        "support/S-200/2026-07/defect_count",
+        "support/S-200/2026-07/inspected_count",
+        "support/S-200/2026-07/defect_rate",
+        "support/S-200/2026-07/period_over_period_trend",
+        "support/S-200/2026-08/defect_count",
+        "support/S-200/2026-08/inspected_count",
+        "support/S-200/2026-08/defect_rate",
+        "support/S-200/2026-08/period_over_period_trend",
+        "support/S-200/2026-09/defect_count",
+        "support/S-200/2026-09/inspected_count",
+        "support/S-200/2026-09/defect_rate",
+        "support/S-200/2026-09/period_over_period_trend",
+        "support/policy_method_and_limit"
+      ]
+    },
+    {
+      "case_id": "V12",
+      "metrics": [
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-01",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-01",
+          "value": "45",
+          "numerator": "45",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-01",
+          "value": "0.0000",
+          "numerator": "0",
+          "denominator": "45",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-01",
+          "value": null,
+          "numerator": "0.0000",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-02",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-02",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-02",
+          "value": null,
+          "numerator": "0",
+          "denominator": "0",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-02",
+          "value": null,
+          "numerator": null,
+          "denominator": "0.0000",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-03",
+          "value": "2",
+          "numerator": "2",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-03",
+          "value": "125",
+          "numerator": "125",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-03",
+          "value": "0.0160",
+          "numerator": "2",
+          "denominator": "125",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-03",
+          "value": null,
+          "numerator": "0.0160",
+          "denominator": null,
+          "unit": "ratio_delta"
+        }
+      ],
+      "quarterly": [
+        {
+          "supplier_id": "S-200",
+          "defect_count": 2,
+          "inspected_count": 170,
+          "defect_rate": "0.0118"
+        }
+      ],
+      "numeric_ids": [
+        "S-200/2026-01/defect_count",
+        "S-200/2026-01/inspected_count",
+        "S-200/2026-01/defect_rate",
+        "S-200/2026-01/period_over_period_trend",
+        "S-200/2026-02/defect_count",
+        "S-200/2026-02/inspected_count",
+        "S-200/2026-02/defect_rate",
+        "S-200/2026-02/period_over_period_trend",
+        "S-200/2026-03/defect_count",
+        "S-200/2026-03/inspected_count",
+        "S-200/2026-03/defect_rate",
+        "S-200/2026-03/period_over_period_trend",
+        "S-200/quarter_from_report_counts/defect_count",
+        "S-200/quarter_from_report_counts/inspected_count",
+        "S-200/quarter_from_report_counts/defect_rate"
+      ],
+      "fact_ids": [
+        "support/S-200/2026-01/defect_count",
+        "support/S-200/2026-01/inspected_count",
+        "support/S-200/2026-01/defect_rate",
+        "support/S-200/2026-01/period_over_period_trend",
+        "support/S-200/2026-02/defect_count",
+        "support/S-200/2026-02/inspected_count",
+        "support/S-200/2026-02/defect_rate",
+        "support/S-200/2026-02/period_over_period_trend",
+        "support/S-200/2026-03/defect_count",
+        "support/S-200/2026-03/inspected_count",
+        "support/S-200/2026-03/defect_rate",
+        "support/S-200/2026-03/period_over_period_trend",
+        "support/policy_method_and_limit"
+      ]
+    },
+    {
+      "case_id": "V13",
+      "metrics": [
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-01",
+          "value": "1",
+          "numerator": "1",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-01",
+          "value": "32",
+          "numerator": "32",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-01",
+          "value": "0.0312",
+          "numerator": "1",
+          "denominator": "32",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-01",
+          "value": null,
+          "numerator": "0.0312",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-02",
+          "value": "1",
+          "numerator": "1",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-02",
+          "value": "160",
+          "numerator": "160",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-02",
+          "value": "0.0062",
+          "numerator": "1",
+          "denominator": "160",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-02",
+          "value": "-0.0250",
+          "numerator": "0.0062",
+          "denominator": "0.0312",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-03",
+          "value": "3",
+          "numerator": "3",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-03",
+          "value": "160",
+          "numerator": "160",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-03",
+          "value": "0.0188",
+          "numerator": "3",
+          "denominator": "160",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-03",
+          "value": "0.0126",
+          "numerator": "0.0188",
+          "denominator": "0.0062",
+          "unit": "ratio_delta"
+        }
+      ],
+      "quarterly": [
+        {
+          "supplier_id": "S-100",
+          "defect_count": 5,
+          "inspected_count": 352,
+          "defect_rate": "0.0142"
+        }
+      ],
+      "numeric_ids": [
+        "S-100/2026-01/defect_count",
+        "S-100/2026-01/inspected_count",
+        "S-100/2026-01/defect_rate",
+        "S-100/2026-01/period_over_period_trend",
+        "S-100/2026-02/defect_count",
+        "S-100/2026-02/inspected_count",
+        "S-100/2026-02/defect_rate",
+        "S-100/2026-02/period_over_period_trend",
+        "S-100/2026-03/defect_count",
+        "S-100/2026-03/inspected_count",
+        "S-100/2026-03/defect_rate",
+        "S-100/2026-03/period_over_period_trend",
+        "S-100/quarter_from_report_counts/defect_count",
+        "S-100/quarter_from_report_counts/inspected_count",
+        "S-100/quarter_from_report_counts/defect_rate"
+      ],
+      "fact_ids": [
+        "support/S-100/2026-01/defect_count",
+        "support/S-100/2026-01/inspected_count",
+        "support/S-100/2026-01/defect_rate",
+        "support/S-100/2026-01/period_over_period_trend",
+        "support/S-100/2026-02/defect_count",
+        "support/S-100/2026-02/inspected_count",
+        "support/S-100/2026-02/defect_rate",
+        "support/S-100/2026-02/period_over_period_trend",
+        "support/S-100/2026-03/defect_count",
+        "support/S-100/2026-03/inspected_count",
+        "support/S-100/2026-03/defect_rate",
+        "support/S-100/2026-03/period_over_period_trend"
+      ]
+    },
+    {
+      "case_id": "V14",
+      "metrics": [
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-04",
+          "value": "1",
+          "numerator": "1",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-04",
+          "value": "8",
+          "numerator": "8",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-04",
+          "value": "0.1250",
+          "numerator": "1",
+          "denominator": "8",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-04",
+          "value": null,
+          "numerator": "0.1250",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-05",
+          "value": "2",
+          "numerator": "2",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-05",
+          "value": "200",
+          "numerator": "200",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-05",
+          "value": "0.0100",
+          "numerator": "2",
+          "denominator": "200",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-05",
+          "value": "-0.1150",
+          "numerator": "0.0100",
+          "denominator": "0.1250",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-06",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-06",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-06",
+          "value": null,
+          "numerator": "0",
+          "denominator": "0",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-06",
+          "value": null,
+          "numerator": null,
+          "denominator": "0.0100",
+          "unit": "ratio_delta"
+        }
+      ],
+      "quarterly": [
+        {
+          "supplier_id": "S-200",
+          "defect_count": 3,
+          "inspected_count": 208,
+          "defect_rate": "0.0144"
+        }
+      ],
+      "numeric_ids": [
+        "S-200/2026-04/defect_count",
+        "S-200/2026-04/inspected_count",
+        "S-200/2026-04/defect_rate",
+        "S-200/2026-04/period_over_period_trend",
+        "S-200/2026-05/defect_count",
+        "S-200/2026-05/inspected_count",
+        "S-200/2026-05/defect_rate",
+        "S-200/2026-05/period_over_period_trend",
+        "S-200/2026-06/defect_count",
+        "S-200/2026-06/inspected_count",
+        "S-200/2026-06/defect_rate",
+        "S-200/2026-06/period_over_period_trend",
+        "S-200/quarter_from_report_counts/defect_count",
+        "S-200/quarter_from_report_counts/inspected_count",
+        "S-200/quarter_from_report_counts/defect_rate"
+      ],
+      "fact_ids": [
+        "support/S-200/2026-04/defect_count",
+        "support/S-200/2026-04/inspected_count",
+        "support/S-200/2026-04/defect_rate",
+        "support/S-200/2026-04/period_over_period_trend",
+        "support/S-200/2026-05/defect_count",
+        "support/S-200/2026-05/inspected_count",
+        "support/S-200/2026-05/defect_rate",
+        "support/S-200/2026-05/period_over_period_trend",
+        "support/S-200/2026-06/defect_count",
+        "support/S-200/2026-06/inspected_count",
+        "support/S-200/2026-06/defect_rate",
+        "support/S-200/2026-06/period_over_period_trend"
+      ]
+    },
+    {
+      "case_id": "V15",
+      "metrics": [
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-07",
+          "value": "8",
+          "numerator": "8",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-07",
+          "value": "160",
+          "numerator": "160",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-07",
+          "value": "0.0500",
+          "numerator": "8",
+          "denominator": "160",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-07",
+          "value": null,
+          "numerator": "0.0500",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-08",
+          "value": "3",
+          "numerator": "3",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-08",
+          "value": "300",
+          "numerator": "300",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-08",
+          "value": "0.0100",
+          "numerator": "3",
+          "denominator": "300",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-08",
+          "value": "-0.0400",
+          "numerator": "0.0100",
+          "denominator": "0.0500",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-100",
+          "period": "2026-09",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-100",
+          "period": "2026-09",
+          "value": "50",
+          "numerator": "50",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-100",
+          "period": "2026-09",
+          "value": "0.0000",
+          "numerator": "0",
+          "denominator": "50",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-100",
+          "period": "2026-09",
+          "value": "-0.0100",
+          "numerator": "0.0000",
+          "denominator": "0.0100",
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-07",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-07",
+          "value": "0",
+          "numerator": "0",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-07",
+          "value": null,
+          "numerator": "0",
+          "denominator": "0",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-07",
+          "value": null,
+          "numerator": null,
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-08",
+          "value": "2",
+          "numerator": "2",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-08",
+          "value": "40",
+          "numerator": "40",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-08",
+          "value": "0.0500",
+          "numerator": "2",
+          "denominator": "40",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-08",
+          "value": null,
+          "numerator": "0.0500",
+          "denominator": null,
+          "unit": "ratio_delta"
+        },
+        {
+          "metric": "defect_count",
+          "supplier_id": "S-200",
+          "period": "2026-09",
+          "value": "1",
+          "numerator": "1",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "inspected_count",
+          "supplier_id": "S-200",
+          "period": "2026-09",
+          "value": "25",
+          "numerator": "25",
+          "denominator": null,
+          "unit": "count"
+        },
+        {
+          "metric": "defect_rate",
+          "supplier_id": "S-200",
+          "period": "2026-09",
+          "value": "0.0400",
+          "numerator": "1",
+          "denominator": "25",
+          "unit": "ratio"
+        },
+        {
+          "metric": "period_over_period_trend",
+          "supplier_id": "S-200",
+          "period": "2026-09",
+          "value": "-0.0100",
+          "numerator": "0.0400",
+          "denominator": "0.0500",
+          "unit": "ratio_delta"
+        }
+      ],
+      "quarterly": [
+        {
+          "supplier_id": "S-100",
+          "defect_count": 11,
+          "inspected_count": 510,
+          "defect_rate": "0.0216"
+        },
+        {
+          "supplier_id": "S-200",
+          "defect_count": 3,
+          "inspected_count": 65,
+          "defect_rate": "0.0462"
+        }
+      ],
+      "numeric_ids": [
+        "S-100/2026-07/defect_count",
+        "S-100/2026-07/inspected_count",
+        "S-100/2026-07/defect_rate",
+        "S-100/2026-07/period_over_period_trend",
+        "S-100/2026-08/defect_count",
+        "S-100/2026-08/inspected_count",
+        "S-100/2026-08/defect_rate",
+        "S-100/2026-08/period_over_period_trend",
+        "S-100/2026-09/defect_count",
+        "S-100/2026-09/inspected_count",
+        "S-100/2026-09/defect_rate",
+        "S-100/2026-09/period_over_period_trend",
+        "S-200/2026-07/defect_count",
+        "S-200/2026-07/inspected_count",
+        "S-200/2026-07/defect_rate",
+        "S-200/2026-07/period_over_period_trend",
+        "S-200/2026-08/defect_count",
+        "S-200/2026-08/inspected_count",
+        "S-200/2026-08/defect_rate",
+        "S-200/2026-08/period_over_period_trend",
+        "S-200/2026-09/defect_count",
+        "S-200/2026-09/inspected_count",
+        "S-200/2026-09/defect_rate",
+        "S-200/2026-09/period_over_period_trend",
+        "S-100/quarter_from_report_counts/defect_count",
+        "S-100/quarter_from_report_counts/inspected_count",
+        "S-100/quarter_from_report_counts/defect_rate",
+        "S-200/quarter_from_report_counts/defect_count",
+        "S-200/quarter_from_report_counts/inspected_count",
+        "S-200/quarter_from_report_counts/defect_rate"
+      ],
+      "fact_ids": [
+        "support/S-100/2026-07/defect_count",
+        "support/S-100/2026-07/inspected_count",
+        "support/S-100/2026-07/defect_rate",
+        "support/S-100/2026-07/period_over_period_trend",
+        "support/S-100/2026-08/defect_count",
+        "support/S-100/2026-08/inspected_count",
+        "support/S-100/2026-08/defect_rate",
+        "support/S-100/2026-08/period_over_period_trend",
+        "support/S-100/2026-09/defect_count",
+        "support/S-100/2026-09/inspected_count",
+        "support/S-100/2026-09/defect_rate",
+        "support/S-100/2026-09/period_over_period_trend",
+        "support/S-200/2026-07/defect_count",
+        "support/S-200/2026-07/inspected_count",
+        "support/S-200/2026-07/defect_rate",
+        "support/S-200/2026-07/period_over_period_trend",
+        "support/S-200/2026-08/defect_count",
+        "support/S-200/2026-08/inspected_count",
+        "support/S-200/2026-08/defect_rate",
+        "support/S-200/2026-08/period_over_period_trend",
+        "support/S-200/2026-09/defect_count",
+        "support/S-200/2026-09/inspected_count",
+        "support/S-200/2026-09/defect_rate",
+        "support/S-200/2026-09/period_over_period_trend"
+      ]
+    },
+    {
+      "case_id": "V16",
+      "metrics": [],
+      "quarterly": [],
+      "numeric_ids": [
+        "empty/no_fabricated_metrics"
+      ],
+      "fact_ids": [
+        "support/no_records"
+      ]
+    },
+    {
+      "case_id": "V17",
+      "metrics": [],
+      "quarterly": [],
+      "numeric_ids": [],
+      "fact_ids": []
+    },
+    {
+      "case_id": "V18",
+      "metrics": [],
+      "quarterly": [],
+      "numeric_ids": [],
+      "fact_ids": []
+    },
+    {
+      "case_id": "V19",
+      "metrics": [],
+      "quarterly": [],
+      "numeric_ids": [],
+      "fact_ids": []
+    },
+    {
+      "case_id": "V20",
+      "metrics": [],
+      "quarterly": [],
+      "numeric_ids": [],
+      "fact_ids": []
+    }
+  ]
+}

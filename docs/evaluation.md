@@ -431,3 +431,23 @@ whole-experiment spending are separate; both populations share the original €1
 reserve. Latency medians cover different sets of qualified reports, so no speedup percentage or
 measured human-time saving is inferred. This is a development regression on known synthetic
 cases, not held-out generalization.
+
+## Twenty-case validation freeze
+
+The [validation v1 protocol](supplier-quality-validation-v1.md) freezes new V01–V20 requests,
+source rows, literal oracle values, policy and assertion IDs before any product execution.
+It fixes delivery /16, safety /4, numeric /317 and enumerated fact-support /256. These differ
+from the development population; do not pool them or claim a direct before/after improvement.
+
+```bash
+python -m evaluation.supplier_quality_validation
+pytest tests/unit/evaluation/test_supplier_validation_freeze.py
+```
+
+The command returns 0 for a valid freeze and 1 for changed/invalid inputs; `--bundle PATH`
+verifies a copy. It does not create Tasks, load environment credentials, contact a model or
+write results. This ticket freezes data only; no live validation score is available.
+The same coding agent authored the new synthetic cases after observing development defects,
+so this is not independently blinded validation. A separate runner must use other control
+fixtures for its own tests, bind the committed freeze before dispatch, preserve all first
+outcomes and use the original aggregate spending ledger with current verified pricing.

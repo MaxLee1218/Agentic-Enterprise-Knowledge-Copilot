@@ -258,6 +258,10 @@ per-attempt usage accounting and a persistent €10 experiment budget with a €
 The [ten-scenario controlled pilot](docs/evaluation.md#ten-scenario-controlled-pilot) adds fixed
 denominators, PDF checks, policy and scripted clarification cases, and retained failure reports.
 
+The [twenty-case validation freeze](docs/supplier-quality-validation-v1.md) adds new synthetic
+inputs and literal independent answers. Verify them with `python -m evaluation.supplier_quality_validation`.
+This read-only command checks the frozen dataset; it does not run product tasks or measure live quality.
+
 ### Run the frontend
 
 ```bash
