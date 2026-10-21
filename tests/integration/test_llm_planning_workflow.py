@@ -80,16 +80,17 @@ def _proposal() -> ProposedPlan:
 
 
 @pytest.mark.parametrize(
-    "supplier,separator,note",
+    "supplier,separator,note,label",
     [
-        ("SUP-001", " in ", ""),
-        ("SUP-2027", " in ", ""),
-        ("SUP-2027", " ", ""),
-        ("SUP-001", " in ", " Show defect count 2000."),
+        ("SUP-001", " in ", "", None),
+        ("SUP-2027", " in ", "", None),
+        ("SUP-2027", " ", "", None),
+        ("SUP-001", " in ", " Show defect count 2000.", None),
+        ("SUP-2027", " in ", "", "supplier 2027"),
     ],
 )
 def test_a_partial_time_candidate_pauses_for_the_missing_year(
-    tmp_path: Path, supplier: str, separator: str, note: str
+    tmp_path: Path, supplier: str, separator: str, note: str, label: str | None
 ) -> None:
     from copilot.llm.schemas import ClarificationAssistantOutput
     from copilot.services.task_intake import (
@@ -111,7 +112,7 @@ def test_a_partial_time_candidate_pauses_for_the_missing_year(
             ],
         }
     )
-    raw = f"Analyze supplier quality for {supplier}{separator}Q3 and generate JSON.{note}"
+    raw = f"Analyze supplier quality for {label or supplier}{separator}Q3 and generate JSON.{note}"
     caller = TrustedCallerContext(
         user_id="U-QUALITY",
         tenant_id="TENANT-DEMO",

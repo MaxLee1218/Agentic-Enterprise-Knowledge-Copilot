@@ -9,7 +9,10 @@ from datetime import date
 from pydantic import JsonValue
 
 from copilot.contracts import FieldResolution, ResolutionSource, ResolutionStatus
-from copilot.understanding.entity_resolver import CANONICAL_SUPPLIER_PATTERN
+from copilot.understanding.entity_resolver import (
+    CANONICAL_SUPPLIER_PATTERN,
+    NATURAL_SUPPLIER_PATTERN,
+)
 
 _YEAR = r"(?:20\d{2}|[3-9]\d{3})"
 _ISO_TOKEN = re.compile(r"(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)")
@@ -323,7 +326,8 @@ def normalize_supplier_period(
     normalized = " ".join(text.strip().split())
     # Lex calendar tokens independently: punctuation cannot hide an invalid value,
     # and neither a business ID nor an explicitly labelled count supplies a year.
-    period_text = CANONICAL_SUPPLIER_PATTERN.sub("", normalized)
+    period_text = NATURAL_SUPPLIER_PATTERN.sub("", normalized)
+    period_text = CANONICAL_SUPPLIER_PATTERN.sub("", period_text)
     years = {
         int(match.group(1))
         for match in _SUPPLIER_YEAR.finditer(period_text)

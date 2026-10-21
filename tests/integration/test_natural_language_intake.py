@@ -66,11 +66,24 @@ def test_quality_report_recognizes_the_existing_sup_identifier_form(tmp_path: Pa
         assert state["request"].raw_input == raw
 
 
-@pytest.mark.parametrize("year", [2026, 2100])
+@pytest.mark.parametrize(
+    "year,label,year_first",
+    [
+        (2026, None, False),
+        (2100, None, False),
+        (2026, "supplier 2027", False),
+        (2026, "supplier SUP-2027", True),
+    ],
+)
 def test_supplier_contract_keeps_an_explicit_year_within_frozen_bounds(
-    tmp_path: Path, year: int
+    tmp_path: Path, year: int, label: str | None, year_first: bool
 ) -> None:
-    raw = f"Analyze supplier quality for Q2 {year} and generate a JSON report."
+    supplier_text = f"{label} " if label else ""
+    period = f"{year} Q2" if year_first else f"Q2 {year}"
+    raw = f"Analyze supplier quality for {supplier_text}{period} and generate a JSON report."
+    caller = (
+        CALLER.model_copy(update={"supplier_ids": ("SUP-2027", "SUP-002")}) if label else CALLER
+    )
     with build_test_container(
         tmp_path / "artifacts",
         llm_provider=OfflineMockLLM(),
@@ -78,12 +91,14 @@ def test_supplier_contract_keeps_an_explicit_year_within_frozen_bounds(
     ) as container:
         with pytest.raises(WorkflowInterrupted) as caught:
             container.task_service.submit(
-                NaturalLanguageTaskCommand(task=raw, source=RequestSource.API), CALLER
+                NaturalLanguageTaskCommand(task=raw, source=RequestSource.API), caller
             )
-        state = container.engine.get_state(caught.value.task_id, CALLER.tenant_id)
+        state = container.engine.get_state(caught.value.task_id, caller.tenant_id)
         contract = state["contract"]
         assert contract is not None and isinstance(contract.constraints, TaskConstraints)
         assert contract.constraints.year == year and contract.constraints.quarter == 2
+        if label:
+            assert contract.constraints.supplier_ids == ("SUP-2027",)
         assert state["tool_results"] == []
 
 

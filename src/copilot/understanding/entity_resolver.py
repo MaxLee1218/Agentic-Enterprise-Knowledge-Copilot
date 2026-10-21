@@ -12,7 +12,7 @@ from copilot.contracts import FieldResolution, ResolutionSource, ResolutionStatu
 
 _CANONICAL_LEGAL_ENTITY = re.compile(r"\bLE-[A-Za-z0-9][A-Za-z0-9_-]*\b", re.IGNORECASE)
 CANONICAL_SUPPLIER_PATTERN = re.compile(r"\b(?:SUP|S)-[A-Za-z0-9][A-Za-z0-9_-]*\b", re.IGNORECASE)
-_SUPPLIER_NATURAL = re.compile(
+NATURAL_SUPPLIER_PATTERN = re.compile(
     r"\bsupplier\s+(?:SUP[-\s]?)?(\d+[A-Za-z0-9_-]*)\b",
     re.IGNORECASE,
 )
@@ -181,7 +181,7 @@ def resolve_suppliers(
             value=cast(JsonValue, list(exact)),
             input_source=input_source,
         )
-    natural = _SUPPLIER_NATURAL.search(text)
+    natural = NATURAL_SUPPLIER_PATTERN.search(text)
     if natural is None:
         return _resolution(
             "supplier_ids",
@@ -238,4 +238,9 @@ def _narrow_by_suffix(text: str, alternatives: Iterable[str]) -> tuple[str, ...]
     )
 
 
-__all__ = ["CANONICAL_SUPPLIER_PATTERN", "resolve_legal_entities", "resolve_suppliers"]
+__all__ = [
+    "CANONICAL_SUPPLIER_PATTERN",
+    "NATURAL_SUPPLIER_PATTERN",
+    "resolve_legal_entities",
+    "resolve_suppliers",
+]
