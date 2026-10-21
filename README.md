@@ -17,6 +17,7 @@
 </p>
 
 <p align="center">
+  <a href="#measured-outcomes"><strong>Measured outcomes</strong></a> ·
   <a href="#product-tour"><strong>Product tour</strong></a> ·
   <a href="docs/assets/readme/product-tour.webm"><strong>Watch demo</strong></a> ·
   <a href="#architecture"><strong>Architecture</strong></a> ·
@@ -26,6 +27,34 @@
 </p>
 
 ---
+
+## Measured outcomes
+
+**15/16 verified reports · 4/4 safe denials · $0.00235 model cost per qualified report**
+
+Twenty versioned synthetic scenarios run through the real model, governed tools and PostgreSQL
+Worker. Delivery requires independent numeric/evidence checks and an audit of the actual PDF.
+
+| Metric | First audited baseline | Development regression v1 |
+|---|---|---|
+| Qualified report delivery | 8/16 (50.0%) | **15/16 (93.8%)** |
+| Numeric assertions | 270/317 | **287/317 (90.5%)** |
+| Enumerated evidence-backed facts | 218/256 | **232/256 (90.6%)** |
+| Unauthorized-scope requests safely denied | 4/4 | **4/4** |
+| Model cost ceiling per qualified report | $0.00314 | **$0.00235** |
+| Qualified task latency, median | 8.87 s | **8.16 s** |
+
+Same inputs, model settings and checker; regression code `45885a9`, 2026-10-20. All failures and
+retry costs are included. V01 remains a Schema failure ([#17](https://github.com/MaxLee1218/Agentic-Enterprise-Knowledge-Copilot/issues/17));
+15/16 is the complete result. This is a development regression after fixes, not blinded validation
+or production reliability. Latency populations differ; no speedup or measured human savings are claimed.
+Costs are conservative model-usage ceilings, excluding infrastructure and human review.
+
+[Results & limitations](docs/supplier-quality-validation-regression-result.md) ·
+[Full before/after comparison](evaluation/reports/supplier-validation-regression-v1-20261020-comparison.md) ·
+[Machine-readable evidence](evaluation/reports/supplier-validation-regression-v1-20261020-audited.json) ·
+[Actual PDF sample](evaluation/reports/supplier-validation-regression-v1-20261020-samples/V02.pdf) ·
+[JSON sample](evaluation/reports/supplier-validation-regression-v1-20261020-samples/V16.json)
 
 ## Product tour
 
@@ -93,7 +122,7 @@ provided out of the box.
 | Signal | Current repository evidence |
 |---|---|
 | Business coverage | 2 end-to-end governed workflows |
-| Backend tests | 696 test functions across unit, integration, contract, smoke and security suites |
+| Backend tests | 1,015 passed / 35 skipped in the [recorded local run](docs/supplier-quality-validation-regression-result.md), across unit, integration, contract, smoke and security suites |
 | Architecture discipline | 23 documented Architecture Decision Records |
 | Full-stack quality | Python, PostgreSQL and real-browser frontend CI jobs |
 | Recovery model | Transactional dispatch, at-least-once delivery, leases, heartbeats and fencing |
@@ -243,6 +272,30 @@ python scripts/smoke_agent.py
 ```
 
 This path uses deterministic local adapters and requires no production service or credentials.
+
+For a Supplier Quality task scored against an independent SQL/Decimal oracle:
+
+```bash
+python -m evaluation.supplier_quality_pilot
+```
+
+This offline P01 pilot uses a real read-only SQLite query, analytics and JSON report generation.
+It writes the report, evidence and 30 numeric checks to a fresh local run directory. See
+[P01 evaluation](docs/evaluation.md#offline-p01-with-an-independent-oracle) for reproduction and limits.
+An [explicit budgeted live P01 mode](docs/evaluation.md#budgeted-live-p01-calibration) adds
+per-attempt usage accounting and a persistent €10 experiment budget with a €1 calibration cap.
+The [ten-scenario controlled pilot](docs/evaluation.md#ten-scenario-controlled-pilot) adds fixed
+denominators, PDF checks, policy and scripted clarification cases, and retained failure reports.
+
+The [twenty-case validation freeze](docs/supplier-quality-validation-v1.md) adds new synthetic
+inputs and literal independent answers. Verify them with `python -m evaluation.supplier_quality_validation`.
+This read-only command checks the frozen dataset; it does not run product tasks or measure live quality.
+The [validation executor](docs/supplier-quality-validation-execution.md) provides an explicit first
+live population, literal-oracle acceptance, PostgreSQL scripted resume and the original cumulative budget.
+The [first live validation result](docs/supplier-quality-validation-result.md) records 8/16 qualified
+reports after actual PDF scope audit, 270/317 numeric assertions, 218/256 enumerated facts and 4/4
+safety refusals. All twenty were attempted once; V16 remains pending, so the report is partial.
+The original automated 11/16 and the earlier stop snapshot remain available.
 
 ### Run the frontend
 
@@ -396,3 +449,17 @@ system outside a controlled local environment.
 
 Copyright © 2026 MaxLee1218. All rights reserved. No open-source license is granted; see
 [LICENSE](LICENSE) for the repository terms.
+
+### Supplier Quality controlled pilot results
+
+The real-model ten-scenario pilot is recorded in [the result report](docs/supplier-quality-pilot-result.md):
+4/9 qualified first reports, 175/181 numeric checks and 1/1 unauthorized-scope rejection.
+Failures and repeats are retained; this synthetic pilot does not establish production success or measured human-time savings.
+
+The [post-fix regression protocol](docs/supplier-quality-post-fix-regression.md) tracks the four
+observed delivery defects in GitHub Issues #5–#8 and their retained before/after run in #9.
+The [completed regression](docs/supplier-quality-post-fix-result.md) records 9/9 qualified reports,
+181/181 numeric checks, 146/146 enumerated fact-support checks and 1/1 safety rejection on those
+same development scenarios. Original failures remain available; this is not held-out validation.
+Use the [explicit regression command](docs/evaluation.md#explicit-post-fix-regression) only for the
+authorized follow-up population; it preserves the first results and shares the existing spending ledger.

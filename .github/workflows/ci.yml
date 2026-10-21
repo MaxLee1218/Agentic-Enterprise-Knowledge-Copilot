@@ -15,7 +15,8 @@ concurrency:
 jobs:
   frontend-quality:
     name: Frontend quality and real browser E2E
-    runs-on: ubuntu-latest
+    # Playwright 1.55.0 supports 24.04; ubuntu-latest may select unsupported releases.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
@@ -51,6 +52,7 @@ jobs:
         run: |
           npm run typecheck
           npm run lint
+          npm run test:lint-config
           npm run format:check
 
       - name: Run frontend unit and component tests
@@ -242,6 +244,30 @@ jobs:
         run: >-
           pytest tests/integration/test_postgres_business_database.py -v
           -k "runtime_identity or natural_language_agent"
+
+      - name: Create an isolated Supplier Quality pilot runtime database
+        run: |
+          docker run --rm --network host \
+            -e PGPASSWORD=copilot_test_password \
+            postgres:16.4-alpine \
+            psql --host 127.0.0.1 --port 5432 --username copilot_test --dbname postgres \
+            --command 'CREATE DATABASE copilot_pilot_test'
+
+      - name: Migrate the isolated pilot runtime and checkpoints
+        env:
+          PERSISTENCE_DATABASE_URL: postgresql+psycopg://copilot_test:copilot_test_password@127.0.0.1:5432/copilot_pilot_test
+        run: |
+          python -m alembic upgrade head
+          python -c "from copilot.config import get_settings; from copilot.persistence.checkpoint import migrate_postgres_checkpoints; migrate_postgres_checkpoints(get_settings().effective_persistence_database_url.replace('postgresql+psycopg:', 'postgresql:'))"
+
+      - name: Verify scripted pilot clarification through PostgreSQL Worker authority
+        env:
+          PILOT_TEST_POSTGRES_URL: postgresql+psycopg://copilot_test:copilot_test_password@127.0.0.1:5432/copilot_pilot_test
+        run: >-
+          pytest tests/integration/evaluation/test_pilot_suite.py
+          tests/integration/evaluation/test_pilot_regression.py
+          tests/integration/evaluation/test_validation_executor.py
+          -k "through_postgres or regression_uses or invalid_period_answer"
 
       - name: Dry-run PostgreSQL backup and restore for both trust boundaries
         run: |

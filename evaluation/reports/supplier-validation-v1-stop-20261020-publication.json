@@ -1,0 +1,8 @@
+{
+  "version": "supplier-quality-validation-stop-publication.v1",
+  "raw_report_sha256": "sha256:63b5b599166c9506bd061879f738096d66a15307114fcd4f6b0adc977c9aaa9f",
+  "raw_report_canonical_hash": "sha256:80e38ecd6fbfba286fb7b586001bd4ae0f17489762f1b02e3e2dbf208f4c2473",
+  "published_report_sha256": "sha256:46b180336875ebba96439eb53d3b93764b9a0cc11a04a5e5c1f72508ca7ba8df",
+  "normalization": "Public copy changes artifact_paths only to repository-relative paths; private original report/config/progress/binding/attempts remain unchanged.",
+  "private_raw_report": "evaluation/reports/supplier-quality-pilot/validation-v1/report.json"
+}

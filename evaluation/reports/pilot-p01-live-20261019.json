@@ -1,0 +1,607 @@
+{
+  "schema_version": "supplier-quality-pilot-run.v1",
+  "case_id": "P01",
+  "mode": "live",
+  "provider": "deepseek",
+  "model": "deepseek-flash",
+  "model_cost": "0.0014931",
+  "model_cost_currency": "USD",
+  "run_id": "bb7a21cde97c4cd788c66e8c92d7d57c",
+  "spending": {
+    "schema_version": "pilot-spending.v1",
+    "experiment_id": "supplier-quality-value-pilot.v1",
+    "ledger_schema_version": 1,
+    "pricing": {
+      "schema_version": "pilot-pricing.v1",
+      "version": "deepseek-flash-peak-2026-10-19.v1",
+      "provider": "deepseek",
+      "model": "deepseek-flash",
+      "response_models": [
+        "deepseek-flash",
+        "DeepSeek-V4.1-Flash-1017"
+      ],
+      "endpoint": "https://api.deepseek.com/chat/completions",
+      "effective_at": "2026-10-19T00:00:00Z",
+      "expires_at": "2026-10-20T00:00:00Z",
+      "source_url": "https://api-docs.deepseek.com/quick_start/pricing/",
+      "bounds_source_url": "https://api-docs.deepseek.com/api/create-chat-completion/",
+      "currency": "USD",
+      "input_context_limit": 1048576,
+      "output_limit": 8192,
+      "request_bytes_limit": 100000,
+      "input_miss_per_million": "0.30",
+      "input_hit_per_million": "0.006",
+      "output_per_million": "1.20",
+      "reasoning_semantics": "included_in_completion_tokens_and_max_tokens",
+      "reservation_method": "entire_provider_context_at_cache_miss_rate",
+      "fx_source_url": "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.eu.html",
+      "fx_reference_date": "2026-10-16",
+      "fx_reference_usd_per_eur": "1.1253",
+      "eur_per_usd_upper": "1.25",
+      "tax_multiplier_upper": "1.25",
+      "conversion_note": "Operational spending ceilings, not market FX or verified invoice tax: 1 USD <= 1.25 EUR, plus 25% tax/fee contingency. Peak token rates bound both peak and off-peak. Recheck provider pricing, token bounds and account fee treatment before renewing this date-limited card."
+    },
+    "policy": {
+      "schema_version": "pilot-budget.v1",
+      "experiment_id": "supplier-quality-value-pilot.v1",
+      "authorized_eur": "10",
+      "reserve_eur": "2",
+      "calibration_eur": "1"
+    },
+    "stopped_reason": null,
+    "attempts": [
+      {
+        "schema_version": "pilot-paid-attempt.v1",
+        "attempt_id": "13b24afe66cf4354a3f572dd7989cc20",
+        "run_id": "bb7a21cde97c4cd788c66e8c92d7d57c",
+        "stage": "calibration",
+        "reserved_at": "2026-10-19T08:15:20.420270Z",
+        "request_hash": "sha256:a4182a34f834f01aeb627f237a70fc90fb6e0f7ece7e638a6b4fa12c3aa9fff1",
+        "pricing_hash": "sha256:4ee9625e92a8dd37a44c01a9b8ee0bff41b7ede90245d63f3615b141b0f0e0b4",
+        "max_output_tokens": 8192,
+        "reserved_eur": "0.506880",
+        "status": "reconciled",
+        "usage": {
+          "prompt_tokens": 1329,
+          "completion_tokens": 327,
+          "total_tokens": 1656,
+          "prompt_cache_hit_tokens": 0,
+          "prompt_cache_miss_tokens": 1329,
+          "reasoning_tokens": 142
+        },
+        "usd_cost": "0.0007911",
+        "eur_upper": "0.001237",
+        "reason": null
+      },
+      {
+        "schema_version": "pilot-paid-attempt.v1",
+        "attempt_id": "49c26be78f3f46b9bd52a988c9a8f0de",
+        "run_id": "bb7a21cde97c4cd788c66e8c92d7d57c",
+        "stage": "calibration",
+        "reserved_at": "2026-10-19T08:15:22.511818Z",
+        "request_hash": "sha256:af45a7abb4cbe598f2cc2e506f74d86dcf00f8f746a1040dcb0dd3fa2e8be6a6",
+        "pricing_hash": "sha256:4ee9625e92a8dd37a44c01a9b8ee0bff41b7ede90245d63f3615b141b0f0e0b4",
+        "max_output_tokens": 8192,
+        "reserved_eur": "0.506880",
+        "status": "reconciled",
+        "usage": {
+          "prompt_tokens": 868,
+          "completion_tokens": 368,
+          "total_tokens": 1236,
+          "prompt_cache_hit_tokens": 0,
+          "prompt_cache_miss_tokens": 868,
+          "reasoning_tokens": 243
+        },
+        "usd_cost": "0.000702",
+        "eur_upper": "0.001097",
+        "reason": null
+      }
+    ],
+    "incurred_eur_upper": "0.002334",
+    "unresolved_eur": "0"
+  },
+  "started_at": "2026-10-19T08:15:20.304365Z",
+  "latency_ms": 4784,
+  "task_id": "T-0001",
+  "task_status": "COMPLETED",
+  "code_revision": "096ca89bdbd5a5a19be5319eb8d9f5d44dc1f9b2",
+  "code_hash": "sha256:91664093063d626a27cb510a074165dda90c9904eb4fa7f476f27fbec63c225d",
+  "git_dirty": false,
+  "source_hash": "sha256:8f5000a3d9d7d52cb1adf7701772c6fe3f42605bb9e5ebad435b53fe89496cdf",
+  "config_hash": "sha256:d399e7130d79bde6838237f6ae0599b2579050f3a1f6980f3b3f99cdc4c98ae7",
+  "source_version": "supplier-quality-pilot-source.v1",
+  "prompt_versions": [
+    "task-understanding-v4",
+    "planner-v3"
+  ],
+  "executed_tools": [
+    "database_query",
+    "analysis_engine",
+    "report_generator"
+  ],
+  "artifact_paths": [
+    "pilot-p01-live-20261019-artifact.json"
+  ],
+  "assertions": [
+    {
+      "assertion_id": "task_completed",
+      "category": "lifecycle",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "product_verified",
+      "category": "lifecycle",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "one_json_artifact",
+      "category": "artifact",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "artifact_schema",
+      "category": "artifact",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "artifact_integrity",
+      "category": "artifact",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "S-100/2026-04/defect_count",
+      "category": "numeric",
+      "passed": true,
+      "expected": "10",
+      "actual": "10"
+    },
+    {
+      "assertion_id": "S-100/2026-04/inspected_count",
+      "category": "numeric",
+      "passed": true,
+      "expected": "1000",
+      "actual": "1000"
+    },
+    {
+      "assertion_id": "S-100/2026-04/defect_rate",
+      "category": "numeric",
+      "passed": true,
+      "expected": "0.0100",
+      "actual": "0.01"
+    },
+    {
+      "assertion_id": "S-100/2026-04/period_over_period_trend",
+      "category": "numeric",
+      "passed": true,
+      "expected": "None",
+      "actual": "None"
+    },
+    {
+      "assertion_id": "S-100/2026-05/defect_count",
+      "category": "numeric",
+      "passed": true,
+      "expected": "20",
+      "actual": "20"
+    },
+    {
+      "assertion_id": "S-100/2026-05/inspected_count",
+      "category": "numeric",
+      "passed": true,
+      "expected": "1000",
+      "actual": "1000"
+    },
+    {
+      "assertion_id": "S-100/2026-05/defect_rate",
+      "category": "numeric",
+      "passed": true,
+      "expected": "0.0200",
+      "actual": "0.02"
+    },
+    {
+      "assertion_id": "S-100/2026-05/period_over_period_trend",
+      "category": "numeric",
+      "passed": true,
+      "expected": "0.0100",
+      "actual": "0.01"
+    },
+    {
+      "assertion_id": "S-100/2026-06/defect_count",
+      "category": "numeric",
+      "passed": true,
+      "expected": "30",
+      "actual": "30"
+    },
+    {
+      "assertion_id": "S-100/2026-06/inspected_count",
+      "category": "numeric",
+      "passed": true,
+      "expected": "1000",
+      "actual": "1000"
+    },
+    {
+      "assertion_id": "S-100/2026-06/defect_rate",
+      "category": "numeric",
+      "passed": true,
+      "expected": "0.0300",
+      "actual": "0.03"
+    },
+    {
+      "assertion_id": "S-100/2026-06/period_over_period_trend",
+      "category": "numeric",
+      "passed": true,
+      "expected": "0.0100",
+      "actual": "0.01"
+    },
+    {
+      "assertion_id": "S-200/2026-04/defect_count",
+      "category": "numeric",
+      "passed": true,
+      "expected": "1",
+      "actual": "1"
+    },
+    {
+      "assertion_id": "S-200/2026-04/inspected_count",
+      "category": "numeric",
+      "passed": true,
+      "expected": "100",
+      "actual": "100"
+    },
+    {
+      "assertion_id": "S-200/2026-04/defect_rate",
+      "category": "numeric",
+      "passed": true,
+      "expected": "0.0100",
+      "actual": "0.01"
+    },
+    {
+      "assertion_id": "S-200/2026-04/period_over_period_trend",
+      "category": "numeric",
+      "passed": true,
+      "expected": "None",
+      "actual": "None"
+    },
+    {
+      "assertion_id": "S-200/2026-05/defect_count",
+      "category": "numeric",
+      "passed": true,
+      "expected": "9",
+      "actual": "9"
+    },
+    {
+      "assertion_id": "S-200/2026-05/inspected_count",
+      "category": "numeric",
+      "passed": true,
+      "expected": "900",
+      "actual": "900"
+    },
+    {
+      "assertion_id": "S-200/2026-05/defect_rate",
+      "category": "numeric",
+      "passed": true,
+      "expected": "0.0100",
+      "actual": "0.01"
+    },
+    {
+      "assertion_id": "S-200/2026-05/period_over_period_trend",
+      "category": "numeric",
+      "passed": true,
+      "expected": "0.0000",
+      "actual": "0.0"
+    },
+    {
+      "assertion_id": "S-200/2026-06/defect_count",
+      "category": "numeric",
+      "passed": true,
+      "expected": "0",
+      "actual": "0"
+    },
+    {
+      "assertion_id": "S-200/2026-06/inspected_count",
+      "category": "numeric",
+      "passed": true,
+      "expected": "0",
+      "actual": "0"
+    },
+    {
+      "assertion_id": "S-200/2026-06/defect_rate",
+      "category": "numeric",
+      "passed": true,
+      "expected": "None",
+      "actual": "None"
+    },
+    {
+      "assertion_id": "S-200/2026-06/period_over_period_trend",
+      "category": "numeric",
+      "passed": true,
+      "expected": "None",
+      "actual": "None"
+    },
+    {
+      "assertion_id": "S-100/quarter_from_report_counts/defect_count",
+      "category": "numeric",
+      "passed": true,
+      "expected": "60",
+      "actual": "60"
+    },
+    {
+      "assertion_id": "S-100/quarter_from_report_counts/inspected_count",
+      "category": "numeric",
+      "passed": true,
+      "expected": "3000",
+      "actual": "3000"
+    },
+    {
+      "assertion_id": "S-100/quarter_from_report_counts/defect_rate",
+      "category": "numeric",
+      "passed": true,
+      "expected": "0.0200",
+      "actual": "0.0200"
+    },
+    {
+      "assertion_id": "S-200/quarter_from_report_counts/defect_count",
+      "category": "numeric",
+      "passed": true,
+      "expected": "10",
+      "actual": "10"
+    },
+    {
+      "assertion_id": "S-200/quarter_from_report_counts/inspected_count",
+      "category": "numeric",
+      "passed": true,
+      "expected": "1000",
+      "actual": "1000"
+    },
+    {
+      "assertion_id": "S-200/quarter_from_report_counts/defect_rate",
+      "category": "numeric",
+      "passed": true,
+      "expected": "0.0100",
+      "actual": "0.0100"
+    },
+    {
+      "assertion_id": "exact_metric_set",
+      "category": "scope",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "report_scope",
+      "category": "scope",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "report_task",
+      "category": "scope",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "no_policy_claims",
+      "category": "scope",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "null_reasons",
+      "category": "scope",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "database_matches_source",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "calculation_lineage",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "report_references_ledger",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-100/2026-04/defect_count",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-100/2026-04/inspected_count",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-100/2026-04/defect_rate",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-100/2026-04/period_over_period_trend",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-100/2026-05/defect_count",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-100/2026-05/inspected_count",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-100/2026-05/defect_rate",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-100/2026-05/period_over_period_trend",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-100/2026-06/defect_count",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-100/2026-06/inspected_count",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-100/2026-06/defect_rate",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-100/2026-06/period_over_period_trend",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-200/2026-04/defect_count",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-200/2026-04/inspected_count",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-200/2026-04/defect_rate",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-200/2026-04/period_over_period_trend",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-200/2026-05/defect_count",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-200/2026-05/inspected_count",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-200/2026-05/defect_rate",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-200/2026-05/period_over_period_trend",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-200/2026-06/defect_count",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-200/2026-06/inspected_count",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-200/2026-06/defect_rate",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "assertion_id": "support/S-200/2026-06/period_over_period_trend",
+      "category": "evidence",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    }
+  ],
+  "error_code": null,
+  "limitations": [
+    "One synthetic P01 calibration; not a held-out or ten-case benchmark.",
+    "USD cost calculated from real provider usage at pinned ceiling rates; not an invoice.",
+    "EUR budget uses explicit FX and tax contingencies; human time is unmeasured.",
+    "Independent support covers the enumerated structured numeric facts only.",
+    "Published copy preserves artifact bytes and normalizes its path for portability; original run files remain local."
+  ],
+  "qualified_delivery": true,
+  "numeric_total": 30,
+  "numeric_passed": 30
+}

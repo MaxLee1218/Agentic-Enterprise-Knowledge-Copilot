@@ -713,3 +713,20 @@ Phase 5 starts only after Phases 1 through 4 meet their completion criteria. It 
 7. Document operational impact and whether affected tasks require replay.
 
 When modifying this repository, understand the existing architecture first, preserve working behavior, make the smallest justified change, and provide fresh verification evidence before claiming completion.
+
+## Agent skills
+
+### Issue tracker
+
+For specifications and implementation tickets, use GitHub Issues in
+`MaxLee1218/Agentic-Enterprise-Knowledge-Copilot`. Read `docs/agents/issue-tracker.md`
+before creating, fetching, or updating tracked work.
+
+### Triage labels
+
+For triage and ready-for-agent work, use the role mapping in `docs/agents/triage-labels.md`.
+A ready-for-agent label describes specification completeness; open dependencies still block execution.
+
+### Domain docs
+
+Before exploring domain behavior, follow the single-context reading rules in `docs/agents/domain.md`.

@@ -1,0 +1,7 @@
+{
+  "schema_version": "pilot-budget.v1",
+  "experiment_id": "supplier-quality-value-pilot.v1",
+  "authorized_eur": "10",
+  "reserve_eur": "2",
+  "calibration_eur": "1"
+}

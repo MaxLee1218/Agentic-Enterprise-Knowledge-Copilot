@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from pypdf import PdfReader
 
 from copilot.agent.graph import WorkflowInterrupted
 from copilot.contracts import TaskConstraints, TaskStatus
@@ -22,6 +23,100 @@ CALLER = TrustedCallerContext(
     tenant_id="TENANT-DEMO",
     data_scope=("quality.v1", "supplier-quality-policy-v1"),
 )
+
+
+@pytest.mark.parametrize(
+    "raw",
+    (
+        "Generate a JSON quality report for S-100 for Q3 2026.",
+        "Evaluate the quality of S-100 for Q3 2026 and provide a JSON report.",
+    ),
+)
+def test_quality_report_with_a_supplier_code_reaches_governed_execution(
+    tmp_path: Path, raw: str
+) -> None:
+    caller = CALLER.model_copy(update={"supplier_ids": ("S-100", "S-200")})
+    with build_test_container(tmp_path / "artifacts", llm_provider=OfflineMockLLM()) as container:
+        execution = container.task_service.submit(
+            NaturalLanguageTaskCommand(task=raw, source=RequestSource.API), caller
+        )
+        state = container.engine.get_state(execution.task_result.task_id, caller.tenant_id)
+        assert execution.task_result.final_status is TaskStatus.COMPLETED
+        assert state["request"].raw_input == raw
+        assert isinstance(state["contract"].constraints, TaskConstraints)
+        assert state["contract"].constraints.supplier_ids == ("S-100",)
+        assert state["contract"].constraints.quarter == 3
+        assert {result.tool_name for result in state["tool_results"]} == {
+            "database_query",
+            "analysis_engine",
+            "report_generator",
+        }
+
+
+def test_quality_report_recognizes_the_existing_sup_identifier_form(tmp_path: Path) -> None:
+    raw = "Generate a JSON quality report for SUP-001 for Q3 2026."
+    caller = CALLER.model_copy(update={"supplier_ids": ("SUP-001", "SUP-002")})
+    with build_test_container(tmp_path / "artifacts", llm_provider=OfflineMockLLM()) as container:
+        execution = container.task_service.submit(
+            NaturalLanguageTaskCommand(task=raw, source=RequestSource.API), caller
+        )
+        state = container.engine.get_state(execution.task_result.task_id, caller.tenant_id)
+        assert execution.task_result.final_status is TaskStatus.COMPLETED
+        assert state["contract"].constraints.supplier_ids == ("SUP-001",)
+        assert state["request"].raw_input == raw
+
+
+@pytest.mark.parametrize(
+    "year,label,year_first",
+    [
+        (2026, None, False),
+        (2100, None, False),
+        (2026, "supplier 2027", False),
+        (2026, "supplier SUP-2027", True),
+    ],
+)
+def test_supplier_contract_keeps_an_explicit_year_within_frozen_bounds(
+    tmp_path: Path, year: int, label: str | None, year_first: bool
+) -> None:
+    supplier_text = f"{label} " if label else ""
+    period = f"{year} Q2" if year_first else f"Q2 {year}"
+    raw = f"Analyze supplier quality for {supplier_text}{period} and generate a JSON report."
+    caller = (
+        CALLER.model_copy(update={"supplier_ids": ("SUP-2027", "SUP-002")}) if label else CALLER
+    )
+    with build_test_container(
+        tmp_path / "artifacts",
+        llm_provider=OfflineMockLLM(),
+        interrupt_after=("understand_task",),
+    ) as container:
+        with pytest.raises(WorkflowInterrupted) as caught:
+            container.task_service.submit(
+                NaturalLanguageTaskCommand(task=raw, source=RequestSource.API), caller
+            )
+        state = container.engine.get_state(caught.value.task_id, caller.tenant_id)
+        contract = state["contract"]
+        assert contract is not None and isinstance(contract.constraints, TaskConstraints)
+        assert contract.constraints.year == year and contract.constraints.quarter == 2
+        if label:
+            assert contract.constraints.supplier_ids == ("SUP-2027",)
+        assert state["tool_results"] == []
+
+
+@pytest.mark.parametrize("quarter", [1, 2, 3])
+def test_actual_pdf_chart_title_matches_requested_scope(tmp_path: Path, quarter: int) -> None:
+    with build_test_container(tmp_path / "artifacts", llm_provider=OfflineMockLLM()) as container:
+        execution = container.task_service.submit(
+            NaturalLanguageTaskCommand(
+                task=f"Analyze supplier quality for Q{quarter} 2026 and generate a PDF report.",
+                source=RequestSource.API,
+            ),
+            CALLER,
+        )
+        state = container.engine.get_state(execution.task_result.task_id, CALLER.tenant_id)
+        artifact = state["artifacts"][0]
+        pages = PdfReader(artifact.location).pages
+        assert execution.task_result.final_status is TaskStatus.COMPLETED
+        assert f"Supplier Defect Rate - Q{quarter} Monthly View" in pages[1].extract_text()
 
 
 def test_natural_text_is_preserved_and_understood_before_planning(tmp_path: Path) -> None:

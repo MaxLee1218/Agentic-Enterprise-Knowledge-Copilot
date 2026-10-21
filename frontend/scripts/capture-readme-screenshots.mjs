@@ -285,7 +285,9 @@ await page.route("**/api/v1/**", (route) => {
 
 async function settle() {
   await page.waitForLoadState("networkidle");
-  await page.evaluate(() => document.fonts.ready);
+  await page
+    .locator("html")
+    .evaluate((element) => element.ownerDocument.fonts.ready);
 }
 
 await page.goto(baseURL);

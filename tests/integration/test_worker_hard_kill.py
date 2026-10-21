@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, delete, func, select, text
 
 from copilot.api.app import create_app
-from copilot.bootstrap.container import build_application
+from copilot.bootstrap.container import WorkflowContainer, build_application
 from copilot.config import PROJECT_ROOT, Settings, get_settings
 from copilot.persistence.checkpoint import migrate_postgres_checkpoints
 from copilot.persistence.database import PersistenceDatabase
@@ -88,8 +88,8 @@ def test_hard_killed_worker_recovers_checkpoint_without_duplicate_success(
                 text("LOCK TABLE incoming_inspections IN ACCESS EXCLUSIVE MODE")
             )
             first = _start_worker(environment)
-            _wait_for_completed_steps(
-                container.persistence_database,
+            _wait_for_checkpointed_database_step(
+                container,
                 task_id=task_id,
                 minimum=1,
                 timeout_seconds=15,
@@ -181,7 +181,7 @@ def _settings(tmp_path: Path) -> Settings:
         execution_lease_ttl_seconds=5,
         task_queue_visibility_timeout_seconds=60,
         log_level="WARNING",
-        log_format="text",
+        log_format="json",
     )
 
 
@@ -208,7 +208,7 @@ def _worker_environment(settings: Settings) -> dict[str, str]:
             "EXECUTION_LEASE_TTL_SECONDS": "5",
             "TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS": "60",
             "LOG_LEVEL": "WARNING",
-            "LOG_FORMAT": "text",
+            "LOG_FORMAT": "json",
         }
     )
     existing_python_path = environment.get("PYTHONPATH")
@@ -231,13 +231,18 @@ def _worker_command() -> tuple[str, str, str]:
     return (sys.executable, "-m", "copilot.worker")
 
 
-def _wait_for_completed_steps(
-    database: PersistenceDatabase | None,
+def _wait_for_checkpointed_database_step(
+    container: WorkflowContainer,
     *,
     task_id: str,
     minimum: int,
     timeout_seconds: float,
 ) -> None:
+    # StepResult commits before the STEP_SUCCEEDED transition and its checkpoint.
+    # Killing at that earlier write tests an unsafe-checkpoint gap, not takeover of
+    # the durable checkpoint promised by this scenario. The database lock keeps the
+    # next tool blocked while we confirm that exact recovery precondition.
+    database = container.persistence_database
     assert database is not None
     deadline = monotonic() + timeout_seconds
     while monotonic() < deadline:
@@ -251,9 +256,25 @@ def _wait_for_completed_steps(
                 )
             )
         if int(count or 0) >= minimum:
-            return
+            checkpoint = container.engine.get_state(task_id, "TENANT-DEMO")
+            current = checkpoint["current_step_id"]
+            plan = checkpoint["plan"]
+            database_step = plan is not None and any(
+                step.step_id == current and step.tool_name == "database_query"
+                for step in plan.steps
+            )
+            successful = sum(
+                result.status.value == "SUCCESS" for result in checkpoint["step_results"]
+            )
+            authoritative = container.repository.state_for(task_id, tenant_id="TENANT-DEMO")
+            if (
+                database_step
+                and successful >= minimum
+                and checkpoint["domain_state"] == authoritative
+            ):
+                return
         sleep(0.05)
-    raise AssertionError("Worker did not persist a successful pre-crash step")
+    raise AssertionError("Worker did not persist a consistent pre-crash database-step checkpoint")
 
 
 def _active_lease_count(database: PersistenceDatabase | None, *, task_id: str) -> int:
@@ -288,4 +309,7 @@ def _wait_for_terminal(
         ):
             return payload
         sleep(0.05)
-    raise AssertionError("Replacement Worker did not recover the hard-killed Task")
+    raise AssertionError(
+        "Replacement Worker did not recover the hard-killed Task; "
+        f"last Task state={payload['status']}, runtime={payload['runtime_status']}"
+    )

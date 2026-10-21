@@ -1,0 +1,103 @@
+{
+  "version": "visible-quarter.v1",
+  "auditor_revision": "27af405",
+  "audited_at": "2026-10-20T18:12:29.672551+00:00",
+  "raw_combined_canonical_hash": "sha256:07a4f5840919e299b34d4f71cda3b9075819bd788d1736bbcdc8760d43f4fa14",
+  "audited_report_canonical_hash": "sha256:5117d6343be05a5a0f5a9f4916991410e297c634c91644f616a9554d49885865",
+  "method": "Apply frozen exact-scope requirement to actual PDF text and original file checksum. New artifact assertions only; no source/numeric/fact changes, product calls or outcome replacement.",
+  "scope_failures": [
+    "V02",
+    "V12",
+    "V15"
+  ],
+  "pdfs": [
+    {
+      "case_id": "V02",
+      "artifact_checksum": "sha256:7a0f0d87f2fdc1acc8547128e46ec6b1243f1340c1c1f136f6322e42c6f6a338",
+      "pages": 8,
+      "visible_scope_assertions": [
+        {
+          "assertion_id": "pdf_audit_integrity",
+          "category": "artifact",
+          "passed": true,
+          "expected": "sha256:7a0f0d87f2fdc1acc8547128e46ec6b1243f1340c1c1f136f6322e42c6f6a338",
+          "actual": "sha256:7a0f0d87f2fdc1acc8547128e46ec6b1243f1340c1c1f136f6322e42c6f6a338"
+        },
+        {
+          "assertion_id": "pdf_visible_quarter_scope",
+          "category": "artifact",
+          "passed": false,
+          "expected": "Q1",
+          "actual": "page 1: Q1; page 1: Q1; page 1: Q1; page 2: Q2; page 5: Q1"
+        }
+      ],
+      "layout_review": "Not accepted: visible quarter scope mismatch; no qualified PDF sample published."
+    },
+    {
+      "case_id": "V06",
+      "artifact_checksum": "sha256:b2eface724d5d97918c88fa9598f57d339cb85abd8bd7e4d7ea9752cefc0a50e",
+      "pages": 8,
+      "visible_scope_assertions": [
+        {
+          "assertion_id": "pdf_audit_integrity",
+          "category": "artifact",
+          "passed": true,
+          "expected": "sha256:b2eface724d5d97918c88fa9598f57d339cb85abd8bd7e4d7ea9752cefc0a50e",
+          "actual": "sha256:b2eface724d5d97918c88fa9598f57d339cb85abd8bd7e4d7ea9752cefc0a50e"
+        },
+        {
+          "assertion_id": "pdf_visible_quarter_scope",
+          "category": "artifact",
+          "passed": true,
+          "expected": "Q2",
+          "actual": "page 1: Q2; page 1: Q2; page 1: Q2; page 2: Q2; page 5: Q2"
+        }
+      ],
+      "layout_review": "Rendered and visually inspected all eight pages; no clipping/overlap; qualified sample."
+    },
+    {
+      "case_id": "V12",
+      "artifact_checksum": "sha256:a6e2a8562e976b2c339e726745e942b3fabc3d5f16c0e9efbab9044b7eae2f0b",
+      "pages": 8,
+      "visible_scope_assertions": [
+        {
+          "assertion_id": "pdf_audit_integrity",
+          "category": "artifact",
+          "passed": true,
+          "expected": "sha256:a6e2a8562e976b2c339e726745e942b3fabc3d5f16c0e9efbab9044b7eae2f0b",
+          "actual": "sha256:a6e2a8562e976b2c339e726745e942b3fabc3d5f16c0e9efbab9044b7eae2f0b"
+        },
+        {
+          "assertion_id": "pdf_visible_quarter_scope",
+          "category": "artifact",
+          "passed": false,
+          "expected": "Q1",
+          "actual": "page 1: Q1; page 1: Q1; page 1: Q1; page 2: Q2; page 5: Q1"
+        }
+      ],
+      "layout_review": "Not accepted: visible quarter scope mismatch; no qualified PDF sample published."
+    },
+    {
+      "case_id": "V15",
+      "artifact_checksum": "sha256:6aaffe2e093e1a09db1790413b866d19352c1749a04afc60a2407815244d30fd",
+      "pages": 8,
+      "visible_scope_assertions": [
+        {
+          "assertion_id": "pdf_audit_integrity",
+          "category": "artifact",
+          "passed": true,
+          "expected": "sha256:6aaffe2e093e1a09db1790413b866d19352c1749a04afc60a2407815244d30fd",
+          "actual": "sha256:6aaffe2e093e1a09db1790413b866d19352c1749a04afc60a2407815244d30fd"
+        },
+        {
+          "assertion_id": "pdf_visible_quarter_scope",
+          "category": "artifact",
+          "passed": false,
+          "expected": "Q3",
+          "actual": "page 1: Q3; page 1: Q3; page 1: Q3; page 2: Q2; page 5: Q3"
+        }
+      ],
+      "layout_review": "Not accepted: visible quarter scope mismatch; no qualified PDF sample published."
+    }
+  ]
+}

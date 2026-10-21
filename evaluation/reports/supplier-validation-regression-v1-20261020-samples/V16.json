@@ -1,0 +1,325 @@
+{
+  "analysis_results": {
+    "calculation_version": "quality_metrics.v1",
+    "dataset_checksum": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "empty_result": true,
+    "input_row_count": 0,
+    "metrics": [],
+    "warnings": [
+      "No rows were available for calculation"
+    ]
+  },
+  "applicable_policies": [],
+  "data_overview": [
+    {
+      "checksum": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "evidence_id": "E-3a96e8291ce74f2b8731e3b3e659d8b2",
+      "query_id": "093bbc10673a6441bdf2046a9f8b6cb369f2249fd610ad2ec7c6fda91b2228ab",
+      "row_count": 0,
+      "snapshot_at": "2026-10-20T19:41:46.814926+00:00"
+    }
+  ],
+  "evidence": [
+    {
+      "checksum": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "evidence_id": "E-3a96e8291ce74f2b8731e3b3e659d8b2",
+      "formulas": {},
+      "input_evidence_ids": [],
+      "query_id": "093bbc10673a6441bdf2046a9f8b6cb369f2249fd610ad2ec7c6fda91b2228ab",
+      "source": {
+        "column_names": [
+          "incoming_inspections.inspection_date",
+          "incoming_inspections.rejected_quantity",
+          "incoming_inspections.supplier_id",
+          "incoming_inspections.total_quantity",
+          "suppliers.id",
+          "suppliers.supplier_code",
+          "suppliers.tenant_id"
+        ],
+        "content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "content_source_type": "DATABASE_RESULT",
+        "database_name": "source.db",
+        "injection_findings": [],
+        "parameter_summary": {
+          "end_date": "2026-12-31",
+          "start_date": "2026-10-01",
+          "supplier_count": 1,
+          "supplier_scope_hash": "0904fc87b3428f85972a6ddfae6bb88b9f9ea0fb04338bc8e63f713728ed382f",
+          "tenant_scope_hash": "9bd1b56ee7f89642c06ffbd22e4c38203993d26bf202a61bdf2962c7cb55e4a0"
+        },
+        "produced_by": "database_query",
+        "quarantined": false,
+        "query_fingerprint": "093bbc10673a6441bdf2046a9f8b6cb369f2249fd610ad2ec7c6fda91b2228ab",
+        "query_template_id": "supplier_quality_summary_v1",
+        "read_only": true,
+        "redacted": false,
+        "row_count": 0,
+        "schema_version": "quality.v1",
+        "snapshot_at": "2026-10-20T19:41:46.814926+00:00",
+        "statement_type": "SELECT",
+        "table_names": [
+          "incoming_inspections",
+          "suppliers"
+        ],
+        "trust_level": "UNTRUSTED"
+      },
+      "source_step_id": "T-59fc92a640434d05b3f46be07a419515:db_query",
+      "source_tool_call_id": "TC-d8d61afa58594ae9839e1a1b75fb31c4",
+      "source_type": "DATABASE"
+    },
+    {
+      "checksum": "0821432ba40e0800ce4fdca0dbdc7b24c4cac993ef86cccebb94dc02bb40e516",
+      "evidence_id": "E-50b3862d3e4344d8b6cf6bad9cc5b089",
+      "formulas": {
+        "defect_count": "sum(defect_count)",
+        "defect_rate": "sum(defect_count) / sum(inspected_count)",
+        "inspected_count": "sum(inspected_count)",
+        "period_over_period_trend": "current_period_defect_rate - previous_period_defect_rate"
+      },
+      "input_evidence_ids": [
+        "E-3a96e8291ce74f2b8731e3b3e659d8b2"
+      ],
+      "query_id": null,
+      "source": {
+        "content_hash": "0821432ba40e0800ce4fdca0dbdc7b24c4cac993ef86cccebb94dc02bb40e516",
+        "content_source_type": "TOOL_OUTPUT",
+        "dataset_checksum": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "engine_version": "quality_metrics.v1",
+        "formulas": {
+          "defect_count": "sum(defect_count)",
+          "defect_rate": "sum(defect_count) / sum(inspected_count)",
+          "inspected_count": "sum(inspected_count)",
+          "period_over_period_trend": "current_period_defect_rate - previous_period_defect_rate"
+        },
+        "group_by": [
+          "supplier_id",
+          "period"
+        ],
+        "injection_findings": [],
+        "operation": "deterministic_quality_metrics",
+        "produced_by": "analysis_engine",
+        "quarantined": false,
+        "redacted": false,
+        "trust_level": "UNTRUSTED"
+      },
+      "source_step_id": "T-59fc92a640434d05b3f46be07a419515:analyze_metrics",
+      "source_tool_call_id": "TC-b2af35284ab34c2d82ad98806900f9ad",
+      "source_type": "CALCULATION"
+    }
+  ],
+  "evidence_references": [
+    {
+      "checksum": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "evidence_id": "E-3a96e8291ce74f2b8731e3b3e659d8b2",
+      "formulas": {},
+      "input_evidence_ids": [],
+      "query_id": "093bbc10673a6441bdf2046a9f8b6cb369f2249fd610ad2ec7c6fda91b2228ab",
+      "source": {
+        "column_names": [
+          "incoming_inspections.inspection_date",
+          "incoming_inspections.rejected_quantity",
+          "incoming_inspections.supplier_id",
+          "incoming_inspections.total_quantity",
+          "suppliers.id",
+          "suppliers.supplier_code",
+          "suppliers.tenant_id"
+        ],
+        "content_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "content_source_type": "DATABASE_RESULT",
+        "database_name": "source.db",
+        "injection_findings": [],
+        "parameter_summary": {
+          "end_date": "2026-12-31",
+          "start_date": "2026-10-01",
+          "supplier_count": 1,
+          "supplier_scope_hash": "0904fc87b3428f85972a6ddfae6bb88b9f9ea0fb04338bc8e63f713728ed382f",
+          "tenant_scope_hash": "9bd1b56ee7f89642c06ffbd22e4c38203993d26bf202a61bdf2962c7cb55e4a0"
+        },
+        "produced_by": "database_query",
+        "quarantined": false,
+        "query_fingerprint": "093bbc10673a6441bdf2046a9f8b6cb369f2249fd610ad2ec7c6fda91b2228ab",
+        "query_template_id": "supplier_quality_summary_v1",
+        "read_only": true,
+        "redacted": false,
+        "row_count": 0,
+        "schema_version": "quality.v1",
+        "snapshot_at": "2026-10-20T19:41:46.814926+00:00",
+        "statement_type": "SELECT",
+        "table_names": [
+          "incoming_inspections",
+          "suppliers"
+        ],
+        "trust_level": "UNTRUSTED"
+      },
+      "source_step_id": "T-59fc92a640434d05b3f46be07a419515:db_query",
+      "source_tool_call_id": "TC-d8d61afa58594ae9839e1a1b75fb31c4",
+      "source_type": "DATABASE"
+    },
+    {
+      "checksum": "0821432ba40e0800ce4fdca0dbdc7b24c4cac993ef86cccebb94dc02bb40e516",
+      "evidence_id": "E-50b3862d3e4344d8b6cf6bad9cc5b089",
+      "formulas": {
+        "defect_count": "sum(defect_count)",
+        "defect_rate": "sum(defect_count) / sum(inspected_count)",
+        "inspected_count": "sum(inspected_count)",
+        "period_over_period_trend": "current_period_defect_rate - previous_period_defect_rate"
+      },
+      "input_evidence_ids": [
+        "E-3a96e8291ce74f2b8731e3b3e659d8b2"
+      ],
+      "query_id": null,
+      "source": {
+        "content_hash": "0821432ba40e0800ce4fdca0dbdc7b24c4cac993ef86cccebb94dc02bb40e516",
+        "content_source_type": "TOOL_OUTPUT",
+        "dataset_checksum": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "engine_version": "quality_metrics.v1",
+        "formulas": {
+          "defect_count": "sum(defect_count)",
+          "defect_rate": "sum(defect_count) / sum(inspected_count)",
+          "inspected_count": "sum(inspected_count)",
+          "period_over_period_trend": "current_period_defect_rate - previous_period_defect_rate"
+        },
+        "group_by": [
+          "supplier_id",
+          "period"
+        ],
+        "injection_findings": [],
+        "operation": "deterministic_quality_metrics",
+        "produced_by": "analysis_engine",
+        "quarantined": false,
+        "redacted": false,
+        "trust_level": "UNTRUSTED"
+      },
+      "source_step_id": "T-59fc92a640434d05b3f46be07a419515:analyze_metrics",
+      "source_tool_call_id": "TC-b2af35284ab34c2d82ad98806900f9ad",
+      "source_type": "CALCULATION"
+    }
+  ],
+  "execution_metadata": {
+    "generated_at": "2026-10-20T19:42:01.679437Z",
+    "generator_version": "report_generator.v1",
+    "language": "en-US",
+    "schema_version": "supplier_quality_report_model.v1",
+    "template_version": "supplier_quality_report.v1",
+    "verification_status": "PENDING"
+  },
+  "execution_trace": [
+    {
+      "evidence_id": "E-3a96e8291ce74f2b8731e3b3e659d8b2",
+      "source_type": "DATABASE",
+      "step_id": "T-59fc92a640434d05b3f46be07a419515:db_query",
+      "tool_call_id": "TC-d8d61afa58594ae9839e1a1b75fb31c4"
+    },
+    {
+      "evidence_id": "E-50b3862d3e4344d8b6cf6bad9cc5b089",
+      "source_type": "CALCULATION",
+      "step_id": "T-59fc92a640434d05b3f46be07a419515:analyze_metrics",
+      "tool_call_id": "TC-b2af35284ab34c2d82ad98806900f9ad"
+    }
+  ],
+  "executive_summary": "No supplier quality records were returned for the authorized scope; quality metrics could not be calculated.",
+  "key_metrics": [],
+  "key_risks": [
+    {
+      "evidence_ids": [
+        "E-50b3862d3e4344d8b6cf6bad9cc5b089"
+      ],
+      "level": "INFORMATIONAL",
+      "risk_id": "risk-classification-not-available",
+      "statement": "The current analytics contract does not classify business risk or apply policy thresholds. Analytics notes are consolidated in Methodology and Limitations and must not be interpreted as business-risk findings."
+    }
+  ],
+  "limitations": [
+    {
+      "code": "RANKING_NOT_AVAILABLE",
+      "statement": "Supplier ranking is not produced because quality_metrics.v1 does not define a ranking operation."
+    },
+    {
+      "code": "DETERMINISTIC_SCOPE",
+      "statement": "The report reproduces approved Evidence and Analytics outputs and does not infer root causes."
+    },
+    {
+      "code": "QUARTER_COMPARISON_NOT_AVAILABLE",
+      "statement": "Quarter-over-quarter comparison is not available because the authorized database request and quality_metrics.v1 calculation cover Q4 2026 only."
+    },
+    {
+      "code": "FIRST_PERIOD_TREND_BASELINE",
+      "statement": "The first observed month has no previous-month comparison, so its period-over-period trend is not defined. This is an analytics note, not a business risk."
+    },
+    {
+      "code": "POLICY_CLASSIFICATION_NOT_AVAILABLE",
+      "statement": "No deterministic rule in the current contract applies policy thresholds or assigns supplier risk levels."
+    },
+    {
+      "code": "POLICY_EVIDENCE_MISSING",
+      "statement": "No controlled policy Evidence was available."
+    },
+    {
+      "code": "NO_DATA_RECORDS",
+      "statement": "No records were available; null or absent metrics must not be interpreted as zero defects."
+    }
+  ],
+  "major_findings": [
+    {
+      "evidence_ids": [
+        "E-50b3862d3e4344d8b6cf6bad9cc5b089"
+      ],
+      "finding_id": "finding-no-records",
+      "severity": "WARNING",
+      "statement": "The approved database query returned no records; no zero-defect conclusion is made.",
+      "title": "No records in scope"
+    }
+  ],
+  "quality_policy_findings": [],
+  "recommendations": [
+    {
+      "action": "Review recorded deviations and confirm the stated data and calculation limitations.",
+      "action_id": "action-review-deviations",
+      "basis": "GENERAL_CONTROL",
+      "evidence_ids": []
+    }
+  ],
+  "recommended_actions": [
+    {
+      "action": "Review recorded deviations and confirm the stated data and calculation limitations.",
+      "action_id": "action-review-deviations",
+      "basis": "GENERAL_CONTROL",
+      "evidence_ids": []
+    }
+  ],
+  "risk_analysis": [
+    {
+      "evidence_ids": [
+        "E-50b3862d3e4344d8b6cf6bad9cc5b089"
+      ],
+      "level": "INFORMATIONAL",
+      "risk_id": "risk-classification-not-available",
+      "statement": "The current analytics contract does not classify business risk or apply policy thresholds. Analytics notes are consolidated in Methodology and Limitations and must not be interpreted as business-risk findings."
+    }
+  ],
+  "scope": {
+    "end_date": "2026-12-31",
+    "quarter": 4,
+    "start_date": "2026-10-01",
+    "supplier_ids": [
+      "S-100"
+    ],
+    "year": 2026
+  },
+  "supplier_quality_data": [
+    {
+      "checksum": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "evidence_id": "E-3a96e8291ce74f2b8731e3b3e659d8b2",
+      "query_id": "093bbc10673a6441bdf2046a9f8b6cb369f2249fd610ad2ec7c6fda91b2228ab",
+      "row_count": 0,
+      "snapshot_at": "2026-10-20T19:41:46.814926+00:00"
+    }
+  ],
+  "supplier_ranking": [],
+  "task_summary": {
+    "task_id": "T-59fc92a640434d05b3f46be07a419515",
+    "task_status": "EXECUTING",
+    "trace_id": "T-59fc92a640434d05b3f46be07a419515"
+  },
+  "title": "Supplier Quality Analysis Report"
+}

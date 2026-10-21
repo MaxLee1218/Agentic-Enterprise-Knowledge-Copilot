@@ -1,0 +1,79 @@
+{
+  "config_hash": "sha256:c8e4ac8f0c23254c3fbd4af3ff6d927b1ece7e6578834e3eaf8c30c101d5e4fe",
+  "started_at": "2026-10-20T17:51:20.999098Z",
+  "prior_attempt_ids": [
+    "13b24afe66cf4354a3f572dd7989cc20",
+    "49c26be78f3f46b9bd52a988c9a8f0de",
+    "505607f1b8d94b2aa97fc0b8c97e6f76",
+    "cc7431056f484e30975b6eec0d7ea193",
+    "4ac9d278527d44d18db8792353dde545",
+    "8cca6e682dea4f4a9adf0cb000aa8af2",
+    "b680047a50624f2c9dc876156c5b7070",
+    "90eda6fa8dbf43e29ca3c89f42196b28",
+    "5982a70fefe944658739d5f341c644bd",
+    "075d76e8108d4d40919f94bb448f2590",
+    "0161942844b64199a517c22bfd85f5d3",
+    "f48664a972574ca7876dcba51a54e5f6",
+    "071952f157754385b1b4cbdf4d1cda24",
+    "b06b179c47a140e1a1e725a7c9ea93af",
+    "e1554253c04248949b6acb3bc306c152",
+    "bde04421e6be43c18e94ba771b4c20af",
+    "7623b0cccd1b4db7bc778e88362f4e45",
+    "91b03242e6424c6b91a06f4c585067d5",
+    "161fec444ac04b32ac04c2ab326bdc6c",
+    "49dda99a696a4e6981b4e0989041fa07",
+    "6086cc1c6e3d4257bc075913c57d8ba9",
+    "0cb06e779a9a4e7aba8cefa95a548763",
+    "9c4804bb8be546a8aa9f8d880a42d6a0",
+    "f7041256e3e1409c8e89310ae1657197",
+    "4e8740d7f4044c6f9fc10961fc0d5d89",
+    "7ceff68aea824d349ed3dde3ea308ad6",
+    "c6f1fe9344024e90bec33093d2a818ca",
+    "09f9134fa7e24436a7a4e869f7eea40e",
+    "10706ed64ebd4e3abb36ef0d04387029",
+    "73029b7406e746fc80f3918bc90fcbdd",
+    "23eec1c50b914522b363005844eecf18",
+    "83f3bdfe705f4c9c975116639a1a039a",
+    "b86bd0bc6fec47a0a81c0476719e6e8c",
+    "77dcc16368114ba186a64f62033ef9d5",
+    "6b85ab7bb26e4f70819d6535f8af2376",
+    "efe05b38588147b0927b703960fd5e18",
+    "67ebc8d0ba3747669fb499f68ef03e87",
+    "782a2a1a35d748ab9cc0701f092c09e7",
+    "de1bb5e523d14cd0b2ce2458d58f98ed",
+    "b2f708db850c411d8f85b56d0056dac2",
+    "f3d5bc7aee5c42dabacedff8d1856a36",
+    "f6dc0c5215634abc82e351c7547111fd",
+    "45ddc11bf5a74c22a31e700b5949994d",
+    "c34c2cad34144990bb2c55e03b8f3e4e",
+    "9eeaf6d051254cb283410040f5499f2b",
+    "b443d43f5d7546b386a5dc27d7fef1c3"
+  ],
+  "cases": [
+    {
+      "case_id": "V01",
+      "run_id": "9b69de6238874c1fbe8297e12adff25b",
+      "started_at": "2026-10-20T17:51:21.000357Z",
+      "report_hash": "sha256:87b5498c1756f6f22627284d75c665e2c9519f05566716b3919ef68266f195f7"
+    },
+    {
+      "case_id": "V02",
+      "run_id": "a9771c8c8c0d4aec8fde70956b881138",
+      "started_at": "2026-10-20T17:51:29.044232Z",
+      "report_hash": "sha256:b4b186545db867b120e314055dd1392b1399859a20f4bcc73dcb253b6f5dbba6"
+    },
+    {
+      "case_id": "V03",
+      "run_id": "608ebd28fd23450e94ed6889923ea330",
+      "started_at": "2026-10-20T17:51:35.096927Z",
+      "report_hash": "sha256:dadc7266a5535cb06f815030a73bae07ba6e1b42e00f7497623632ef3d1966f2"
+    },
+    {
+      "case_id": "V04",
+      "run_id": "3a572f8b40224b509a4b8cc78d4b13fd",
+      "started_at": "2026-10-20T17:51:40.651148Z",
+      "report_hash": "sha256:45fe7d5650c7116195a15a9e95b624f7ff5ccc88130d38964d0bfe65326e0e6a"
+    }
+  ],
+  "stopped_reason": "HARNESS_TaskIntakeValidationError"
+}

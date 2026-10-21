@@ -1,0 +1,30 @@
+{
+  "schema_version": "pilot-pricing.v1",
+  "version": "deepseek-flash-peak-2026-10-19.v1",
+  "provider": "deepseek",
+  "model": "deepseek-flash",
+  "response_models": [
+    "deepseek-flash",
+    "DeepSeek-V4.1-Flash-1017"
+  ],
+  "endpoint": "https://api.deepseek.com/chat/completions",
+  "effective_at": "2026-10-19T00:00:00Z",
+  "expires_at": "2026-10-20T00:00:00Z",
+  "source_url": "https://api-docs.deepseek.com/quick_start/pricing/",
+  "bounds_source_url": "https://api-docs.deepseek.com/api/create-chat-completion/",
+  "currency": "USD",
+  "input_context_limit": 1048576,
+  "output_limit": 8192,
+  "request_bytes_limit": 100000,
+  "input_miss_per_million": "0.30",
+  "input_hit_per_million": "0.006",
+  "output_per_million": "1.20",
+  "reasoning_semantics": "included_in_completion_tokens_and_max_tokens",
+  "reservation_method": "entire_provider_context_at_cache_miss_rate",
+  "eur_per_usd_upper": "1.25",
+  "tax_multiplier_upper": "1.25",
+  "conversion_note": "Operational spending ceilings, not market FX or verified invoice tax: 1 USD <= 1.25 EUR, plus 25% tax/fee contingency. Peak token rates bound both peak and off-peak. Recheck provider pricing, token bounds and account fee treatment before renewing this date-limited card.",
+  "fx_source_url": "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.eu.html",
+  "fx_reference_date": "2026-10-16",
+  "fx_reference_usd_per_eur": "1.1253"
+}

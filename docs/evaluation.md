@@ -182,3 +182,272 @@ Do not use an LLM judge for deterministic numeric, citation, lineage, or safety 
 - Stage 15 metrics validate deterministic demo Guardrails, not production IAM, live-model, or
   enterprise infrastructure security.
 - Retrieval ranking quality and open-ended semantic report quality need separate future datasets.
+
+## Supplier Quality value pilot
+
+The [Supplier Quality value pilot plan](supplier-quality-value-pilot.md) defines ten proposed
+scenarios, independent numeric oracles, delivery acceptance, a €10 live-model API budget, and
+explicitly assumed manual effort ranges. It is an experiment plan, not an executed benchmark.
+The existing `run_eval.py` CLI remains mock-only. The separate pilot entry supports explicit
+budgeted live P01 calibration as described below.
+Manual effort estimates do not establish measured time savings.
+
+### Offline P01 with an independent oracle
+
+Run the first implementation slice without credentials or network services:
+
+```bash
+python -m evaluation.supplier_quality_pilot
+```
+
+This separate entry point uses an offline model, the production Task Service/Graph/Executor,
+a real SELECT-only SQLite business connection, the production analytics and JSON renderer,
+and the product Verifier. It does not change `run_eval.py` or enable its live mode.
+Ambient environment and `.env` settings are excluded from the pilot composition.
+
+The source fixture contains nine planned monthly aggregates plus unauthorized-supplier and
+cross-tenant sentinel rows. Independent SQL and Decimal calculations select the six authorized
+Q2 rows. The checker validates 24 monthly metric/operand assertions and six quarterly checks
+reconstructed from reported monthly counts. It does not require a new quarterly product output.
+Absent reports and required metrics retain the full 30-assertion numeric denominator.
+Both report metric copies must agree; structured findings, risks, recommendations and data-source
+references must resolve to appropriate current-task Evidence. Null reasons are derived from the
+source population and checked against the v1 warning/limitation vocabulary. Data-only reports use
+a general-control recommendation rather than claiming a policy basis without document Evidence.
+
+Each run creates a fresh directory under `evaluation/reports/supplier-quality-pilot/` containing
+`report.json`, `report.md`, the actual JSON artifact, source/config snapshots, execution/evidence
+records, and the synthetic model input transcript for oracle-isolation inspection.
+Reports record code/source/config hashes, revision/dirty state, model/prompt versions and UTC time.
+Generated runs are ignored by Git. Inputs and transcripts in this entry point are synthetic only.
+
+To choose a new output location or a compatible source snapshot:
+
+```bash
+python -m evaluation.supplier_quality_pilot --output-dir /tmp/copilot-p01-run
+python -m evaluation.supplier_quality_pilot --source /tmp/synthetic-source.json
+```
+
+An existing nonempty output directory is rejected. Source snapshots must preserve all six
+authorized Q2 supplier/month keys; count changes have a new source hash and flow through the actual
+query and independent oracle. Expected values are never submitted to the model.
+
+Exit codes: `0` qualified P01; `1` failed acceptance or workflow interruption; `2` invalid input/output;
+`3` captured harness failure. The evidence-support checks cover enumerated structured numeric
+facts and their lineage, not open-ended semantic report correctness. This is an offline P01 pilot,
+not a ten-case benchmark, live-model measurement, provider cost measurement, or human-time study.
+Offline model cost remains unavailable. Live calibration is described below.
+
+### Budgeted live P01 calibration
+
+Issue #3 adds an explicit live mode to the same Task Service → captured execution → independent
+oracle path. `run_eval.py` remains mock-only. Configure the existing supported DeepSeek adapter
+with `LLM_PROVIDER`, `LLM_MODEL`, `LLM_BASE_URL`, and `LLM_API_KEY` in the approved environment or
+local ignored `.env`. Secrets are never CLI arguments or report fields. For the date-limited
+pricing card checked on 2026-10-19:
+
+```bash
+LLM_PROVIDER=deepseek LLM_MODEL=deepseek-flash LLM_MAX_OUTPUT_TOKENS=8192 \
+  python -m evaluation.supplier_quality_pilot --mode live \
+  --pricing evaluation/configs/supplier-quality-pilot/pricing-2026-10-19.json \
+  --budget evaluation/configs/supplier-quality-pilot/budget-v1.json
+```
+
+Explicit pricing and budget files are mandatory. The endpoint/model must match settings, all
+prices must be positive, pricing dates must be effective, and output must fit the pinned bound.
+The checked-in card expires at 2026-10-20 00:00 UTC; it is historical evidence after expiry.
+Do not extend its date without rechecking official pricing, token semantics, conversion and fees.
+The configured legacy `deepseek-chat` default is not priced by this card and is refused.
+
+The pricing source is [DeepSeek Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/).
+The card uses published peak rates as ceilings for both peak and off-peak calls. The
+[Chat Completions contract](https://api-docs.deepseek.com/api/create-chat-completion/)
+defines the context bound, generated-token limit, cache counts and completion/reasoning usage.
+Reservation charges the entire published 1M context window (conservatively 1,048,576 input
+tokens) at cache-miss rates, plus the configured output maximum, including reasoning. This avoids
+relying on an estimated local tokenizer. Request bytes are also bounded; extra parallel choices,
+streaming and provider tools are refused. EUR amounts use a declared conservative conversion
+ceiling and a 25% tax/fee contingency. The recorded
+[ECB reference for 2026-10-16](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.eu.html)
+is 1 EUR = 1.1253 USD; the operational ceiling of 1.25 EUR/USD deliberately adds headroom.
+The ceiling and contingency are budgeting assumptions, not invoice tax or
+currency-market measurements. USD fees calculated from actual usage at ceiling rates can exceed
+an off-peak invoice; reports label them as ceilings, not an observed invoice charge.
+
+`evaluation/reports/supplier-quality-pilot/budget.sqlite3` is the one experiment ledger for this
+checkout, independent of output directories. The CLI has no ledger-reset/path option. Back up and
+retain it across restarts and case changes; deleting it or using another checkout loses spending
+history and is not a new authorization. The runner locks the whole ledger for one process at a
+time. An evaluation-only SQL migration initializes schema version 1; unversioned populated or
+unknown schemas are refused without deleting history. This schema is separate from business
+and Task migrations. Each HTTP attempt is committed before dispatch; lower transport retries and redirects are
+disabled. Provider retries, structured-output repair and replanning reuse this guard. Reconciled
+fees plus unresolved reservations plus the next maximum must fit €8 of the €10 authorization;
+all calibration runs combined must also fit €1. €2 stays untouched. This does not change Task,
+Queue, Worker, checkpoint, lease or retry ownership, or grant business approval.
+
+Raw provider usage is reconciled before structured-output parsing, so malformed model JSON still
+costs money. Cache hit/miss totals must agree; completion includes reasoning without double
+charging. Missing usage, inconsistent totals/model/bounds, unreadable responses and transport
+interruptions retain the entire reservation and permanently stop new paid calls. A reservation
+left by a killed process also blocks restart. Unknown cost is `null`, never zero. Do not clear
+these records automatically; reconcile against provider billing with a separately reviewed ledger
+migration. Changes to ledger pricing/policy are refused rather than resetting prior spending.
+
+Live output adds `spending.json` and an embedded versioned ledger snapshot to `report.json`.
+`run_id` identifies this invocation's attempts; the snapshot also includes prior runs.
+`model_cost` is this run's usage-based USD ceiling only when all its attempts reconcile;
+`incurred_eur_upper` and `unresolved_eur` describe the whole experiment. Task/Artifact IDs,
+30 independent numeric assertions, hashes, observed latency, failures and waiting states remain
+visible. No waiting business approval is automatically resolved.
+
+Exit `4` means live preflight/budget/billing stop. Preflight refusals produce `blocked.json` with
+zero paid attempts in that invocation; post-dispatch stops produce the regular failed/partial
+report and retained ledger reservations. Other existing exit codes remain unchanged. An invalid
+file or output path exits `2`. CI exercises fake HTTP providers and never enables paid mode.
+One calibration is not the completed ten-scenario experiment or measured human-time savings.
+
+The [first live P01 result](supplier-quality-pilot-p01-result.md) records the observed calibration
+and publishes its sanitized machine-readable result and synthetic JSON artifact.
+
+### Ten-scenario controlled pilot
+
+Issue #4 extends the pilot entry, while `evaluation/run_eval.py` remains mock-only:
+
+```bash
+python -m evaluation.supplier_quality_pilot --suite --output-dir /tmp/quality-pilot-offline
+```
+
+Freeze `evaluation/datasets/supplier_quality_pilot_v1.jsonl`, the source snapshot, and
+`evaluation/datasets/fixtures/knowledge/supplier_quality_pilot_policy_v1.json` before paid execution.
+The source-only policy is served as a fixed synthetic index through the registered production
+Knowledge Tool. It tests governance and evidence transport, not retrieval quality against a real RAG
+service. Model inputs receive requests and normal permitted context, never expected answers.
+
+Independent PDF checking uses the development dependency `pypdf==6.10.0` because the standard
+library cannot parse rendered PDF pages. It checks real page readability and visible metric rows
+and evidence IDs against the embedded canonical model, then checks that model against the source
+oracle. Merely embedding a correct model in an incorrect visible PDF cannot qualify. Rendering
+and analysis remain production tools accessed only through Registry/Executor.
+
+The nine first report tasks have **181 fixed numeric assertions**. Missing reports retain their
+required assertions as failures; an empty-data report has an explicit no-invented-metrics check.
+Enumerated evidence support is frozen separately in `manifest.json`, using `support/` assertions;
+reference existence, evidence lineage and supporting content are separate checks. The denominator
+is independent of what the model happens to output. This is not an open-ended prose faithfulness
+score. Scope prose that incorrectly says a Q1/Q3 report covers only Q2, and policy actions unsupported
+by the calculation-method-only policy, fail independent acceptance even if the product verifier
+marks the task complete. These known template defects remain visible in the pilot; no fixes or
+selected reruns replace first results.
+
+P09 uses `TaskSubmissionService`, the real PostgreSQL outbox/Queue and `TaskExecutionService` to
+acquire the existing lease/fencing authority, observe `WAITING_CLARIFICATION` with zero tools,
+persist the frozen “Q2 2026” answer through `ClarificationService.respond`, and process the exact
+same-Task resume dispatch. The evaluation hosts this existing service synchronously with bounded
+delivery counts; it adds no Queue, lease, retry owner or production background-execution claim.
+Without a dedicated migrated PostgreSQL runtime, P09 stays pending and the suite is partial.
+No business approval is fabricated. The existing offline mock can expand the supplier scope on
+clarification by re-reading the authorized scope; the evaluator retains that failure. Live model
+outcomes must be measured separately.
+
+For a full live experiment, provision a **dedicated disposable** PostgreSQL database, run the
+existing Alembic and checkpoint migrations, and place its URL only in the approved environment
+as `PILOT_PERSISTENCE_DATABASE_URL`. Never point it at shared or production data. The CLI neither
+migrates nor clears that database. The isolated business source remains read-only SQLite.
+
+```bash
+LLM_PROVIDER=deepseek LLM_MODEL=deepseek-flash LLM_MAX_OUTPUT_TOKENS=8192 \
+  python -m evaluation.supplier_quality_pilot --suite --mode live \
+  --pricing evaluation/configs/supplier-quality-pilot/pricing-2026-10-19.json \
+  --budget evaluation/configs/supplier-quality-pilot/budget-v1.json \
+  --calibration-dir evaluation/reports/supplier-quality-pilot/p01-live-096ca89 \
+  --output-dir evaluation/reports/supplier-quality-pilot/ten-scenarios-v1
+```
+
+The original paid P01 is imported and independently re-scored, not silently rerun. Its actual code
+revision, prompts, latency and fees remain recorded; the suite's scorer revision and definitions
+are separate. This disclosed cross-revision calibration is a development pilot. It is not a
+comparison of identical code/input/metric configurations. P02–P10 run once in order. Only after
+all first Tasks stop in terminal states, and the budget permits, P01/P08 each repeat once;
+repeats never enter the nine-case delivery denominator or replace a first result.
+
+All calls retain the same €10 ledger, €2 reserve, and calibrated €1 gate. The live suite holds its
+single-concurrency ledger lock throughout. A versioned pointer fixes the first-population output
+location. A versioned, atomic/fsynced journal marks cases started before dispatch and stores
+finished-record hashes. `--resume` requires the same output and frozen configuration; cached
+scores are recomputed from assertions and checked, and altered records or unfinished starts
+block new paid calls. Starting in another directory cannot obtain a new experiment. Never delete
+or reset the ledger, pointer or progress journal to force a complete result.
+
+`suite.json` and `suite.md` include each first/repeat outcome, unrun/pending IDs, complete failing
+assertion lists, separate P10 safety, hashes, actual usage, pricing/FX, and qualified first-report
+latency median/range. Failed/waiting durations remain in the per-case table. First report fees
+include failed/repaired requests; safety and repeats are separate and remain in the experiment
+total. Cost per qualified first report is unavailable when none qualify or any fee is unresolved.
+At most two actual qualified artifacts are identified as samples. Human effort stays an explicit
+26/41/64, 31/49/76 or 11/18/29 minute assumption, without a measured-savings percentage.
+
+Suite exit codes: `0` all nine reports qualified and P10 passed; `1` independent failure or
+pending/partial workflow; `2` invalid input/output; `4` budget, billing or resume/preflight stop.
+A controlled pilot with failures can be fully executed and still exit `1`; partial execution is
+explicit. CI remains offline and includes the P09 PostgreSQL test in a dedicated migrated database.
+
+## Explicit post-fix regression
+
+The user authorized one separately retained post-fix population after the four defects found in
+[the first live pilot](supplier-quality-pilot-result.md). The
+[regression protocol and GitHub issues](supplier-quality-post-fix-regression.md) freeze its scope.
+Run P01–P10 once each with the repaired revision, the same independent checker and input snapshots,
+and a dedicated migrated PostgreSQL runtime (the P09 prerequisites above apply):
+
+```bash
+PILOT_PERSISTENCE_DATABASE_URL="$PILOT_TEST_POSTGRES_URL" \
+LLM_PROVIDER=deepseek LLM_MODEL=deepseek-flash LLM_MAX_OUTPUT_TOKENS=8192 \
+python -m evaluation.supplier_quality_pilot --suite --mode live \
+  --baseline-report evaluation/reports/pilot-ten-scenarios-live-20261019.json \
+  --pricing evaluation/configs/supplier-quality-pilot/pricing-2026-10-19.json \
+  --budget evaluation/configs/supplier-quality-pilot/budget-v1.json \
+  --output-dir evaluation/reports/supplier-quality-pilot/post-fix-v1
+```
+
+The existing dated price card remains valid only until its declared expiry. This command is not a
+standing authorization for more populations. Do not pass `--calibration-dir`: post-fix P01 is a new
+execution, while the original calibration remains in the aggregate ledger. No P01/P08 repeats are
+added. The original `.suite.json` pointer and all baseline files remain intact; a single fixed
+`.post-fix-v1.json` pointer binds the new directory/configuration/baseline hash. Changing the
+output directory cannot start another paid population. Never clear/copy the ledger to retry.
+
+For crash recovery, use `--resume` with the exact same revision, options, output and baseline.
+Completed case reports and artifacts must match saved hashes; a started-but-unfinished case needs
+reconciliation before any retry. Initial results are never replaced by these observations.
+Offline `--suite --baseline-report ...` is a free preflight; P09 remains pending without PostgreSQL,
+and an offline/live comparison is explicitly identified as such.
+
+The output includes `suite.json/md`, frozen `manifest.json`, per-case records and a versioned
+`comparison.json/md`. Comparisons retain original and new outcomes, all failed assertion IDs,
+fixed denominators, code/model/prompt versions and snapshot hashes. Readers recompute the
+serialized scores, status, latency and ledger-based fees. Incremental regression spending and
+whole-experiment spending are separate; both populations share the original €10 ceiling and €2
+reserve. Latency medians cover different sets of qualified reports, so no speedup percentage or
+measured human-time saving is inferred. This is a development regression on known synthetic
+cases, not held-out generalization.
+
+## Twenty-case validation freeze
+
+The [validation v1 protocol](supplier-quality-validation-v1.md) freezes new V01–V20 requests,
+source rows, literal oracle values, policy and assertion IDs before any product execution.
+It fixes delivery /16, safety /4, numeric /317 and enumerated fact-support /256. These differ
+from the development population; do not pool them or claim a direct before/after improvement.
+
+```bash
+python -m evaluation.supplier_quality_validation
+pytest tests/unit/evaluation/test_supplier_validation_freeze.py
+```
+
+The command returns 0 for a valid freeze and 1 for changed/invalid inputs; `--bundle PATH`
+verifies a copy. It does not create Tasks, load environment credentials, contact a model or
+write results. This ticket freezes data only; no live validation score is available.
+The same coding agent authored the new synthetic cases after observing development defects,
+so this is not independently blinded validation. A separate runner must use other control
+fixtures for its own tests, bind the committed freeze before dispatch, preserve all first
+outcomes and use the original aggregate spending ledger with current verified pricing.

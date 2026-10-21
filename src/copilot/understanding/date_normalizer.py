@@ -9,6 +9,10 @@ from datetime import date
 from pydantic import JsonValue
 
 from copilot.contracts import FieldResolution, ResolutionSource, ResolutionStatus
+from copilot.understanding.entity_resolver import (
+    CANONICAL_SUPPLIER_PATTERN,
+    NATURAL_SUPPLIER_PATTERN,
+)
 
 _YEAR = r"(?:20\d{2}|[3-9]\d{3})"
 _ISO_TOKEN = re.compile(r"(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)")
@@ -25,19 +29,28 @@ _YEAR_ONLY = re.compile(
 )
 _YEAR_COMPACT = re.compile(rf"\byear\s*({_YEAR})\b", re.IGNORECASE)
 _BARE_YEAR = re.compile(rf"(?<!\d)({_YEAR})(?!\d)")
+_SUPPLIER_YEAR = re.compile(
+    r"(?:(?<![A-Za-z0-9_-])|(?<=year))(-?\d{4,})(?=q\d+\b|[^A-Za-z0-9_]|$)",
+    re.IGNORECASE,
+)
 _QUARTER = re.compile(rf"\bq([1-4])\s*(?:of\s+)?({_YEAR})\b", re.IGNORECASE)
 _YEAR_QUARTER = re.compile(rf"\b({_YEAR})\s*[-/]?\s*q([1-4])\b", re.IGNORECASE)
-_QUARTER_ONLY = re.compile(r"\bq([1-4])\b", re.IGNORECASE)
+_QUARTER_ONLY = re.compile(r"(?<![A-Za-z_])q(-?\d+)\b", re.IGNORECASE)
 _WORD_QUARTER = re.compile(
     rf"\b(first|second|third|fourth)\s+quarter(?:\s+of)?\s+({_YEAR})\b",
     re.IGNORECASE,
 )
-_GERMAN_QUARTER = re.compile(
-    rf"\b([1-4])\.\s*Quartal(?:\s+(?:des\s+Jahres\s+)?)?({_YEAR})\b",
+_GERMAN_QUARTER = re.compile(r"\b(-?\d+)\.\s*Quartal\b", re.IGNORECASE)
+_CHINESE_QUARTER = re.compile(r"第\s*([一二三四五六七八九十0-9]+)\s*季度")
+_SUPPLIER_WORD_QUARTER = re.compile(
+    r"\b(first|second|third|fourth|fifth|sixth)\s+quarter\b", re.IGNORECASE
+)
+_SUPPLIER_COUNT_UNIT = re.compile(
+    r"\s*(?:rows?|records?|units?|items?|defects?|inspections?|batches?|samples?)\b",
     re.IGNORECASE,
 )
-_CHINESE_QUARTER = re.compile(
-    rf"(?:(?:({_YEAR})\s*年?\s*)?第\s*([一二三四1234])\s*季度(?:\s*({_YEAR})\s*年?)?)"
+_SUPPLIER_COUNT_LABEL = re.compile(
+    r"\b(?:defect[ _]count|inspected[ _]count)\s*[:=]?\s*$", re.IGNORECASE
 )
 _HALF = re.compile(
     rf"\b(first|second)\s+half(?:\s+of)?\s+({_YEAR})\b",
@@ -302,52 +315,72 @@ def normalize_accounts_payable_time_range(
     return _missing(normalized, "No supported absolute AP period was supplied.")
 
 
-def normalize_supplier_period(text: str, *, prior_year: int | None = None) -> FieldResolution:
-    """Resolve a Supplier Quality quarter while retaining its year/quarter contract shape."""
+def normalize_supplier_period(
+    text: str, *, prior_year: int | None = None, prior_quarter: int | None = None
+) -> FieldResolution:
+    """Retain explicit partial facts; only a complete period is NORMALIZED.
+
+    A MISSING resolution may carry a partial canonical value for clarification context,
+    never an executable TaskContract. No model candidate supplies these facts.
+    """
     normalized = " ".join(text.strip().split())
-    match = _QUARTER.search(normalized) or _YEAR_QUARTER.search(normalized)
-    if match is not None:
-        if match.re is _YEAR_QUARTER:
-            year, quarter = int(match.group(1)), int(match.group(2))
-        else:
-            quarter, year = int(match.group(1)), int(match.group(2))
-    else:
-        word = _WORD_QUARTER.search(normalized)
-        german = _GERMAN_QUARTER.search(normalized)
-        chinese = _CHINESE_QUARTER.search(normalized)
-        if word is not None:
-            quarter = ("first", "second", "third", "fourth").index(word.group(1).casefold()) + 1
-            year = int(word.group(2))
-        elif german is not None:
-            quarter, year = int(german.group(1)), int(german.group(2))
-        elif chinese is not None and (chinese.group(1) or chinese.group(3)):
-            quarter_token = chinese.group(2)
-            quarter = {"一": 1, "二": 2, "三": 3, "四": 4}.get(
-                quarter_token, int(quarter_token) if quarter_token.isdigit() else 0
-            )
-            year = int(chinese.group(1) or chinese.group(3))
-        else:
-            quarter_only = _QUARTER_ONLY.search(normalized)
-            if quarter_only is not None and prior_year is not None:
-                quarter, year = int(quarter_only.group(1)), prior_year
-                value: dict[str, JsonValue] = {"year": year, "quarter": quarter}
-                return FieldResolution(
-                    field_name="time_range",
-                    status=ResolutionStatus.NORMALIZED,
-                    raw_text=normalized,
-                    candidate_value=value,
-                    canonical_value=value,
-                    reason=f"Applied Q{quarter} to the previously validated year {year}",
-                    source=ResolutionSource.DETERMINISTIC_NORMALIZER,
-                )
-            return FieldResolution(
-                field_name="time_range",
-                status=ResolutionStatus.MISSING,
-                raw_text=normalized,
-                reason="Supplier Quality requires an explicit calendar quarter and year.",
-                source=ResolutionSource.DETERMINISTIC_NORMALIZER,
-            )
-    value = {"year": year, "quarter": quarter}
+    # Lex calendar tokens independently: punctuation cannot hide an invalid value,
+    # and neither a business ID nor an explicitly labelled count supplies a year.
+    period_text = NATURAL_SUPPLIER_PATTERN.sub("", normalized)
+    period_text = CANONICAL_SUPPLIER_PATTERN.sub("", period_text)
+    years = {
+        int(match.group(1))
+        for match in _SUPPLIER_YEAR.finditer(period_text)
+        if _SUPPLIER_COUNT_UNIT.match(period_text, match.end()) is None
+        and _SUPPLIER_COUNT_LABEL.search(period_text[: match.start()]) is None
+    }
+    quarters = {
+        int(token)
+        for pattern in (_QUARTER_ONLY, _GERMAN_QUARTER)
+        for token in pattern.findall(period_text)
+    }
+    ordinals = ("first", "second", "third", "fourth", "fifth", "sixth")
+    quarters.update(
+        ordinals.index(token.casefold()) + 1
+        for token in _SUPPLIER_WORD_QUARTER.findall(period_text)
+    )
+    for token in _CHINESE_QUARTER.findall(period_text):
+        quarters.add(
+            int(token) if token.isdigit() else {"一": 1, "二": 2, "三": 3, "四": 4}.get(token, 0)
+        )
+    if (
+        not quarters.issubset({1, 2, 3, 4})
+        or len(quarters) > 1
+        or len(years) > 1
+        or any(not 2000 <= year <= 9999 for year in years)
+    ):
+        return FieldResolution(
+            field_name="time_range",
+            status=ResolutionStatus.INVALID,
+            raw_text=normalized,
+            reason=(
+                "Supply one valid reporting quarter and year; "
+                "explicit conflicts cannot use prior values."
+            ),
+            source=ResolutionSource.DETERMINISTIC_NORMALIZER,
+        )
+    year = next(iter(years)) if years else prior_year
+    quarter = next(iter(quarters)) if quarters else prior_quarter
+    if year is None or quarter is None:
+        partial: dict[str, JsonValue] = {}
+        if year is not None:
+            partial["year"] = year
+        if quarter is not None:
+            partial["quarter"] = quarter
+        return FieldResolution(
+            field_name="time_range",
+            status=ResolutionStatus.MISSING,
+            raw_text=normalized,
+            canonical_value=partial or None,
+            reason="Supplier Quality requires an explicit calendar quarter and year.",
+            source=ResolutionSource.DETERMINISTIC_NORMALIZER,
+        )
+    value: dict[str, JsonValue] = {"year": year, "quarter": quarter}
     return FieldResolution(
         field_name="time_range",
         status=ResolutionStatus.NORMALIZED,

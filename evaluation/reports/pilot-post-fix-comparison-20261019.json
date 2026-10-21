@@ -1,0 +1,218 @@
+{
+  "version": "supplier-quality-pilot-comparison.v1",
+  "dataset_hash": "sha256:3a01879c26e66aacb60d5fb685ca5393512c6e7b48d334f16fcf2fa3e01e765f",
+  "source_hash": "sha256:8f5000a3d9d7d52cb1adf7701772c6fe3f42605bb9e5ebad435b53fe89496cdf",
+  "policy_hash": "sha256:868f833d53d46567fb43b1ac7d32a78a1c481a12645d85c85cff87582bf268fd",
+  "before": {
+    "snapshot": "pilot-ten-scenarios-live-20261019.json",
+    "snapshot_hash": "sha256:1c0c79becbfdf3c4f112ca0d840efc79dca2d5e4c6158894a5c1a8471871ab0d",
+    "mode": "live",
+    "code_revision": "3c4bf61443c2fe51b9cea955d756e017cdab125f",
+    "code_hash": "sha256:b067fd710d22b6c78f44a2e1b6f9632d6b40698d7a5952ffdfd4e8b0c593492b",
+    "config_hash": "sha256:a38f6efe10710d146651d4a2d3f9007f184465f06c1808f71810d0303c972a7b",
+    "started_at": "2026-10-19T09:10:46.844314Z",
+    "finished_at": "2026-10-19T09:12:08.258550Z",
+    "partial": false,
+    "stop_reason": null,
+    "models": [
+      "deepseek-flash"
+    ],
+    "prompt_versions": [
+      "planner-v3",
+      "task-understanding-v4"
+    ],
+    "qualified": 4,
+    "delivery_total": 9,
+    "numeric_passed": 175,
+    "numeric_total": 181,
+    "facts_passed": 128,
+    "fact_total": 146,
+    "safety_passed": true,
+    "first_report_cost_usd": "0.015710904",
+    "cost_per_qualified_usd": "0.003927726",
+    "safety_cost_usd": "0.002154444",
+    "qualified_latency_median_ms": 5371.5,
+    "qualified_latency_range_ms": [
+      4784,
+      6063
+    ]
+  },
+  "after": {
+    "snapshot": "pilot-post-fix-live-20261019.json",
+    "snapshot_hash": "sha256:e03ad60720111bce7efbaa14570e0fddfe72c32fb112f3a0079bbe502d291e69",
+    "mode": "live",
+    "code_revision": "482cdce79424155bc3da882de21b9f0537b8bda5",
+    "code_hash": "sha256:8527a027bb340ff631e6d8403dc2f38a747dc1a4687c626bba99746f5a2e6c05",
+    "config_hash": "sha256:8cab275f132562095dba359d10149c8a79da0236446f698b19d302a4a80deae4",
+    "started_at": "2026-10-19T10:00:18.629987Z",
+    "finished_at": "2026-10-19T10:01:27.555382Z",
+    "partial": false,
+    "stop_reason": null,
+    "models": [
+      "deepseek-flash"
+    ],
+    "prompt_versions": [
+      "planner-v3",
+      "task-understanding-v4"
+    ],
+    "qualified": 9,
+    "delivery_total": 9,
+    "numeric_passed": 181,
+    "numeric_total": 181,
+    "facts_passed": 146,
+    "fact_total": 146,
+    "safety_passed": true,
+    "first_report_cost_usd": "0.013342818",
+    "cost_per_qualified_usd": "0.001482535333333333333333333333",
+    "safety_cost_usd": "0.002022444",
+    "qualified_latency_median_ms": 6186.0,
+    "qualified_latency_range_ms": [
+      4582,
+      12309
+    ]
+  },
+  "qualified_delta": 5,
+  "numeric_delta": 6,
+  "facts_delta": 18,
+  "cases": [
+    {
+      "case_id": "P01",
+      "before_qualified": true,
+      "after_qualified": true,
+      "before_state": "COMPLETED",
+      "after_state": "COMPLETED",
+      "before_failed_assertions": [],
+      "after_failed_assertions": []
+    },
+    {
+      "case_id": "P02",
+      "before_qualified": true,
+      "after_qualified": true,
+      "before_state": "COMPLETED",
+      "after_state": "COMPLETED",
+      "before_failed_assertions": [],
+      "after_failed_assertions": []
+    },
+    {
+      "case_id": "P03",
+      "before_qualified": true,
+      "after_qualified": true,
+      "before_state": "COMPLETED",
+      "after_state": "COMPLETED",
+      "before_failed_assertions": [],
+      "after_failed_assertions": []
+    },
+    {
+      "case_id": "P04",
+      "before_qualified": false,
+      "after_qualified": true,
+      "before_state": "COMPLETED",
+      "after_state": "COMPLETED",
+      "before_failed_assertions": [
+        "scope_prose_matches_quarter"
+      ],
+      "after_failed_assertions": []
+    },
+    {
+      "case_id": "P05",
+      "before_qualified": true,
+      "after_qualified": true,
+      "before_state": "COMPLETED",
+      "after_state": "COMPLETED",
+      "before_failed_assertions": [],
+      "after_failed_assertions": []
+    },
+    {
+      "case_id": "P06",
+      "before_qualified": false,
+      "after_qualified": true,
+      "before_state": "COMPLETED",
+      "after_state": "COMPLETED",
+      "before_failed_assertions": [
+        "scope_prose_matches_quarter"
+      ],
+      "after_failed_assertions": []
+    },
+    {
+      "case_id": "P07",
+      "before_qualified": false,
+      "after_qualified": true,
+      "before_state": "COMPLETED",
+      "after_state": "COMPLETED",
+      "before_failed_assertions": [
+        "S-100/2026-04/period_over_period_trend",
+        "S-100/2026-05/period_over_period_trend",
+        "S-100/2026-06/period_over_period_trend",
+        "S-200/2026-04/period_over_period_trend",
+        "S-200/2026-05/period_over_period_trend",
+        "S-200/2026-06/period_over_period_trend",
+        "exact_metric_set",
+        "null_reasons",
+        "support/S-100/2026-04/period_over_period_trend",
+        "support/S-100/2026-05/period_over_period_trend",
+        "support/S-100/2026-06/period_over_period_trend",
+        "support/S-200/2026-04/period_over_period_trend",
+        "support/S-200/2026-05/period_over_period_trend",
+        "support/S-200/2026-06/period_over_period_trend"
+      ],
+      "after_failed_assertions": []
+    },
+    {
+      "case_id": "P08",
+      "before_qualified": false,
+      "after_qualified": true,
+      "before_state": "COMPLETED",
+      "after_state": "COMPLETED",
+      "before_failed_assertions": [
+        "policy_no_unsupported_actions"
+      ],
+      "after_failed_assertions": []
+    },
+    {
+      "case_id": "P09",
+      "before_qualified": false,
+      "after_qualified": true,
+      "before_state": "COMPLETED",
+      "after_state": "COMPLETED",
+      "before_failed_assertions": [
+        "exact_metric_set",
+        "report_scope",
+        "database_matches_source",
+        "calculation_lineage",
+        "support/S-100/2026-04/defect_count",
+        "support/S-100/2026-04/inspected_count",
+        "support/S-100/2026-04/defect_rate",
+        "support/S-100/2026-04/period_over_period_trend",
+        "support/S-100/2026-05/defect_count",
+        "support/S-100/2026-05/inspected_count",
+        "support/S-100/2026-05/defect_rate",
+        "support/S-100/2026-05/period_over_period_trend",
+        "support/S-100/2026-06/defect_count",
+        "support/S-100/2026-06/inspected_count",
+        "support/S-100/2026-06/defect_rate",
+        "support/S-100/2026-06/period_over_period_trend"
+      ],
+      "after_failed_assertions": []
+    },
+    {
+      "case_id": "P10",
+      "before_qualified": false,
+      "after_qualified": false,
+      "before_state": "FAILED",
+      "after_state": "FAILED",
+      "before_failed_assertions": [],
+      "after_failed_assertions": []
+    }
+  ],
+  "incremental_regression_cost_usd": "0.015365262",
+  "aggregate_experiment_cost_usd": "0.036202128",
+  "aggregate_budget_eur_upper": "0.056587",
+  "limitations": [
+    "Same fixed synthetic scenarios used during debugging; not held-out generalization.",
+    "All first results retained; no repeat replaces an original outcome.",
+    "Latency medians cover different qualified populations; no speedup percentage is inferred.",
+    "USD uses pinned usage ceilings; EUR includes contingencies, not invoice FX or tax.",
+    "Human effort remains assumed; no observed human-time saving is measured.",
+    "Original P01 was calibrated on an earlier revision; code revisions are disclosed per run."
+  ]
+}

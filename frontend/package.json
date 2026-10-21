@@ -14,6 +14,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "test:lint-config": "node --test tests/tooling/eslint-config.test.mjs",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "readme:screenshots": "node scripts/capture-readme-screenshots.mjs",

@@ -1,0 +1,172 @@
+"""Versioned inputs and observable results of the offline Supplier Quality pilot."""
+
+from datetime import datetime
+from decimal import Decimal
+from pathlib import Path
+from typing import Literal
+
+from pydantic import Field, computed_field, model_validator
+
+from copilot.contracts import TaskStatus
+from evaluation.contracts import EvaluationModel
+from evaluation.supplier_quality_pilot.budget import SpendingSnapshot
+
+
+class SourceRow(EvaluationModel):
+    """One synthetic monthly inspection aggregate, never an expected model answer."""
+
+    tenant_id: str = Field(min_length=1)
+    supplier_id: str = Field(min_length=1)
+    period: str = Field(pattern=r"^2026-(0[1-9]|1[0-2])$")
+    defect_count: int = Field(ge=0)
+    inspected_count: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def validate_counts(self) -> "SourceRow":
+        if self.defect_count > self.inspected_count:
+            raise ValueError("defects cannot exceed inspections")
+        return self
+
+
+class PilotSnapshot(EvaluationModel):
+    """Source-only snapshot; oracle fields are rejected by the strict base contract."""
+
+    version: Literal["supplier-quality-pilot-source.v1"]
+    tenant_id: str = Field(min_length=1)
+    rows: tuple[SourceRow, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_p01_population(self) -> "PilotSnapshot":
+        keys = [(r.tenant_id, r.supplier_id, r.period) for r in self.rows]
+        if len(keys) != len(set(keys)):
+            raise ValueError("source monthly rows must be unique")
+        required = {
+            (self.tenant_id, supplier, period)
+            for supplier in ("S-100", "S-200")
+            for period in ("2026-04", "2026-05", "2026-06")
+        }
+        if not required <= set(keys):
+            raise ValueError("source must contain all six authorized Q2 months")
+        return self
+
+
+class OracleMetric(EvaluationModel):
+    """Independently derived assertion over one reported metric and its operands."""
+
+    metric: str
+    supplier_id: str
+    period: str
+    value: Decimal | None
+    numerator: Decimal | None
+    denominator: Decimal | None
+    unit: str
+
+
+class PilotAssertion(EvaluationModel):
+    """One stable denominator entry, including an explicit missing-value outcome."""
+
+    assertion_id: str
+    category: Literal["numeric", "scope", "evidence", "artifact", "lifecycle"]
+    passed: bool
+    expected: str | None = None
+    actual: str | None = None
+
+
+class ClarificationObservation(EvaluationModel):
+    """Measured scripted suspension/resume facts; never an approval or runtime authority."""
+
+    version: Literal["pilot-clarification-observation.v1"] = "pilot-clarification-observation.v1"
+    scripted: Literal[True] = True
+    initial_task_id: str
+    initial_status: TaskStatus
+    tools_before_answer: int = Field(ge=0)
+    answer: str
+    answer_applied: bool = False
+    final_task_id: str | None = None
+    first_disposition: str | None = None
+    resume_dispatch_id: str | None = None
+    resume_disposition: str | None = None
+
+
+OFFLINE_LIMITATIONS = (
+    "Offline model with a real read-only SQLite query, analytics and JSON renderer.",
+    "P01 pilot only; this is not the completed ten-scenario or a held-out benchmark.",
+    "No live-model quality, provider cost or observed human-time savings measured.",
+    "Evidence support covers the enumerated structured numeric facts only.",
+)
+
+
+class PilotRun(EvaluationModel):
+    """Auditable P01 result; offline model cost is unknown rather than mock zero."""
+
+    schema_version: Literal["supplier-quality-pilot-run.v1", "supplier-quality-pilot-run.v2"] = (
+        "supplier-quality-pilot-run.v2"
+    )
+    case_id: str = Field(default="P01", pattern=r"^P(0[1-9]|10)$")
+    expected_outcome: Literal["report", "denial"] = "report"
+    repeat_index: int = Field(default=0, ge=0, le=1)
+    case_status: Literal["executed", "unrun"] = "executed"
+    policy_hash: str | None = None
+    interaction: ClarificationObservation | None = None
+    mode: Literal["offline", "live"] = "offline"
+    provider: Literal["mock", "deepseek"] = "mock"
+    model: str
+    model_cost: Decimal | None = None
+    model_cost_currency: Literal["USD"] | None = None
+    run_id: str | None = None
+    spending: SpendingSnapshot | None = None
+    started_at: datetime
+    latency_ms: int = Field(ge=0)
+    task_id: str | None
+    task_status: TaskStatus | None
+    code_revision: str | None
+    code_hash: str
+    git_dirty: bool
+    source_hash: str
+    config_hash: str
+    source_version: str
+    prompt_versions: tuple[str, ...]
+    executed_tools: tuple[str, ...]
+    artifact_ids: tuple[str, ...] = ()
+    artifact_checksums: dict[str, str] = Field(default_factory=dict)
+    artifact_paths: tuple[str, ...]
+    assertions: tuple[PilotAssertion, ...]
+    error_code: str | None = None
+    limitations: tuple[str, ...] = OFFLINE_LIMITATIONS
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def qualified_delivery(self) -> bool:
+        return (
+            self.expected_outcome == "report"
+            and self.case_status == "executed"
+            and bool(self.assertions)
+            and all(item.passed for item in self.assertions)
+        )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def numeric_total(self) -> int:
+        return sum(item.category == "numeric" for item in self.assertions)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def numeric_passed(self) -> int:
+        return sum(item.category == "numeric" and item.passed for item in self.assertions)
+
+
+def read_pilot_run(path: Path) -> PilotRun:
+    """Load a published record and verify, rather than trust, serialized computed scores."""
+    import json
+
+    return parse_pilot_run(json.loads(path.read_bytes()))
+
+
+def parse_pilot_run(data: dict[str, object]) -> PilotRun:
+    """Validate a nested or standalone record, including its computed scores."""
+    data = dict(data)
+    computed = {name: data.pop(name) for name in PilotRun.model_computed_fields if name in data}
+    run = PilotRun.model_validate(data)
+    if any(getattr(run, name) != value for name, value in computed.items()):
+        raise ValueError("Published pilot scores disagree with their assertion records")
+    return run

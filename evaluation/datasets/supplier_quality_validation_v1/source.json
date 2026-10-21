@@ -1,0 +1,160 @@
+{
+  "version": "supplier-quality-validation-source.v1",
+  "tenant_id": "TENANT-VALIDATION",
+  "rows": [
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-100",
+      "period": "2026-01",
+      "defect_count": 1,
+      "inspected_count": 32
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-100",
+      "period": "2026-02",
+      "defect_count": 1,
+      "inspected_count": 160
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-100",
+      "period": "2026-03",
+      "defect_count": 3,
+      "inspected_count": 160
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-100",
+      "period": "2026-04",
+      "defect_count": 5,
+      "inspected_count": 400
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-100",
+      "period": "2026-05",
+      "defect_count": 7,
+      "inspected_count": 200
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-100",
+      "period": "2026-06",
+      "defect_count": 4,
+      "inspected_count": 125
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-100",
+      "period": "2026-07",
+      "defect_count": 8,
+      "inspected_count": 160
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-100",
+      "period": "2026-08",
+      "defect_count": 3,
+      "inspected_count": 300
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-100",
+      "period": "2026-09",
+      "defect_count": 0,
+      "inspected_count": 50
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-200",
+      "period": "2026-01",
+      "defect_count": 0,
+      "inspected_count": 45
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-200",
+      "period": "2026-02",
+      "defect_count": 0,
+      "inspected_count": 0
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-200",
+      "period": "2026-03",
+      "defect_count": 2,
+      "inspected_count": 125
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-200",
+      "period": "2026-04",
+      "defect_count": 1,
+      "inspected_count": 8
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-200",
+      "period": "2026-05",
+      "defect_count": 2,
+      "inspected_count": 200
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-200",
+      "period": "2026-06",
+      "defect_count": 0,
+      "inspected_count": 0
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-200",
+      "period": "2026-07",
+      "defect_count": 0,
+      "inspected_count": 0
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-200",
+      "period": "2026-08",
+      "defect_count": 2,
+      "inspected_count": 40
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-200",
+      "period": "2026-09",
+      "defect_count": 1,
+      "inspected_count": 25
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-999",
+      "period": "2026-01",
+      "defect_count": 97,
+      "inspected_count": 100
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-999",
+      "period": "2026-04",
+      "defect_count": 98,
+      "inspected_count": 100
+    },
+    {
+      "tenant_id": "TENANT-VALIDATION",
+      "supplier_id": "S-999",
+      "period": "2026-07",
+      "defect_count": 99,
+      "inspected_count": 100
+    },
+    {
+      "tenant_id": "TENANT-OTHER",
+      "supplier_id": "S-100",
+      "period": "2026-04",
+      "defect_count": 96,
+      "inspected_count": 100
+    }
+  ]
+}
